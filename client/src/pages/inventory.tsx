@@ -27,7 +27,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -42,7 +43,7 @@ const createFormSchema = insertInventorySchema.extend({
   purchasePrice: z.coerce.number(),
   targetSellPrice: z.coerce.number(),
   clientId: z.coerce.number().optional(),
-});
+}).omit({ condition: true });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
 
@@ -58,6 +59,8 @@ export default function Inventory() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
+  const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
   const { data: inventory, isLoading } = useInventory();
   const { data: clients } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -70,12 +73,12 @@ export default function Inventory() {
       brand: "",
       model: "",
       referenceNumber: "",
-      condition: "Used",
-      status: "in_stock",
+      status: "incoming",
       purchasePrice: 0,
       targetSellPrice: 0,
       box: false,
       papers: false,
+      notes: "",
     },
   });
 
@@ -126,8 +129,10 @@ export default function Inventory() {
       
       const matchesStatus = statusFilter === "all" || item.status === statusFilter;
       const matchesBrand = brandFilter === "all" || item.brand === brandFilter;
+      const matchesBox = hasBoxFilter === null || item.box === hasBoxFilter;
+      const matchesPapers = hasPapersFilter === null || item.papers === hasPapersFilter;
       
-      return matchesSearch && matchesStatus && matchesBrand;
+      return matchesSearch && matchesStatus && matchesBrand && matchesBox && matchesPapers;
     });
   }, [inventory, search, statusFilter, brandFilter]);
 
@@ -223,20 +228,26 @@ export default function Inventory() {
                   <Label>Target Sell Price (Cents)</Label>
                   <Input type="number" {...form.register("targetSellPrice")} className="bg-white border-slate-200" />
                 </div>
-                <div className="space-y-2">
-                  <Label>Condition</Label>
-                  <Select onValueChange={(val) => form.setValue("condition", val as any)} defaultValue="Used">
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="New">New</SelectItem>
-                      <SelectItem value="Mint">Mint</SelectItem>
-                      <SelectItem value="Used">Used</SelectItem>
-                      <SelectItem value="Damaged">Damaged</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex items-center space-x-2 pt-8">
+                  <Checkbox 
+                    id="box" 
+                    checked={form.watch("box")} 
+                    onCheckedChange={(checked) => form.setValue("box", !!checked)}
+                  />
+                  <Label htmlFor="box" className="cursor-pointer">Includes Box</Label>
                 </div>
+                <div className="flex items-center space-x-2 pt-8">
+                  <Checkbox 
+                    id="papers" 
+                    checked={form.watch("papers")} 
+                    onCheckedChange={(checked) => form.setValue("papers", !!checked)}
+                  />
+                  <Label htmlFor="papers" className="cursor-pointer">Includes Papers</Label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Input {...form.register("notes")} className="bg-white border-slate-200" placeholder="Additional details..." />
               </div>
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900">Cancel</Button>
@@ -321,6 +332,25 @@ export default function Inventory() {
                 ))}
               </SelectContent>
             </Select>
+
+            <div className="flex items-center gap-2 border-l pl-4 border-slate-200">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="filter-box" 
+                  checked={hasBoxFilter === true} 
+                  onCheckedChange={(checked) => setHasBoxFilter(checked === true ? true : null)}
+                />
+                <Label htmlFor="filter-box" className="text-sm text-slate-600 cursor-pointer">Box</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="filter-papers" 
+                  checked={hasPapersFilter === true} 
+                  onCheckedChange={(checked) => setHasPapersFilter(checked === true ? true : null)}
+                />
+                <Label htmlFor="filter-papers" className="text-sm text-slate-600 cursor-pointer">Papers</Label>
+              </div>
+            </div>
             
             <span className="text-sm text-slate-500 ml-2">{filteredInventory.length} watches</span>
           </div>
@@ -370,7 +400,11 @@ export default function Inventory() {
                             </div>
                             <div>
                               <p className="font-medium text-slate-900 group-hover:text-emerald-600">{item.brand}</p>
-                              <p className="text-sm text-slate-500">{item.model}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm text-slate-500">{item.model}</p>
+                                {item.box && <Box className="w-3 h-3 text-emerald-600" title="Includes Box" />}
+                                {item.papers && <FileText className="w-3 h-3 text-emerald-600" title="Includes Papers" />}
+                              </div>
                             </div>
                           </div>
                         </Link>

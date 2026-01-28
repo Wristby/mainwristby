@@ -45,7 +45,7 @@ export default function Dashboard() {
 
   // Inventory status counts
   const statusCounts = {
-    sourcing: inventory?.filter((i) => i.status === "consigned").length || 0,
+    incoming: inventory?.filter((i) => i.status === "incoming").length || 0,
     inService: inventory?.filter((i) => i.status === "servicing").length || 0,
     listed: inventory?.filter((i) => i.status === "in_stock").length || 0,
     sold: inventory?.filter((i) => i.status === "sold").length || 0,
@@ -84,7 +84,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Command Center</h1>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
         <p className="text-slate-500 mt-1">{formattedDate}</p>
       </div>
 
@@ -141,12 +141,12 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Watches at Polisher - Green */}
+        {/* Watches at Service - Green */}
         <Card className="bg-emerald-600 border-emerald-500">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-emerald-50/90">Watches at Polisher</p>
+                <p className="text-sm font-medium text-emerald-50/90">Watches at Service</p>
                 <p className="text-3xl font-bold text-white mt-1 tabular-nums">
                   {watchesAtPolisher}
                 </p>
@@ -223,8 +223,8 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span className="text-slate-500">Sourcing</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sourcing}</span>
+                <span className="text-slate-500">Incoming</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-slate-100">
                 <span className="text-slate-500">In Service</span>
@@ -278,7 +278,7 @@ export default function Dashboard() {
                         ? "bg-emerald-50 text-emerald-700 border-emerald-100"
                         : item.status === "servicing"
                         ? "bg-amber-50 text-amber-700 border-amber-100"
-                        : item.status === "consigned"
+                        : item.status === "incoming"
                         ? "bg-blue-50 text-blue-700 border-blue-100"
                         : "bg-slate-100 text-slate-600"
                     }`}
@@ -287,8 +287,8 @@ export default function Dashboard() {
                       ? "Listed"
                       : item.status === "servicing"
                       ? "In Service"
-                      : item.status === "consigned"
-                      ? "Sourcing"
+                      : item.status === "incoming"
+                      ? "Incoming"
                       : "Sold"}
                   </Badge>
                 </CardContent>
