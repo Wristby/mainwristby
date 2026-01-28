@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -39,10 +39,14 @@ import { Link } from "wouter";
 import { differenceInDays } from "date-fns";
 
 const createFormSchema = insertInventorySchema.extend({
+  brand: z.string().min(1, "Brand is required"),
+  model: z.string().min(1, "Model is required"),
+  referenceNumber: z.string().min(1, "Reference number is required"),
+  serialNumber: z.string().min(1, "Serial number is required"),
+  clientId: z.coerce.number({ required_error: "Source is required" }),
+  purchasePrice: z.coerce.number().min(1, "Purchase price is required"),
   year: z.coerce.number().optional(),
-  purchasePrice: z.coerce.number(),
-  targetSellPrice: z.coerce.number(),
-  clientId: z.coerce.number().optional(),
+  targetSellPrice: z.coerce.number().optional().default(0),
 }).omit({ condition: true });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
@@ -201,7 +205,7 @@ export default function Inventory() {
                 </div>
                 <div className="space-y-2">
                   <Label>Serial Number</Label>
-                  <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" />
+                  <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" placeholder="Serial Number" />
                 </div>
                 <div className="space-y-2">
                   <Label>Year</Label>
@@ -366,18 +370,19 @@ export default function Inventory() {
                 <TableHead className="text-slate-500">Cost</TableHead>
                 <TableHead className="text-slate-500">Status</TableHead>
                 <TableHead className="text-slate-500 text-right">Hold Time</TableHead>
+                <TableHead className="text-slate-500 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-slate-400">
+                  <TableCell colSpan={6} className="text-center py-8 text-slate-400">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
               ) : filteredInventory.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-slate-400">
+                  <TableCell colSpan={6} className="text-center py-8 text-slate-400">
                     No items found.
                   </TableCell>
                 </TableRow>
@@ -435,6 +440,13 @@ export default function Inventory() {
                             {holdTime} days
                           </span>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Link href={`/inventory/${item.id}`}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-emerald-600">
+                            <Pencil className="h-4 h-4" />
+                          </Button>
+                        </Link>
                       </TableCell>
                     </TableRow>
                   );
