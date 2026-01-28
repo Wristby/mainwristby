@@ -458,7 +458,10 @@ export default function Financials() {
       <Card className="bg-white border-slate-200">
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-            <h3 className="text-lg font-semibold text-slate-900">Expenses</h3>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Expenses</h3>
+              <p className="text-xs text-slate-400">Filtered by selected month/year</p>
+            </div>
             <div className="flex gap-3 items-center">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />

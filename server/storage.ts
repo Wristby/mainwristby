@@ -117,6 +117,9 @@ export class DatabaseStorage implements IStorage {
 
   async updateExpense(id: number, updates: Partial<InsertExpense>): Promise<Expense> {
     const [expense] = await db.update(expenses).set(updates).where(eq(expenses.id, id)).returning();
+    if (!expense) {
+      throw new Error("Expense not found");
+    }
     return expense;
   }
 
