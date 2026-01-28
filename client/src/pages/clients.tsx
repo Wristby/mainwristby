@@ -1,6 +1,8 @@
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -18,9 +20,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Loader2, Phone, Mail, User } from "lucide-react";
+import { Search, Plus, Loader2, Phone, Mail, User, Star } from "lucide-react";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertClientSchema } from "@shared/schema";
 import { z } from "zod";
@@ -43,6 +45,7 @@ export default function Clients() {
       phone: "",
       type: "client",
       notes: "",
+      isVip: false,
     },
   });
 
@@ -82,28 +85,51 @@ export default function Clients() {
               <DialogTitle>Add New Client</DialogTitle>
             </DialogHeader>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input {...form.register("name")} className="bg-slate-950 border-slate-800" placeholder="John Doe" />
-                {form.formState.errors.name && <p className="text-red-500 text-xs">{form.formState.errors.name.message}</p>}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input {...form.register("name")} className="bg-slate-950 border-slate-800" placeholder="John Doe" />
+                  {form.formState.errors.name && <p className="text-red-500 text-xs">{form.formState.errors.name.message}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <select 
+                    {...form.register("type")} 
+                    className="w-full rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="client">Client</option>
+                    <option value="dealer">Dealer</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input {...form.register("email")} className="bg-slate-950 border-slate-800" placeholder="john@example.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input {...form.register("phone")} className="bg-slate-950 border-slate-800" placeholder="+1 (555) 000-0000" />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Email</Label>
-                <Input {...form.register("email")} className="bg-slate-950 border-slate-800" placeholder="john@example.com" />
+                <Label>Notes</Label>
+                <Textarea {...form.register("notes")} className="bg-slate-950 border-slate-800" placeholder="Special requirements or preferences..." />
               </div>
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input {...form.register("phone")} className="bg-slate-950 border-slate-800" placeholder="+1 (555) 000-0000" />
-              </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <select 
-                  {...form.register("type")} 
-                  className="w-full rounded-md border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                >
-                  <option value="client">Client</option>
-                  <option value="dealer">Dealer</option>
-                </select>
+              <div className="flex items-center space-x-2">
+                <Controller
+                  name="isVip"
+                  control={form.control}
+                  render={({ field }) => (
+                    <Checkbox
+                      id="isVip"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      className="border-slate-700 data-[state=checked]:bg-emerald-600"
+                    />
+                  )}
+                />
+                <Label htmlFor="isVip" className="text-sm font-medium leading-none cursor-pointer">VIP Client</Label>
               </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white">Cancel</Button>
@@ -157,10 +183,21 @@ export default function Clients() {
                     className="border-slate-800 hover:bg-slate-800/50 cursor-pointer group transition-colors"
                   >
                     <TableCell className="font-medium text-white flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 relative">
                         <User className="w-4 h-4" />
+                        {client.isVip && (
+                          <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5">
+                            <Star className="w-2 h-2 text-white fill-current" />
+                          </div>
+                        )}
                       </div>
-                      {client.name}
+                      <div className="flex flex-col">
+                        <span className="flex items-center gap-2">
+                          {client.name}
+                          {client.isVip && <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30 text-[10px] h-4">VIP</Badge>}
+                        </span>
+                        {client.notes && <span className="text-[10px] text-slate-500 line-clamp-1 max-w-[200px]">{client.notes}</span>}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge 

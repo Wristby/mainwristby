@@ -14,6 +14,7 @@ export const clients = pgTable("clients", {
   phone: text("phone"),
   type: text("type", { enum: ["client", "dealer"] }).default("client").notNull(),
   notes: text("notes"),
+  isVip: boolean("is_vip").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
