@@ -55,7 +55,7 @@ export const api = {
       method: 'GET' as const,
       path: '/api/inventory',
       input: z.object({
-        status: z.enum(["in_stock", "sold", "consigned", "servicing"]).optional(),
+        status: z.enum(["in_stock", "sold", "incoming", "servicing"]).optional(),
       }).optional(),
       responses: {
         200: z.array(z.custom<typeof inventory.$inferSelect & { seller?: typeof clients.$inferSelect }>()),

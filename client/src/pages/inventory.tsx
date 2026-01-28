@@ -142,7 +142,7 @@ export default function Inventory() {
     switch (status) {
       case 'in_stock': return 'Listed';
       case 'servicing': return 'In Service';
-      case 'consigned': return 'Sourcing';
+      case 'incoming': return 'Incoming';
       case 'sold': return 'Sold';
       default: return status;
     }
@@ -152,7 +152,7 @@ export default function Inventory() {
     switch (status) {
       case 'in_stock': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
       case 'servicing': return 'bg-blue-50 text-blue-600 border-blue-100';
-      case 'consigned': return 'bg-amber-50 text-amber-600 border-amber-100';
+      case 'incoming': return 'bg-amber-50 text-amber-600 border-amber-100';
       case 'sold': return 'bg-slate-100 text-slate-500 border-slate-200';
       default: return 'bg-slate-50 text-slate-500 border-slate-200';
     }
@@ -305,7 +305,7 @@ export default function Inventory() {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="in_stock">Listed</SelectItem>
                 <SelectItem value="servicing">In Service</SelectItem>
-                <SelectItem value="consigned">Sourcing</SelectItem>
+                <SelectItem value="incoming">Incoming</SelectItem>
                 <SelectItem value="sold">Sold</SelectItem>
               </SelectContent>
             </Select>
