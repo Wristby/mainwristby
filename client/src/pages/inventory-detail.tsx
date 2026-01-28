@@ -118,11 +118,11 @@ export default function InventoryDetail() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
                   <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Cost Basis</span>
-                  <div className="text-xl font-bold text-white mt-1">${(item.purchasePrice / 100).toLocaleString()}</div>
+                  <div className="text-xl font-bold text-white mt-1">€{(item.purchasePrice / 100).toLocaleString()}</div>
                 </div>
                 <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
                   <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">List Price</span>
-                  <div className="text-xl font-bold text-emerald-400 mt-1">${(item.targetSellPrice / 100).toLocaleString()}</div>
+                  <div className="text-xl font-bold text-emerald-400 mt-1">€{(item.targetSellPrice / 100).toLocaleString()}</div>
                 </div>
                 <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
                   <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Margin</span>
@@ -152,7 +152,7 @@ export default function InventoryDetail() {
               </div>
               <Separator className="bg-slate-800" />
               <div className="space-y-2">
-                <span className="text-xs text-slate-500 uppercase">Acquired</span>
+                <span className="text-xs text-slate-500 uppercase">DATE RECEIVED</span>
                 <div className="text-sm text-slate-300 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-slate-500" />
                   {new Date(item.purchaseDate).toLocaleDateString()}
