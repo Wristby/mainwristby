@@ -163,7 +163,7 @@ export default function Financials() {
 
   const years = useMemo(() => {
     if (!expenses) return [];
-    const uniqueYears = [...new Set(expenses.map(e => getYear(new Date(e.date))))];
+    const uniqueYears = Array.from(new Set(expenses.map(e => getYear(new Date(e.date)))));
     return uniqueYears.sort((a, b) => b - a);
   }, [expenses]);
 
