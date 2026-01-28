@@ -1,18 +1,116 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { users } from "./models/auth";
 
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+export * from "./models/auth";
+
+// === CLIENTS ===
+export const clients = pgTable("clients", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  type: text("type", { enum: ["client", "dealer"] }).default("client").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertClientSchema = createInsertSchema(clients).omit({ id: true, createdAt: true });
+export type Client = typeof clients.$inferSelect;
+export type InsertClient = z.infer<typeof insertClientSchema>;
+
+// === INVENTORY (Watches) ===
+export const inventory = pgTable("inventory", {
+  id: serial("id").primaryKey(),
+  brand: text("brand").notNull(),
+  model: text("model").notNull(),
+  referenceNumber: text("reference_number").notNull(),
+  serialNumber: text("serial_number"),
+  year: integer("year"),
+  
+  // Financials (stored in cents)
+  purchasePrice: integer("purchase_price").notNull(),
+  targetSellPrice: integer("target_sell_price").notNull(),
+  soldPrice: integer("sold_price"),
+  
+  // Dates
+  purchaseDate: timestamp("purchase_date").defaultNow().notNull(),
+  soldDate: timestamp("sold_date"),
+  
+  // Details
+  condition: text("condition", { enum: ["New", "Mint", "Used", "Damaged"] }).notNull(),
+  status: text("status", { enum: ["in_stock", "sold", "consigned", "servicing"] }).default("in_stock").notNull(),
+  box: boolean("box").default(false).notNull(),
+  papers: boolean("papers").default(false).notNull(),
+  images: text("images").array(),
+  notes: text("notes"),
+  
+  // Relations
+  clientId: integer("client_id").references(() => clients.id), // Seller (source)
+  buyerId: integer("buyer_id").references(() => clients.id),   // Buyer (destination)
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true });
+export type InventoryItem = typeof inventory.$inferSelect;
+export type InsertInventory = z.infer<typeof insertInventorySchema>;
+
+// === EXPENSES ===
+export const expenses = pgTable("expenses", {
+  id: serial("id").primaryKey(),
+  inventoryId: integer("inventory_id").references(() => inventory.id),
+  description: text("description").notNull(),
+  amount: integer("amount").notNull(), // cents
+  date: timestamp("date").defaultNow().notNull(),
+  category: text("category", { enum: ["service", "shipping", "parts", "marketing", "other"] }).default("other").notNull(),
+});
+
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+
+// === RELATIONS ===
+export const clientsRelations = relations(clients, ({ many }) => ({
+  inventorySold: many(inventory, { relationName: "seller" }),
+  inventoryBought: many(inventory, { relationName: "buyer" }),
+}));
+
+export const inventoryRelations = relations(inventory, ({ one, many }) => ({
+  seller: one(clients, {
+    fields: [inventory.clientId],
+    references: [clients.id],
+    relationName: "seller",
+  }),
+  buyer: one(clients, {
+    fields: [inventory.buyerId],
+    references: [clients.id],
+    relationName: "buyer",
+  }),
+  expenses: many(expenses),
+}));
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  inventory: one(inventory, {
+    fields: [expenses.inventoryId],
+    references: [inventory.id],
+  }),
+}));
+
+// === API TYPES ===
+export type CreateClientRequest = InsertClient;
+export type UpdateClientRequest = Partial<InsertClient>;
+
+export type CreateInventoryRequest = InsertInventory;
+export type UpdateInventoryRequest = Partial<InsertInventory>;
+
+export type CreateExpenseRequest = InsertExpense;
+
+// Dashboard Stats
+export interface DashboardStats {
+  totalInventoryValue: number;
+  totalProfit: number;
+  activeInventoryCount: number;
+  soldInventoryCount: number;
+  turnRate: number; // Avg days to sell
+}
