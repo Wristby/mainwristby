@@ -53,25 +53,25 @@ export class DatabaseStorage implements IStorage {
 
   // Inventory
   async getInventoryItems(status?: string): Promise<(InventoryItem & { seller?: Client })[]> {
-    let query = db.select({
-      ...inventory,
-      seller: clients,
-    })
-    .from(inventory)
-    .leftJoin(clients, eq(inventory.clientId, clients.id));
-
+    // Simpler query - get all inventory first
+    let items: InventoryItem[];
+    
     if (status) {
-      // @ts-ignore - weird drizzle type issue with dynamic where
-      query.where(eq(inventory.status, status));
+      items = await db.select().from(inventory).where(eq(inventory.status, status)).orderBy(desc(inventory.purchaseDate));
+    } else {
+      items = await db.select().from(inventory).orderBy(desc(inventory.purchaseDate));
     }
 
-    const items = await query.orderBy(desc(inventory.createdAt));
-    
-    // Flatten result for easier consumption if needed, but here we return object with seller
-    return items.map(item => ({
-      ...item.inventory,
-      seller: item.seller || undefined
-    }));
+    // Fetch sellers for items that have clientId
+    const result: (InventoryItem & { seller?: Client })[] = [];
+    for (const item of items) {
+      let seller: Client | undefined;
+      if (item.clientId) {
+        seller = await this.getClient(item.clientId);
+      }
+      result.push({ ...item, seller });
+    }
+    return result;
   }
 
   async getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined> {

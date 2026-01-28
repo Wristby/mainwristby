@@ -1,147 +1,307 @@
-import { useDashboardStats } from "@/hooks/use-dashboard";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowUpRight, TrendingUp, Package, CheckCircle, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-
-function StatCard({ title, value, icon: Icon, description, trend }: any) {
-  return (
-    <Card className="bg-slate-900 border-slate-800 shadow-xl relative overflow-hidden group">
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-slate-400">
-          {title}
-        </CardTitle>
-        <div className="p-2 bg-slate-800 rounded-lg group-hover:bg-emerald-950/30 transition-colors">
-          <Icon className="h-4 w-4 text-emerald-500" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold text-white tracking-tight">
-          {value}
-        </div>
-        <p className="text-xs text-slate-500 mt-1">
-          {description}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
+import { DollarSign, TrendingUp, Percent, Watch, AlertTriangle, Eye } from "lucide-react";
+import { format, differenceInDays } from "date-fns";
+import { Link } from "wouter";
+import type { InventoryItem, DashboardStats } from "@shared/schema";
 
 export default function Dashboard() {
-  const { data: stats, isLoading } = useDashboardStats();
+  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
+    queryKey: ["/api/dashboard/stats"],
+  });
 
-  if (isLoading) {
-    return (
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-32 bg-slate-900 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
+  const { data: inventory, isLoading: inventoryLoading } = useQuery<InventoryItem[]>({
+    queryKey: ["/api/inventory"],
+  });
+
+  const isLoading = statsLoading || inventoryLoading;
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
       maximumFractionDigits: 0,
     }).format(val / 100);
   };
 
-  return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-white">Dashboard</h2>
-          <p className="text-slate-400 mt-1">Overview of your inventory performance.</p>
+  const today = new Date();
+  const formattedDate = format(today, "EEEE, MMMM d, yyyy");
+
+  // Calculate aging inventory (held > 30 days, only active items)
+  const activeInventory = inventory?.filter(
+    (item) => item.status !== "sold"
+  ) || [];
+
+  const agingInventory = activeInventory
+    .map((item) => ({
+      ...item,
+      daysHeld: differenceInDays(today, new Date(item.purchaseDate)),
+    }))
+    .filter((item) => item.daysHeld > 30)
+    .sort((a, b) => b.daysHeld - a.daysHeld);
+
+  // Inventory status counts
+  const statusCounts = {
+    sourcing: inventory?.filter((i) => i.status === "consigned").length || 0,
+    inService: inventory?.filter((i) => i.status === "servicing").length || 0,
+    listed: inventory?.filter((i) => i.status === "in_stock").length || 0,
+    sold: inventory?.filter((i) => i.status === "sold").length || 0,
+  };
+
+  // Recent additions (last 5 items by purchase date)
+  const recentAdditions = [...(inventory || [])]
+    .sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())
+    .slice(0, 5);
+
+  // Calculate projected profit and ROI
+  const projectedProfit = activeInventory.reduce(
+    (sum, item) => sum + (item.targetSellPrice - item.purchasePrice),
+    0
+  );
+
+  const totalCost = activeInventory.reduce((sum, item) => sum + item.purchasePrice, 0);
+  const averageROI = totalCost > 0 ? ((projectedProfit / totalCost) * 100) : 0;
+  const watchesAtPolisher = statusCounts.inService;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-64 bg-slate-800" />
+        <div className="grid gap-4 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-28 bg-slate-800 rounded-xl" />
+          ))}
         </div>
+        <Skeleton className="h-96 bg-slate-800 rounded-xl" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-white tracking-tight">Command Center</h1>
+        <p className="text-slate-400 mt-1">{formattedDate}</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Inventory Value"
-          value={formatCurrency(stats?.totalInventoryValue || 0)}
-          icon={DollarSignIcon}
-          description="Cost basis of active stock"
-        />
-        <StatCard
-          title="Total Profit"
-          value={formatCurrency(stats?.totalProfit || 0)}
-          icon={TrendingUp}
-          description="Realized gains from sales"
-        />
-        <StatCard
-          title="Active Inventory"
-          value={stats?.activeInventoryCount || 0}
-          icon={Package}
-          description="Watches currently in stock"
-        />
-        <StatCard
-          title="Turn Rate"
-          value={`${Math.round(stats?.turnRate || 0)} days`}
-          icon={Clock}
-          description="Average time to sell"
-        />
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-7">
-        <Card className="col-span-4 bg-slate-900 border-slate-800 shadow-xl">
-          <CardHeader>
-            <CardTitle className="text-white">Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-center h-48 text-slate-500 text-sm italic">
-                No recent activity recorded.
+      {/* KPI Cards Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {/* Capital Deployed - Green */}
+        <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-emerald-100">Capital Deployed</p>
+                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                  {formatCurrency(stats?.totalInventoryValue || 0)}
+                </p>
+              </div>
+              <div className="p-2 bg-emerald-500/50 rounded-full">
+                <DollarSign className="h-5 w-5 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
-        
-        <Card className="col-span-3 bg-slate-900 border-slate-800 shadow-xl">
-           <CardHeader>
-            <CardTitle className="text-white">Inventory Health</CardTitle>
-          </CardHeader>
-          <CardContent>
-             <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800/50">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-sm font-medium text-slate-300">New Arrivals (30d)</span>
-                  </div>
-                  <span className="text-sm font-bold text-white">4</span>
-                </div>
-                 <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800/50">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-sm font-medium text-slate-300">Aging Stock (90d+)</span>
-                  </div>
-                  <span className="text-sm font-bold text-white">2</span>
-                </div>
-             </div>
+
+        {/* Projected Net Profit */}
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-400">Projected Net Profit</p>
+                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                  {formatCurrency(projectedProfit)}
+                </p>
+              </div>
+              <div className="p-2 bg-slate-700 rounded-full">
+                <TrendingUp className="h-5 w-5 text-emerald-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Average ROI */}
+        <Card className="bg-slate-800 border-slate-700">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-400">Average ROI</p>
+                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                  {averageROI.toFixed(1)}%
+                </p>
+              </div>
+              <div className="p-2 bg-slate-700 rounded-full">
+                <Percent className="h-5 w-5 text-blue-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Watches at Polisher - Green */}
+        <Card className="bg-emerald-600 border-emerald-500">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-emerald-100">Watches at Polisher</p>
+                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                  {watchesAtPolisher}
+                </p>
+              </div>
+              <div className="p-2 bg-emerald-500/50 rounded-full">
+                <Watch className="h-5 w-5 text-white" />
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
-    </div>
-  );
-}
 
-function DollarSignIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="12" x2="12" y1="2" y2="22" />
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
+      {/* Main Content Grid */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Aging Inventory - Left Side (2 cols) */}
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <div>
+                  <CardTitle className="text-white text-lg">Aging Inventory</CardTitle>
+                  <p className="text-sm text-slate-500">Watches held for more than 30 days</p>
+                </div>
+              </div>
+              <Badge variant="secondary" className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+                {agingInventory.length} watches
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {agingInventory.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  No aging inventory. Great work!
+                </div>
+              ) : (
+                agingInventory.slice(0, 6).map((item) => (
+                  <Link key={item.id} href={`/inventory/${item.id}`}>
+                    <div
+                      className="flex items-center justify-between p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg border border-slate-700/50 cursor-pointer transition-colors"
+                      data-testid={`aging-item-${item.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center">
+                          <Watch className="h-6 w-6 text-slate-500" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-white">
+                            {item.brand} {item.model}
+                          </p>
+                          <p className="text-sm text-slate-400 tabular-nums">
+                            {formatCurrency(item.purchasePrice)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold text-amber-400 tabular-nums">
+                          {item.daysHeld} days
+                        </p>
+                        <p className="text-xs text-slate-500">held</p>
+                      </div>
+                    </div>
+                  </Link>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Inventory Status - Right Side (1 col) */}
+        <div className="space-y-4">
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-white text-lg">Inventory Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between py-2 border-b border-slate-800">
+                <span className="text-slate-400">Sourcing</span>
+                <span className="font-semibold text-white tabular-nums">{statusCounts.sourcing}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-slate-800">
+                <span className="text-slate-400">In Service</span>
+                <span className="font-semibold text-white tabular-nums">{statusCounts.inService}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-slate-800">
+                <span className="text-slate-400">Listed</span>
+                <span className="font-semibold text-white tabular-nums">{statusCounts.listed}</span>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-slate-400">Sold</span>
+                <span className="font-semibold text-white tabular-nums">{statusCounts.sold}</span>
+              </div>
+            </CardContent>
+            <div className="px-6 pb-5">
+              <Link href="/inventory">
+                <Button
+                  variant="outline"
+                  className="w-full bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  data-testid="button-view-inventory"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Full Inventory
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Recent Additions */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold text-white">Recent Additions</h2>
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          {recentAdditions.map((item) => (
+            <Link key={item.id} href={`/inventory/${item.id}`}>
+              <Card
+                className="min-w-[200px] max-w-[200px] bg-slate-900 border-slate-800 cursor-pointer hover:border-slate-700 transition-colors flex-shrink-0"
+                data-testid={`recent-item-${item.id}`}
+              >
+                <div className="aspect-square bg-slate-800 rounded-t-lg flex items-center justify-center">
+                  <Watch className="h-12 w-12 text-slate-600" />
+                </div>
+                <CardContent className="p-3">
+                  <p className="font-medium text-white text-sm">{item.brand}</p>
+                  <p className="text-xs text-slate-400 truncate">{item.model}</p>
+                  <Badge
+                    variant="secondary"
+                    className={`mt-2 text-xs ${
+                      item.status === "in_stock"
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : item.status === "servicing"
+                        ? "bg-amber-500/20 text-amber-400"
+                        : item.status === "consigned"
+                        ? "bg-blue-500/20 text-blue-400"
+                        : "bg-slate-700 text-slate-300"
+                    }`}
+                  >
+                    {item.status === "in_stock"
+                      ? "Listed"
+                      : item.status === "servicing"
+                      ? "In Service"
+                      : item.status === "consigned"
+                      ? "Sourcing"
+                      : "Sold"}
+                  </Badge>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+          {recentAdditions.length === 0 && (
+            <div className="flex-1 text-center py-12 text-slate-500">
+              No watches in inventory yet.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
