@@ -5,41 +5,41 @@
 @tailwind utilities;
 
 :root {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
+  --background: 210 20% 98%;
+  --foreground: 222 47% 11%;
 
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
 
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
 
   --primary: 150 60% 35%; /* Emerald 700ish */
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 217 33% 17%; /* Slate 800 */
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222 47% 11.2%;
 
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
 
   --accent: 150 60% 35%;
-  --accent-foreground: 210 40% 98%;
+  --accent-foreground: 0 0% 100%;
 
-  --destructive: 0 62.8% 30.6%;
+  --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 217 33% 20%;
-  --input: 217 33% 20%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
   --ring: 150 60% 35%;
 
   --radius: 0.5rem;
   
-  --sidebar: 222 47% 10%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217 33% 15%;
-  --sidebar-accent: 217 33% 15%;
-  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar: 210 40% 96.1%;
+  --sidebar-foreground: 222 47% 11.2%;
+  --sidebar-border: 214.3 31.8% 91.4%;
+  --sidebar-accent: 214.3 31.8% 91.4%;
+  --sidebar-accent-foreground: 150 60% 35%;
 }
 
 @layer base {
@@ -51,19 +51,19 @@
     font-family: 'Inter', sans-serif;
   }
   
-  /* Custom scrollbar for dark theme elegance */
+  /* Custom scrollbar for light theme */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-slate-900;
+    @apply bg-slate-100;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-slate-700 rounded-full;
+    @apply bg-slate-300 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-600;
+    @apply bg-slate-400;
   }
 }
 
@@ -78,5 +78,5 @@
 }
 
 .glass-panel {
-  @apply bg-slate-900/80 backdrop-blur-md border border-slate-800 shadow-xl;
+  @apply bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm;
 }

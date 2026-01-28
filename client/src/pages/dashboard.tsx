@@ -69,13 +69,13 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-64 bg-slate-800" />
+        <Skeleton className="h-10 w-64 bg-slate-200" />
         <div className="grid gap-4 md:grid-cols-4">
           {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-28 bg-slate-800 rounded-xl" />
+            <Skeleton key={i} className="h-28 bg-slate-200 rounded-xl" />
           ))}
         </div>
-        <Skeleton className="h-96 bg-slate-800 rounded-xl" />
+        <Skeleton className="h-96 bg-slate-200 rounded-xl" />
       </div>
     );
   }
@@ -84,8 +84,8 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">Command Center</h1>
-        <p className="text-slate-400 mt-1">{formattedDate}</p>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Command Center</h1>
+        <p className="text-slate-500 mt-1">{formattedDate}</p>
       </div>
 
       {/* KPI Cards Row */}
@@ -95,12 +95,12 @@ export default function Dashboard() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-emerald-100">Capital Deployed</p>
+                <p className="text-sm font-medium text-emerald-50/90">Capital Deployed</p>
                 <p className="text-3xl font-bold text-white mt-1 tabular-nums">
                   {formatCurrency(stats?.totalInventoryValue || 0)}
                 </p>
               </div>
-              <div className="p-2 bg-emerald-500/50 rounded-full">
+              <div className="p-2 bg-white/20 rounded-full">
                 <DollarSign className="h-5 w-5 text-white" />
               </div>
             </div>
@@ -108,34 +108,34 @@ export default function Dashboard() {
         </Card>
 
         {/* Projected Net Profit */}
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-white border-slate-200">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-400">Projected Net Profit</p>
-                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                <p className="text-sm font-medium text-slate-500">Projected Net Profit</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                   {formatCurrency(projectedProfit)}
                 </p>
               </div>
-              <div className="p-2 bg-slate-700 rounded-full">
-                <TrendingUp className="h-5 w-5 text-emerald-400" />
+              <div className="p-2 bg-emerald-50 rounded-full">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Average ROI */}
-        <Card className="bg-slate-800 border-slate-700">
+        <Card className="bg-white border-slate-200">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-400">Average ROI</p>
-                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                <p className="text-sm font-medium text-slate-500">Average ROI</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                   {averageROI.toFixed(1)}%
                 </p>
               </div>
-              <div className="p-2 bg-slate-700 rounded-full">
-                <Percent className="h-5 w-5 text-blue-400" />
+              <div className="p-2 bg-blue-50 rounded-full">
+                <Percent className="h-5 w-5 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -146,12 +146,12 @@ export default function Dashboard() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-emerald-100">Watches at Polisher</p>
+                <p className="text-sm font-medium text-emerald-50/90">Watches at Polisher</p>
                 <p className="text-3xl font-bold text-white mt-1 tabular-nums">
                   {watchesAtPolisher}
                 </p>
               </div>
-              <div className="p-2 bg-emerald-500/50 rounded-full">
+              <div className="p-2 bg-white/20 rounded-full">
                 <Watch className="h-5 w-5 text-white" />
               </div>
             </div>
@@ -163,49 +163,49 @@ export default function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Aging Inventory - Left Side (2 cols) */}
         <div className="lg:col-span-2 space-y-4">
-          <Card className="bg-slate-900 border-slate-800">
+          <Card className="bg-white border-slate-200">
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
                 <div>
-                  <CardTitle className="text-white text-lg">Aging Inventory</CardTitle>
+                  <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
                   <p className="text-sm text-slate-500">Watches held for more than 30 days</p>
                 </div>
               </div>
-              <Badge variant="secondary" className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+              <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
                 {agingInventory.length} watches
               </Badge>
             </CardHeader>
             <CardContent className="space-y-2">
               {agingInventory.length === 0 ? (
-                <div className="text-center py-8 text-slate-500">
+                <div className="text-center py-8 text-slate-400">
                   No aging inventory. Great work!
                 </div>
               ) : (
                 agingInventory.slice(0, 6).map((item) => (
                   <Link key={item.id} href={`/inventory/${item.id}`}>
                     <div
-                      className="flex items-center justify-between p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg border border-slate-700/50 cursor-pointer transition-colors"
+                      className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors"
                       data-testid={`aging-item-${item.id}`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center">
-                          <Watch className="h-6 w-6 text-slate-500" />
+                        <div className="w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center">
+                          <Watch className="h-6 w-6 text-slate-400" />
                         </div>
                         <div>
-                          <p className="font-medium text-white">
+                          <p className="font-medium text-slate-900">
                             {item.brand} {item.model}
                           </p>
-                          <p className="text-sm text-slate-400 tabular-nums">
+                          <p className="text-sm text-slate-500 tabular-nums">
                             {formatCurrency(item.purchasePrice)}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-semibold text-amber-400 tabular-nums">
+                        <p className="text-lg font-semibold text-amber-600 tabular-nums">
                           {item.daysHeld} days
                         </p>
-                        <p className="text-xs text-slate-500">held</p>
+                        <p className="text-xs text-slate-400">held</p>
                       </div>
                     </div>
                   </Link>
@@ -217,33 +217,33 @@ export default function Dashboard() {
 
         {/* Inventory Status - Right Side (1 col) */}
         <div className="space-y-4">
-          <Card className="bg-slate-900 border-slate-800">
+          <Card className="bg-white border-slate-200">
             <CardHeader className="pb-4">
-              <CardTitle className="text-white text-lg">Inventory Status</CardTitle>
+              <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-slate-800">
-                <span className="text-slate-400">Sourcing</span>
-                <span className="font-semibold text-white tabular-nums">{statusCounts.sourcing}</span>
+              <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                <span className="text-slate-500">Sourcing</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sourcing}</span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-slate-800">
-                <span className="text-slate-400">In Service</span>
-                <span className="font-semibold text-white tabular-nums">{statusCounts.inService}</span>
+              <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                <span className="text-slate-500">In Service</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.inService}</span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-slate-800">
-                <span className="text-slate-400">Listed</span>
-                <span className="font-semibold text-white tabular-nums">{statusCounts.listed}</span>
+              <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                <span className="text-slate-500">Listed</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.listed}</span>
               </div>
               <div className="flex items-center justify-between py-2">
-                <span className="text-slate-400">Sold</span>
-                <span className="font-semibold text-white tabular-nums">{statusCounts.sold}</span>
+                <span className="text-slate-500">Sold</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sold}</span>
               </div>
             </CardContent>
             <div className="px-6 pb-5">
               <Link href="/inventory">
                 <Button
                   variant="outline"
-                  className="w-full bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  className="w-full bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   data-testid="button-view-inventory"
                 >
                   <Eye className="h-4 w-4 mr-2" />
@@ -257,30 +257,30 @@ export default function Dashboard() {
 
       {/* Recent Additions */}
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">Recent Additions</h2>
+        <h2 className="text-xl font-semibold text-slate-900">Recent Additions</h2>
         <div className="flex gap-4 overflow-x-auto pb-2">
           {recentAdditions.map((item) => (
             <Link key={item.id} href={`/inventory/${item.id}`}>
               <Card
-                className="min-w-[200px] max-w-[200px] bg-slate-900 border-slate-800 cursor-pointer hover:border-slate-700 transition-colors flex-shrink-0"
+                className="min-w-[200px] max-w-[200px] bg-white border-slate-200 cursor-pointer hover:border-slate-300 transition-colors flex-shrink-0"
                 data-testid={`recent-item-${item.id}`}
               >
-                <div className="aspect-square bg-slate-800 rounded-t-lg flex items-center justify-center">
-                  <Watch className="h-12 w-12 text-slate-600" />
+                <div className="aspect-square bg-slate-50 rounded-t-lg flex items-center justify-center">
+                  <Watch className="h-12 w-12 text-slate-300" />
                 </div>
                 <CardContent className="p-3">
-                  <p className="font-medium text-white text-sm">{item.brand}</p>
-                  <p className="text-xs text-slate-400 truncate">{item.model}</p>
+                  <p className="font-medium text-slate-900 text-sm">{item.brand}</p>
+                  <p className="text-xs text-slate-500 truncate">{item.model}</p>
                   <Badge
                     variant="secondary"
                     className={`mt-2 text-xs ${
                       item.status === "in_stock"
-                        ? "bg-emerald-500/20 text-emerald-400"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
                         : item.status === "servicing"
-                        ? "bg-amber-500/20 text-amber-400"
+                        ? "bg-amber-50 text-amber-700 border-amber-100"
                         : item.status === "consigned"
-                        ? "bg-blue-500/20 text-blue-400"
-                        : "bg-slate-700 text-slate-300"
+                        ? "bg-blue-50 text-blue-700 border-blue-100"
+                        : "bg-slate-100 text-slate-600"
                     }`}
                   >
                     {item.status === "in_stock"
@@ -296,7 +296,7 @@ export default function Dashboard() {
             </Link>
           ))}
           {recentAdditions.length === 0 && (
-            <div className="flex-1 text-center py-12 text-slate-500">
+            <div className="flex-1 text-center py-12 text-slate-400">
               No watches in inventory yet.
             </div>
           )}

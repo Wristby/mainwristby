@@ -26,14 +26,14 @@ export function Sidebar() {
   const { logout } = useAuth();
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 border-r border-slate-800 text-slate-100 w-64">
+    <div className="flex flex-col h-full bg-slate-50 border-r border-slate-200 text-slate-900 w-64">
       <div className="p-6 flex items-center gap-3">
         <div className="bg-emerald-600 p-2 rounded-lg">
           <Watch className="w-6 h-6 text-white" />
         </div>
         <div>
           <h1 className="font-bold text-lg tracking-tight">CHRONOS</h1>
-          <p className="text-xs text-slate-400 font-medium">Inventory Manager</p>
+          <p className="text-xs text-slate-500 font-medium">Inventory Manager</p>
         </div>
       </div>
 
@@ -46,11 +46,11 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer group",
                   isActive
-                    ? "bg-slate-800 text-emerald-400 shadow-lg shadow-black/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-900"
+                    ? "bg-white text-emerald-600 shadow-sm border border-slate-200"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
                 )}
               >
-                <item.icon className={cn("w-5 h-5", isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300")} />
+                <item.icon className={cn("w-5 h-5", isActive ? "text-emerald-600" : "text-slate-400 group-hover:text-slate-600")} />
                 <span className="font-medium text-sm">{item.label}</span>
               </div>
             </Link>
@@ -58,10 +58,10 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-slate-900">
+      <div className="p-4 border-t border-slate-200">
         <Button
           variant="ghost"
-          className="w-full justify-start text-slate-400 hover:text-red-400 hover:bg-red-950/20 gap-3"
+          className="w-full justify-start text-slate-500 hover:text-red-600 hover:bg-red-50 gap-3"
           onClick={() => logout()}
         >
           <LogOut className="w-5 h-5" />
@@ -92,7 +92,7 @@ export function MobileNav() {
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
 
-  if (isLoading) return <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-400">Loading...</div>;
+  if (isLoading) return <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500">Loading...</div>;
 
   if (!user) {
     window.location.href = "/login"; // Or show landing page
@@ -100,20 +100,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden font-sans">
+    <div className="flex h-screen bg-white overflow-hidden font-sans text-slate-900">
       <aside className="hidden lg:block">
         <Sidebar />
       </aside>
 
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        <header className="h-16 lg:hidden flex items-center px-4 border-b border-slate-800 bg-slate-950">
+        <header className="h-16 lg:hidden flex items-center px-4 border-b border-slate-200 bg-slate-50">
           <MobileNav />
-          <div className="ml-4 font-semibold text-slate-100">CHRONOS</div>
+          <div className="ml-4 font-semibold text-slate-900">CHRONOS</div>
         </header>
         
-        <main className="flex-1 overflow-auto bg-slate-950 relative">
+        <main className="flex-1 overflow-auto bg-slate-50 relative">
           {/* Subtle grid background */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20 pointer-events-none" />
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20 pointer-events-none" />
           
           <div className="relative z-10 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in">
             {children}
