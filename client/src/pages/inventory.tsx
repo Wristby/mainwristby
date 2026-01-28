@@ -38,16 +38,21 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { differenceInDays } from "date-fns";
 
-const createFormSchema = insertInventorySchema.extend({
+const createFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
   referenceNumber: z.string().min(1, "Reference number is required"),
   serialNumber: z.string().min(1, "Serial number is required"),
-  clientId: z.coerce.number({ required_error: "Source is required" }),
+  clientId: z.coerce.number().min(1, "Source is required"),
   purchasePrice: z.coerce.number().min(1, "Purchase price is required"),
-  year: z.coerce.number().optional(),
+  year: z.coerce.number().optional().nullable(),
   targetSellPrice: z.coerce.number().optional().default(0),
-}).omit({ condition: true });
+  status: z.enum(["in_stock", "sold", "incoming", "servicing"]).default("incoming"),
+  condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
+  box: z.boolean().default(false),
+  papers: z.boolean().default(false),
+  notes: z.string().optional().nullable(),
+});
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
 
@@ -77,7 +82,10 @@ export default function Inventory() {
       brand: "",
       model: "",
       referenceNumber: "",
+      serialNumber: "",
+      clientId: undefined,
       status: "incoming",
+      condition: "Used",
       purchasePrice: 0,
       targetSellPrice: 0,
       box: false,
@@ -102,7 +110,7 @@ export default function Inventory() {
   // Get unique brands for filter
   const brands = useMemo(() => {
     if (!inventory) return [];
-    const uniqueBrands = [...new Set(inventory.map(item => item.brand))];
+    const uniqueBrands = Array.from(new Set(inventory.map(item => item.brand)));
     return uniqueBrands.sort();
   }, [inventory]);
 
@@ -407,8 +415,8 @@ export default function Inventory() {
                               <p className="font-medium text-slate-900 group-hover:text-emerald-600">{item.brand}</p>
                               <div className="flex items-center gap-2">
                                 <p className="text-sm text-slate-500">{item.model}</p>
-                                {item.box && <Box className="w-3 h-3 text-emerald-600" title="Includes Box" />}
-                                {item.papers && <FileText className="w-3 h-3 text-emerald-600" title="Includes Papers" />}
+                                {item.box && <Box className="w-3 h-3 text-emerald-600" />}
+                                {item.papers && <FileText className="w-3 h-3 text-emerald-600" />}
                               </div>
                             </div>
                           </div>
