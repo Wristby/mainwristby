@@ -64,7 +64,7 @@ export const expenses = pgTable("expenses", {
   description: text("description").notNull(),
   amount: integer("amount").notNull(), // cents
   date: timestamp("date").defaultNow().notNull(),
-  category: text("category", { enum: ["service", "shipping", "parts", "marketing", "other"] }).default("other").notNull(),
+  category: text("category", { enum: ["marketing", "rent_storage", "subscriptions", "tools", "insurance", "service", "shipping", "parts", "other"] }).default("other").notNull(),
 });
 
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });

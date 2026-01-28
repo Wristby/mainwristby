@@ -23,7 +23,10 @@ export interface IStorage {
   deleteInventoryItem(id: number): Promise<void>;
 
   // Expenses
+  getExpenses(): Promise<Expense[]>;
+  getExpense(id: number): Promise<Expense | undefined>;
   createExpense(expense: InsertExpense): Promise<Expense>;
+  updateExpense(id: number, updates: Partial<InsertExpense>): Promise<Expense>;
   deleteExpense(id: number): Promise<void>;
 
   // Stats
@@ -98,8 +101,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expenses
+  async getExpenses(): Promise<Expense[]> {
+    return await db.select().from(expenses).orderBy(desc(expenses.date));
+  }
+
+  async getExpense(id: number): Promise<Expense | undefined> {
+    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    return expense;
+  }
+
   async createExpense(insertExpense: InsertExpense): Promise<Expense> {
     const [expense] = await db.insert(expenses).values(insertExpense).returning();
+    return expense;
+  }
+
+  async updateExpense(id: number, updates: Partial<InsertExpense>): Promise<Expense> {
+    const [expense] = await db.update(expenses).set(updates).where(eq(expenses.id, id)).returning();
     return expense;
   }
 

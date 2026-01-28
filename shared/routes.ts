@@ -97,6 +97,13 @@ export const api = {
     },
   },
   expenses: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/expenses',
+      responses: {
+        200: z.array(z.custom<typeof expenses.$inferSelect>()),
+      },
+    },
     create: {
       method: 'POST' as const,
       path: '/api/expenses',
@@ -104,6 +111,15 @@ export const api = {
       responses: {
         201: z.custom<typeof expenses.$inferSelect>(),
         400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/expenses/:id',
+      input: insertExpenseSchema.partial(),
+      responses: {
+        200: z.custom<typeof expenses.$inferSelect>(),
+        404: errorSchemas.notFound,
       },
     },
     delete: {

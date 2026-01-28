@@ -112,6 +112,12 @@ export async function registerRoutes(
   });
 
   // Expenses
+  app.get(api.expenses.list.path, async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    const expenses = await storage.getExpenses();
+    res.json(expenses);
+  });
+
   app.post(api.expenses.create.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
     try {
@@ -123,6 +129,20 @@ export async function registerRoutes(
         return res.status(400).json({ message: err.errors[0].message });
       }
       throw err;
+    }
+  });
+
+  app.put(api.expenses.update.path, async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    try {
+      const input = api.expenses.update.input.parse(req.body);
+      const expense = await storage.updateExpense(Number(req.params.id), input);
+      res.json(expense);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(404).json({ message: "Expense not found" });
     }
   });
 
