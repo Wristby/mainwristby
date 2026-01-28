@@ -7,7 +7,7 @@ import {
   LogOut, 
   Menu,
   Watch,
-  DollarSign
+  BarChart3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: Package, label: "Inventory", href: "/inventory" },
   { icon: Users, label: "Clients", href: "/clients" },
-  // { icon: DollarSign, label: "Financials", href: "/financials" },
+  { icon: BarChart3, label: "Analytics", href: "/analytics" },
 ];
 
 export function Sidebar() {

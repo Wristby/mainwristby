@@ -9,6 +9,7 @@ import Dashboard from "@/pages/dashboard";
 import Inventory from "@/pages/inventory";
 import InventoryDetail from "@/pages/inventory-detail";
 import Clients from "@/pages/clients";
+import Analytics from "@/pages/analytics";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/inventory" component={() => <ProtectedRoute component={Inventory} />} />
       <Route path="/inventory/:id" component={() => <ProtectedRoute component={InventoryDetail} />} />
       <Route path="/clients" component={() => <ProtectedRoute component={Clients} />} />
+      <Route path="/analytics" component={() => <ProtectedRoute component={Analytics} />} />
       <Route path="/login" component={Landing} />
       <Route component={NotFound} />
     </Switch>
