@@ -159,3 +159,7 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
   }
   return url;
 }
+
+export type CreateInventoryRequest = z.infer<typeof insertInventorySchema>;
+export type UpdateInventoryRequest = Partial<CreateInventoryRequest>;
+export type CreateExpenseRequest = z.infer<typeof insertExpenseSchema>;
