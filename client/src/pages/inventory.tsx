@@ -2,6 +2,7 @@ import { useInventory, useCreateInventory } from "@/hooks/use-inventory";
 import { useClients } from "@/hooks/use-clients";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -26,16 +27,16 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle } from "lucide-react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertInventorySchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { differenceInDays } from "date-fns";
 
-// Extending schema to coerce types from form strings
 const createFormSchema = insertInventorySchema.extend({
   year: z.coerce.number().optional(),
   purchasePrice: z.coerce.number(),
@@ -45,8 +46,18 @@ const createFormSchema = insertInventorySchema.extend({
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
 
+const formatCurrency = (val: number) => {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(val / 100);
+};
+
 export default function Inventory() {
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
   const { data: inventory, isLoading } = useInventory();
   const { data: clients } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -81,25 +92,85 @@ export default function Inventory() {
     });
   };
 
-  const filteredInventory = inventory?.filter((item) => {
-    const term = search.toLowerCase();
-    return (
-      item.brand.toLowerCase().includes(term) ||
-      item.model.toLowerCase().includes(term) ||
-      item.referenceNumber.toLowerCase().includes(term)
-    );
-  });
+  // Get unique brands for filter
+  const brands = useMemo(() => {
+    if (!inventory) return [];
+    const uniqueBrands = [...new Set(inventory.map(item => item.brand))];
+    return uniqueBrands.sort();
+  }, [inventory]);
+
+  // Calculate metrics
+  const metrics = useMemo(() => {
+    if (!inventory) return { total: 0, active: 0, atService: 0, capitalDeployed: 0 };
+    
+    const total = inventory.length;
+    const activeItems = inventory.filter(i => i.status !== 'sold');
+    const active = activeItems.length;
+    const atService = inventory.filter(i => i.status === 'servicing').length;
+    const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    
+    return { total, active, atService, capitalDeployed };
+  }, [inventory]);
+
+  // Filter inventory
+  const filteredInventory = useMemo(() => {
+    if (!inventory) return [];
+    
+    return inventory.filter((item) => {
+      const term = search.toLowerCase();
+      const matchesSearch = 
+        item.brand.toLowerCase().includes(term) ||
+        item.model.toLowerCase().includes(term) ||
+        item.referenceNumber.toLowerCase().includes(term) ||
+        (item.serialNumber?.toLowerCase().includes(term) ?? false);
+      
+      const matchesStatus = statusFilter === "all" || item.status === statusFilter;
+      const matchesBrand = brandFilter === "all" || item.brand === brandFilter;
+      
+      return matchesSearch && matchesStatus && matchesBrand;
+    });
+  }, [inventory, search, statusFilter, brandFilter]);
+
+  // Calculate hold time for each item
+  const getHoldTime = (item: any) => {
+    const purchaseDate = new Date(item.purchaseDate);
+    const endDate = item.soldDate ? new Date(item.soldDate) : new Date();
+    return differenceInDays(endDate, purchaseDate);
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'in_stock': return 'Listed';
+      case 'servicing': return 'In Service';
+      case 'consigned': return 'Sourcing';
+      case 'sold': return 'Sold';
+      default: return status;
+    }
+  };
+
+  const getStatusStyles = (status: string) => {
+    switch (status) {
+      case 'in_stock': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
+      case 'servicing': return 'bg-blue-50 text-blue-600 border-blue-100';
+      case 'consigned': return 'bg-amber-50 text-amber-600 border-amber-100';
+      case 'sold': return 'bg-slate-100 text-slate-500 border-slate-200';
+      default: return 'bg-slate-50 text-slate-500 border-slate-200';
+    }
+  };
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Inventory</h2>
-          <p className="text-slate-500 mt-1">Manage your collection of timepieces.</p>
+          <p className="text-slate-500 mt-1">
+            {metrics.active} active watches • {formatCurrency(metrics.capitalDeployed)} deployed
+          </p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md">
+            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
               <Plus className="w-4 h-4 mr-2" />
               Add Watch
             </Button>
@@ -112,26 +183,26 @@ export default function Inventory() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Brand</Label>
-                  <Input {...form.register("brand")} className="bg-white border-slate-200" placeholder="Rolex" />
+                  <Input {...form.register("brand")} className="bg-white border-slate-200" placeholder="Rolex" data-testid="input-brand" />
                   {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Model</Label>
-                  <Input {...form.register("model")} className="bg-white border-slate-200" placeholder="Submariner" />
+                  <Input {...form.register("model")} className="bg-white border-slate-200" placeholder="Submariner" data-testid="input-model" />
                 </div>
                 <div className="space-y-2">
                   <Label>Reference Number</Label>
-                  <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" placeholder="124060" />
+                  <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" placeholder="124060" data-testid="input-reference" />
                 </div>
                 <div className="space-y-2">
                   <Label>Serial Number</Label>
-                  <Input {...form.register("serialNumber")} className="bg-white border-slate-200" />
+                  <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" />
                 </div>
                 <div className="space-y-2">
                   <Label>Year</Label>
                   <Input type="number" {...form.register("year")} className="bg-white border-slate-200" placeholder="2023" />
                 </div>
-                 <div className="space-y-2">
+                <div className="space-y-2">
                   <Label>Source (Client/Dealer)</Label>
                   <Select onValueChange={(val) => form.setValue("clientId", parseInt(val))}>
                     <SelectTrigger className="bg-white border-slate-200">
@@ -146,7 +217,7 @@ export default function Inventory() {
                 </div>
                 <div className="space-y-2">
                   <Label>Purchase Price (Cents)</Label>
-                  <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" />
+                  <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="input-price" />
                 </div>
                 <div className="space-y-2">
                   <Label>Target Sell Price (Cents)</Label>
@@ -169,7 +240,7 @@ export default function Inventory() {
               </div>
               <div className="flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900">Cancel</Button>
-                <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-submit-watch">
                   {createMutation.isPending ? "Adding..." : "Add Watch"}
                 </Button>
               </div>
@@ -178,75 +249,162 @@ export default function Inventory() {
         </Dialog>
       </div>
 
+      {/* Metric Cards */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <p className="text-sm font-medium text-slate-500">Total Watches</p>
+            <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">{metrics.total}</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <p className="text-sm font-medium text-slate-500">Active Inventory</p>
+            <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">{metrics.active}</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <p className="text-sm font-medium text-slate-500">At Service</p>
+            <p className="text-3xl font-bold text-blue-600 mt-1 tabular-nums">{metrics.atService}</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <p className="text-sm font-medium text-slate-500">Capital Deployed</p>
+            <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums">{formatCurrency(metrics.capitalDeployed)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search and Filters */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input 
-            placeholder="Search by brand, model, or reference..." 
-            className="pl-10 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:ring-emerald-500/50"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input 
+              placeholder="Search by brand, model, reference, or serial..." 
+              className="pl-10 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:ring-emerald-500/50"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              data-testid="input-search"
+            />
+          </div>
+          
+          <div className="flex gap-3 items-center">
+            <Filter className="w-4 h-4 text-slate-400" />
+            
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[140px] bg-white border-slate-200" data-testid="select-status">
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="in_stock">Listed</SelectItem>
+                <SelectItem value="servicing">In Service</SelectItem>
+                <SelectItem value="consigned">Sourcing</SelectItem>
+                <SelectItem value="sold">Sold</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger className="w-[140px] bg-white border-slate-200" data-testid="select-brand">
+                <SelectValue placeholder="All Brands" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                <SelectItem value="all">All Brands</SelectItem>
+                {brands.map(brand => (
+                  <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <span className="text-sm text-slate-500 ml-2">{filteredInventory.length} watches</span>
+          </div>
         </div>
 
+        {/* Inventory Table */}
         <div className="rounded-lg border border-slate-200 overflow-hidden bg-white">
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow className="border-slate-200 hover:bg-slate-50">
-                <TableHead className="text-slate-500">Brand</TableHead>
-                <TableHead className="text-slate-500">Model</TableHead>
+                <TableHead className="text-slate-500">Watch</TableHead>
                 <TableHead className="text-slate-500">Reference</TableHead>
-                <TableHead className="text-slate-500">Year</TableHead>
-                <TableHead className="text-slate-500">Condition</TableHead>
+                <TableHead className="text-slate-500">Cost</TableHead>
                 <TableHead className="text-slate-500">Status</TableHead>
-                <TableHead className="text-slate-500 text-right">Price</TableHead>
+                <TableHead className="text-slate-500 text-right">Hold Time</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-slate-400">
+                  <TableCell colSpan={5} className="text-center py-8 text-slate-400">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
-              ) : filteredInventory?.length === 0 ? (
+              ) : filteredInventory.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-slate-400">
+                  <TableCell colSpan={5} className="text-center py-8 text-slate-400">
                     No items found.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredInventory?.map((item) => (
-                  <TableRow 
-                    key={item.id} 
-                    className="border-slate-100 hover:bg-slate-50 cursor-pointer group transition-colors"
-                  >
-                    <TableCell className="font-medium text-slate-900 group-hover:text-emerald-600">
-                      <Link href={`/inventory/${item.id}`}>{item.brand}</Link>
-                    </TableCell>
-                    <TableCell className="text-slate-600">{item.model}</TableCell>
-                    <TableCell className="text-slate-500 font-mono text-xs">{item.referenceNumber}</TableCell>
-                    <TableCell className="text-slate-500">{item.year || "N/A"}</TableCell>
-                    <TableCell className="text-slate-500">{item.condition}</TableCell>
-                    <TableCell>
-                      <Badge 
-                        variant="outline" 
-                        className={
-                          item.status === 'in_stock' 
-                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
-                            : item.status === 'sold'
-                            ? 'bg-slate-50 text-slate-500 border-slate-200'
-                            : 'bg-amber-50 text-amber-600 border-amber-100'
-                        }
-                      >
-                        {item.status.replace("_", " ")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right text-slate-900 font-mono">
-                      ${(item.targetSellPrice / 100).toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredInventory.map((item) => {
+                  const holdTime = getHoldTime(item);
+                  const isAging = holdTime > 30 && item.status !== 'sold';
+                  
+                  return (
+                    <TableRow 
+                      key={item.id} 
+                      className="border-slate-100 hover:bg-slate-50 cursor-pointer group transition-colors"
+                      data-testid={`inventory-row-${item.id}`}
+                    >
+                      <TableCell>
+                        <Link href={`/inventory/${item.id}`}>
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+                              <Watch className="h-5 w-5 text-slate-400" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-slate-900 group-hover:text-emerald-600">{item.brand}</p>
+                              <p className="text-sm text-slate-500">{item.model}</p>
+                            </div>
+                          </div>
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-mono text-sm text-slate-900">{item.referenceNumber}</p>
+                          {item.serialNumber && (
+                            <p className="font-mono text-xs text-slate-400">{item.serialNumber}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-slate-900 font-medium tabular-nums">
+                        {formatCurrency(item.purchasePrice)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant="outline" 
+                          className={getStatusStyles(item.status)}
+                        >
+                          {getStatusLabel(item.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isAging && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+                          <span className={`tabular-nums ${isAging ? 'text-amber-600 font-medium' : 'text-slate-500'}`}>
+                            {holdTime} days
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

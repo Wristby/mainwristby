@@ -26,9 +26,9 @@ export default function Analytics() {
   const isLoading = inventoryLoading;
 
   const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("de-DE", {
       style: "currency",
-      currency: "USD",
+      currency: "EUR",
       maximumFractionDigits: 0,
     }).format(val / 100);
   };
@@ -196,7 +196,7 @@ export default function Analytics() {
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide">Highest Profit</p>
                   <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums">
-                    {highestProfit ? formatCurrency(highestProfit.profit) : "$0"}
+                    {highestProfit ? formatCurrency(highestProfit.profit) : "€0"}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
                     {highestProfit ? `${highestProfit.brand} ${highestProfit.model}` : "-"}
@@ -215,7 +215,7 @@ export default function Analytics() {
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide">Lowest Profit</p>
                   <p className="text-3xl font-bold text-purple-600 mt-1 tabular-nums">
-                    {lowestProfit ? formatCurrency(lowestProfit.profit) : "$0"}
+                    {lowestProfit ? formatCurrency(lowestProfit.profit) : "€0"}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
                     {lowestProfit ? `${lowestProfit.brand} ${lowestProfit.model}` : "-"}
