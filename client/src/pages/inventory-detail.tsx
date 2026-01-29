@@ -43,8 +43,23 @@ const editFormSchema = z.object({
   model: z.string().min(1, "Model is required"),
   referenceNumber: z.string().min(1, "Reference number is required"),
   serialNumber: z.string().optional().nullable(),
+  internalSerial: z.string().optional().nullable(),
   year: z.coerce.number().optional().nullable(),
-  purchasePrice: z.coerce.number().min(1, "Purchase price is required"),
+  
+  purchasedFrom: z.string().optional().nullable(),
+  paidWith: z.string().optional().nullable(),
+  purchasePrice: z.coerce.number().min(1, "COGS is required"),
+  importFee: z.coerce.number().optional().default(0),
+  watchRegister: z.string().optional().nullable(),
+  
+  servicePolishFee: z.coerce.number().optional().default(0),
+  
+  salePrice: z.coerce.number().optional().default(0),
+  soldTo: z.string().optional().nullable(),
+  platformFees: z.coerce.number().optional().default(0),
+  shippingFee: z.coerce.number().optional().default(0),
+  insuranceFee: z.coerce.number().optional().default(0),
+  
   targetSellPrice: z.coerce.number().optional().default(0),
   purchaseDate: z.string().optional().nullable(),
   dateListed: z.string().optional().nullable(),
@@ -79,8 +94,19 @@ export default function InventoryDetail() {
       model: "",
       referenceNumber: "",
       serialNumber: "",
+      internalSerial: "",
       year: undefined,
+      purchasedFrom: "",
+      paidWith: "",
       purchasePrice: 0,
+      importFee: 0,
+      watchRegister: "",
+      servicePolishFee: 0,
+      salePrice: 0,
+      soldTo: "",
+      platformFees: 0,
+      shippingFee: 0,
+      insuranceFee: 0,
       targetSellPrice: 0,
       status: "in_stock",
       condition: "Used",
@@ -88,6 +114,9 @@ export default function InventoryDetail() {
       papers: false,
       notes: "",
       clientId: undefined,
+      shippingPartner: "",
+      trackingNumber: "",
+      soldPlatform: "",
     },
   });
 
@@ -99,8 +128,19 @@ export default function InventoryDetail() {
         model: item.model,
         referenceNumber: item.referenceNumber,
         serialNumber: item.serialNumber || "",
+        internalSerial: (item as any).internalSerial || "",
         year: item.year || undefined,
+        purchasedFrom: (item as any).purchasedFrom || "",
+        paidWith: (item as any).paidWith || "",
         purchasePrice: item.purchasePrice,
+        importFee: (item as any).importFee || 0,
+        watchRegister: (item as any).watchRegister || "",
+        servicePolishFee: (item as any).servicePolishFee || 0,
+        salePrice: (item as any).salePrice || 0,
+        soldTo: (item as any).soldTo || "",
+        platformFees: (item as any).platformFees || 0,
+        shippingFee: (item as any).shippingFee || 0,
+        insuranceFee: (item as any).insuranceFee || 0,
         targetSellPrice: item.targetSellPrice || 0,
         purchaseDate: item.purchaseDate ? new Date(item.purchaseDate).toISOString().split('T')[0] : "",
         dateListed: item.dateListed ? new Date(item.dateListed).toISOString().split('T')[0] : "",
@@ -204,126 +244,216 @@ export default function InventoryDetail() {
                 Edit
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl bg-white border-slate-200 text-slate-900">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
               <DialogHeader>
                 <DialogTitle>Edit Watch</DialogTitle>
               </DialogHeader>
               <form onSubmit={form.handleSubmit(onSubmitEdit)} className="space-y-6 mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Brand</Label>
-                    <Input {...form.register("brand")} className="bg-white border-slate-200" data-testid="edit-input-brand" />
-                    {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Model</Label>
-                    <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="edit-input-model" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Reference Number</Label>
-                    <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="edit-input-reference" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Serial Number</Label>
-                    <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="edit-input-serial" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Year</Label>
-                    <Input type="number" {...form.register("year")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date Received</Label>
-                    <Input type="date" {...form.register("purchaseDate")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date Listed</Label>
-                    <Input type="date" {...form.register("dateListed")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date Sold</Label>
-                    <Input type="date" {...form.register("dateSold")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as "in_stock" | "sold" | "incoming" | "servicing")}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Status" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="incoming">Incoming</SelectItem>
-                        <SelectItem value="in_stock">Listed</SelectItem>
-                        <SelectItem value="servicing">In Service</SelectItem>
-                        <SelectItem value="sold">Sold</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Source (Client/Dealer)</Label>
-                    <Select value={form.watch("clientId")?.toString()} onValueChange={(val) => form.setValue("clientId", parseInt(val))}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Source" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {clients?.map((c) => (
-                          <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Purchase Price (Cents)</Label>
-                    <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="edit-input-price" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sold For</Label>
-                    <Input type="number" {...form.register("targetSellPrice")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sold Platform</Label>
-                    <Input {...form.register("soldPlatform")} className="bg-white border-slate-200" placeholder="Chrono24, eBay, etc." />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Shipping Partner</Label>
-                    <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Shipping" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="DHL">DHL</SelectItem>
-                        <SelectItem value="FedEx">FedEx</SelectItem>
-                        <SelectItem value="UPS">UPS</SelectItem>
-                        <SelectItem value="Ferrari">Ferrari Express</SelectItem>
-                        <SelectItem value="Malca-Amit">Malca-Amit</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tracking Number</Label>
-                    <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="flex items-center space-x-2 pt-8">
-                    <Checkbox 
-                      id="edit-box" 
-                      checked={form.watch("box")} 
-                      onCheckedChange={(checked) => form.setValue("box", !!checked)}
-                    />
-                    <Label htmlFor="edit-box" className="cursor-pointer">Includes Box</Label>
-                  </div>
-                  <div className="flex items-center space-x-2 pt-8">
-                    <Checkbox 
-                      id="edit-papers" 
-                      checked={form.watch("papers")} 
-                      onCheckedChange={(checked) => form.setValue("papers", !!checked)}
-                    />
-                    <Label htmlFor="edit-papers" className="cursor-pointer">Includes Papers</Label>
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Brand *</Label>
+                      <Input {...form.register("brand")} className="bg-white border-slate-200" data-testid="edit-input-brand" />
+                      {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Model *</Label>
+                      <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="edit-input-model" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reference *</Label>
+                      <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="edit-input-reference" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Serial #</Label>
+                      <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="edit-input-serial" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Internal Serial</Label>
+                      <Input {...form.register("internalSerial")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Year</Label>
+                      <Input type="number" {...form.register("year")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Condition</Label>
+                      <Select value={form.watch("condition")} onValueChange={(val) => form.setValue("condition", val as any)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Condition" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="New">New</SelectItem>
+                          <SelectItem value="Mint">Mint</SelectItem>
+                          <SelectItem value="Used">Used</SelectItem>
+                          <SelectItem value="Damaged">Damaged</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center space-x-4 pt-6">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="edit-box" checked={form.watch("box")} onCheckedChange={(checked) => form.setValue("box", !!checked)} />
+                        <Label htmlFor="edit-box" className="cursor-pointer">Box</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="edit-papers" checked={form.watch("papers")} onCheckedChange={(checked) => form.setValue("papers", !!checked)} />
+                        <Label htmlFor="edit-papers" className="cursor-pointer">Papers</Label>
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Purchased From</Label>
+                      <Input {...form.register("purchasedFrom")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Paid With</Label>
+                      <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Payment Method" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="Cash">Cash</SelectItem>
+                          <SelectItem value="Euro">Euro</SelectItem>
+                          <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                          <SelectItem value="Card">Card</SelectItem>
+                          <SelectItem value="Crypto">Crypto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Source (Client/Dealer)</Label>
+                      <Select value={form.watch("clientId")?.toString() || ""} onValueChange={(val) => form.setValue("clientId", parseInt(val))}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Source" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          {clients?.map((c) => (
+                            <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>COGS (cents) *</Label>
+                      <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="edit-input-price" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Import Fee (cents)</Label>
+                      <Input type="number" {...form.register("importFee")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Watch Register</Label>
+                      <Input {...form.register("watchRegister")} className="bg-white border-slate-200" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Dates</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Status" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="incoming">Incoming</SelectItem>
+                          <SelectItem value="in_stock">Listed</SelectItem>
+                          <SelectItem value="servicing">In Service</SelectItem>
+                          <SelectItem value="sold">Sold</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Received</Label>
+                      <Input type="date" {...form.register("purchaseDate")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Listed</Label>
+                      <Input type="date" {...form.register("dateListed")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Sold</Label>
+                      <Input type="date" {...form.register("dateSold")} className="bg-white border-slate-200" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Costs & Fees (cents)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Service/Polish Fee</Label>
+                      <Input type="number" {...form.register("servicePolishFee")} className="bg-white border-slate-200" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Sale Details</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Sold To (Platform)</Label>
+                      <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sale Price (cents)</Label>
+                      <Input type="number" {...form.register("salePrice")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Platform Fees (cents)</Label>
+                      <Input type="number" {...form.register("platformFees")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Shipping Fee (cents)</Label>
+                      <Input type="number" {...form.register("shippingFee")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Insurance Fee (cents)</Label>
+                      <Input type="number" {...form.register("insuranceFee")} className="bg-white border-slate-200" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Shipper</Label>
+                      <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Shipper" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="DHL">DHL</SelectItem>
+                          <SelectItem value="FedEx">FedEx</SelectItem>
+                          <SelectItem value="UPS">UPS</SelectItem>
+                          <SelectItem value="Ferrari">Ferrari Express</SelectItem>
+                          <SelectItem value="Malca-Amit">Malca-Amit</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tracking #</Label>
+                      <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Notes</Label>
                   <Input {...form.register("notes")} className="bg-white border-slate-200" placeholder="Additional details..." />
                 </div>
-                <div className="flex justify-end gap-3">
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                   <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900">Cancel</Button>
                   <Button type="submit" disabled={updateMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-save-watch">
                     {updateMutation.isPending ? "Saving..." : "Save Changes"}
@@ -371,12 +501,20 @@ export default function InventoryDetail() {
                 <div className="text-slate-900 font-mono">{item.referenceNumber}</div>
               </div>
               <div className="space-y-1">
-                <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Serial</span>
+                <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Serial #</span>
                 <div className="text-slate-900 font-mono">{item.serialNumber || "N/A"}</div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Internal Serial</span>
+                <div className="text-slate-900 font-mono">{(item as any).internalSerial || "N/A"}</div>
               </div>
               <div className="space-y-1">
                 <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Year</span>
                 <div className="text-slate-900">{item.year || "Unknown"}</div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Condition</span>
+                <div className="text-slate-900">{item.condition}</div>
               </div>
               <div className="space-y-1">
                 <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Includes</span>
@@ -401,44 +539,109 @@ export default function InventoryDetail() {
 
           <Card className="bg-white border-slate-200">
             <CardHeader>
+              <CardTitle className="text-slate-900 text-lg">Purchase Information</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-y-4 gap-x-4 text-sm">
+              <div className="text-slate-500">Purchased From</div>
+              <div className="text-slate-900 font-medium">{(item as any).purchasedFrom || "N/A"}</div>
+              <div className="text-slate-500">Paid With</div>
+              <div className="text-slate-900 font-medium">{(item as any).paidWith || "N/A"}</div>
+              <div className="text-slate-500">COGS</div>
+              <div className="text-slate-900 font-medium">{formatCurrency(item.purchasePrice)}</div>
+              <div className="text-slate-500">Import Fee</div>
+              <div className="text-slate-900 font-medium">{formatCurrency((item as any).importFee || 0)}</div>
+              <div className="text-slate-500">Watch Register</div>
+              <div className="text-slate-900 font-mono">{(item as any).watchRegister || "N/A"}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-slate-200">
+            <CardHeader>
               <CardTitle className="text-slate-900 text-lg">Financials</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Cost</span>
-                  <div className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(item.purchasePrice)}</div>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Sold Price</span>
-                  <div className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(item.targetSellPrice || 0)}</div>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Expenses</span>
-                  <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(item.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0)}</div>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Net Profit</span>
-                  <div className="text-xl font-bold text-slate-900 mt-1">
-                    {formatCurrency((item.targetSellPrice || 0) - item.purchasePrice - (item.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0))}
-                  </div>
-                </div>
-              </div>
+              {(() => {
+                const cogs = item.purchasePrice || 0;
+                const importFee = (item as any).importFee || 0;
+                const serviceFee = (item as any).servicePolishFee || 0;
+                const salePrice = (item as any).salePrice || 0;
+                const platformFees = (item as any).platformFees || 0;
+                const shippingFee = (item as any).shippingFee || 0;
+                const insuranceFee = (item as any).insuranceFee || 0;
+                const totalFees = platformFees + shippingFee + insuranceFee;
+                const totalCosts = cogs + importFee + serviceFee + totalFees;
+                const netProfit = salePrice - totalCosts;
+                const marginPercent = salePrice > 0 ? ((netProfit / salePrice) * 100).toFixed(1) : 0;
+                
+                return (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">COGS</span>
+                        <div className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(cogs)}</div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Sale Price</span>
+                        <div className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(salePrice)}</div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Total Fees</span>
+                        <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalFees)}</div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Net Profit</span>
+                        <div className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {formatCurrency(netProfit)} ({marginPercent}%)
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Cost Breakdown</h4>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="text-slate-500">COGS</div>
+                          <div className="text-slate-900 font-medium text-right">{formatCurrency(cogs)}</div>
+                          <div className="text-slate-500">Import Fee</div>
+                          <div className="text-slate-900 font-medium text-right">{formatCurrency(importFee)}</div>
+                          <div className="text-slate-500">Service/Polish</div>
+                          <div className="text-slate-900 font-medium text-right">{formatCurrency(serviceFee)}</div>
+                          <div className="text-slate-500 font-semibold border-t border-slate-200 pt-2">Total Costs</div>
+                          <div className="text-slate-900 font-bold text-right border-t border-slate-200 pt-2">{formatCurrency(cogs + importFee + serviceFee)}</div>
+                        </div>
+                      </div>
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Fee Breakdown</h4>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="text-slate-500">Platform Fees</div>
+                          <div className="text-slate-900 font-medium text-right">{formatCurrency(platformFees)}</div>
+                          <div className="text-slate-500">Shipping Fee</div>
+                          <div className="text-slate-900 font-medium text-right">{formatCurrency(shippingFee)}</div>
+                          <div className="text-slate-500">Insurance Fee</div>
+                          <div className="text-slate-900 font-medium text-right">{formatCurrency(insuranceFee)}</div>
+                          <div className="text-slate-500 font-semibold border-t border-slate-200 pt-2">Total Fees</div>
+                          <div className="text-slate-900 font-bold text-right border-t border-slate-200 pt-2">{formatCurrency(totalFees)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+              
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Sale Details</h4>
+                  <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Sale & Shipping</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="text-slate-500">Platform</div>
-                    <div className="text-slate-900 font-medium">{item.soldPlatform || "Not sold"}</div>
-                    <div className="text-slate-500">Shipping Partner</div>
+                    <div className="text-slate-500">Sold To</div>
+                    <div className="text-slate-900 font-medium">{(item as any).soldTo || item.soldPlatform || "Not sold"}</div>
+                    <div className="text-slate-500">Shipper</div>
                     <div className="text-slate-900 font-medium">{item.shippingPartner || "N/A"}</div>
-                    <div className="text-slate-500">Tracking Number</div>
+                    <div className="text-slate-500">Tracking #</div>
                     <div className="text-slate-900 font-mono">{item.trackingNumber || "N/A"}</div>
                   </div>
                 </div>
                 {item.expenses && item.expenses.length > 0 && (
                   <div className="space-y-4">
-                    <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Expense Breakdown</h4>
+                    <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Additional Expenses</h4>
                     <div className="space-y-2">
                       {item.expenses.map((expense) => (
                         <div key={expense.id} className="flex justify-between text-sm">
