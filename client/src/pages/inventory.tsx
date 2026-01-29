@@ -226,7 +226,7 @@ export default function Inventory() {
                   <Input type="number" {...form.register("year")} className="bg-white border-slate-200" placeholder="2023" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Source (Client/Dealer)</Label>
+                  <Label>Source</Label>
                   <Select onValueChange={(val) => form.setValue("clientId", parseInt(val))}>
                     <SelectTrigger className="bg-white border-slate-200">
                       <SelectValue placeholder="Select Source" />
@@ -302,7 +302,6 @@ export default function Inventory() {
           </DialogContent>
         </Dialog>
       </div>
-
       {/* Metric Cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card className="bg-white border-slate-200">
@@ -333,7 +332,6 @@ export default function Inventory() {
           </CardContent>
         </Card>
       </div>
-
       {/* Search and Filters */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
