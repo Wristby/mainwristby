@@ -144,13 +144,14 @@ export class DatabaseStorage implements IStorage {
       const sold = item.salePrice || 0;
       const bought = item.purchasePrice || 0;
       const importFee = item.importFee || 0;
-      const serviceFee = item.servicePolishFee || 0;
+      const serviceFee = (item as any).serviceFee || 0;
+      const polishFee = (item as any).polishFee || 0;
       const watchRegisterFee = item.watchRegister ? 600 : 0;
       const platformFees = item.platformFees || 0;
       const shippingFee = item.shippingFee || 0;
       const insuranceFee = item.insuranceFee || 0;
 
-      const totalCosts = bought + importFee + serviceFee + watchRegisterFee + platformFees + shippingFee + insuranceFee;
+      const totalCosts = bought + importFee + serviceFee + polishFee + watchRegisterFee + platformFees + shippingFee + insuranceFee;
       return sum + (sold - totalCosts);
     }, 0);
 

@@ -68,7 +68,8 @@ const createFormSchema = z.object({
   importFee: z.coerce.number().optional().default(0),
   watchRegister: z.boolean().default(false),
   
-  servicePolishFee: z.coerce.number().optional().default(0),
+  serviceFee: z.coerce.number().optional().default(0),
+  polishFee: z.coerce.number().optional().default(0),
   
   salePrice: z.coerce.number().optional().default(0),
   soldTo: z.string().optional().nullable(),
@@ -130,7 +131,8 @@ export default function Inventory() {
       purchasePrice: 0,
       importFee: 0,
       watchRegister: false,
-      servicePolishFee: 0,
+      serviceFee: 0,
+      polishFee: 0,
       salePrice: 0,
       soldTo: "",
       platformFees: 0,
@@ -403,10 +405,14 @@ export default function Inventory() {
 
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Costs & Fees (€)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Service/Polish Fee</Label>
-                    <Input type="number" {...form.register("servicePolishFee")} className="bg-white border-slate-200" />
+                    <Label>Service Fee</Label>
+                    <Input type="number" {...form.register("serviceFee")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Polish Fee</Label>
+                    <Input type="number" {...form.register("polishFee")} className="bg-white border-slate-200" />
                   </div>
                 </div>
               </div>
