@@ -87,7 +87,6 @@ export default function Dashboard() {
         <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
         <p className="text-slate-500 mt-1">{formattedDate}</p>
       </div>
-
       {/* KPI Cards Row */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Capital Deployed - Green */}
@@ -112,7 +111,7 @@ export default function Dashboard() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">Projected Net Profit</p>
+                <p className="text-sm font-medium text-slate-500">Net Profit</p>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                   {formatCurrency(projectedProfit)}
                 </p>
@@ -158,7 +157,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
-
       {/* Main Content Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Aging Inventory - Left Side (2 cols) */}
@@ -254,7 +252,6 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
-
       {/* Recent Additions */}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-slate-900">Recent Additions</h2>
