@@ -31,7 +31,7 @@ export default function Dashboard() {
   const today = new Date();
   const formattedDate = format(today, "EEEE, MMMM d, yyyy");
 
-  // Calculate aging inventory (held > 30 days, only active items)
+  // Calculate aging inventory (held > 45 days, only active items)
   const activeInventory = inventory?.filter(
     (item) => item.status !== "sold"
   ) || [];
@@ -41,7 +41,7 @@ export default function Dashboard() {
       ...item,
       daysHeld: differenceInDays(today, item.purchaseDate ? new Date(item.purchaseDate) : today),
     }))
-    .filter((item) => item.daysHeld > 30)
+    .filter((item) => item.daysHeld > 45)
     .sort((a, b) => b.daysHeld - a.daysHeld);
 
   // Inventory status counts
@@ -172,7 +172,7 @@ export default function Dashboard() {
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
                 <div>
                   <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
-                  <p className="text-sm text-slate-500">Watches held for more than 30 days</p>
+                  <p className="text-sm text-slate-500">Watches held for more than 45 days</p>
                 </div>
               </div>
               <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
