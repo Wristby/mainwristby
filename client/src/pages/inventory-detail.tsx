@@ -113,7 +113,7 @@ export default function InventoryDetail() {
       paidWith: "",
       purchasePrice: 0,
       importFee: 0,
-      watchRegister: "",
+      watchRegister: false,
       servicePolishFee: 0,
       salePrice: 0,
       soldTo: "",

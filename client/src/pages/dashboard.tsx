@@ -54,7 +54,11 @@ export default function Dashboard() {
 
   // Recent additions (last 5 items by purchase date)
   const recentAdditions = [...(inventory || [])]
-    .sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())
+    .sort((a, b) => {
+      const dateA = a.purchaseDate ? new Date(a.purchaseDate).getTime() : 0;
+      const dateB = b.purchaseDate ? new Date(b.purchaseDate).getTime() : 0;
+      return dateB - dateA;
+    })
     .slice(0, 5);
 
   // Calculate projected profit and ROI

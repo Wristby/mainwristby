@@ -64,7 +64,7 @@ export default function Analytics() {
     ...item,
     profit: (item.soldPrice || 0) - item.purchasePrice,
     roi: item.purchasePrice > 0 ? (((item.soldPrice || 0) - item.purchasePrice) / item.purchasePrice) * 100 : 0,
-    daysOnMarket: item.soldDate && item.purchaseDate
+    daysOnMarket: (item.soldDate && item.purchaseDate)
       ? differenceInDays(new Date(item.soldDate), new Date(item.purchaseDate))
       : 0,
   }));
@@ -90,7 +90,7 @@ export default function Analytics() {
     ...item,
     holdDays: differenceInDays(
       item.soldDate ? new Date(item.soldDate) : today,
-      new Date(item.purchaseDate)
+      item.purchaseDate ? new Date(item.purchaseDate) : today
     ),
   }));
   const avgHoldTime = allWatchesWithHoldTime.length > 0

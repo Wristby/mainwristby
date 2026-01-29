@@ -60,7 +60,7 @@ export class DatabaseStorage implements IStorage {
     let items: InventoryItem[];
     
     if (status) {
-      items = await db.select().from(inventory).where(eq(inventory.status, status)).orderBy(desc(inventory.purchaseDate));
+      items = await db.select().from(inventory).where(eq(inventory.status, status as any)).orderBy(desc(inventory.purchaseDate));
     } else {
       items = await db.select().from(inventory).orderBy(desc(inventory.purchaseDate));
     }
