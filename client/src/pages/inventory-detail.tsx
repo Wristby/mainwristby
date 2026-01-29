@@ -46,6 +46,9 @@ const editFormSchema = z.object({
   year: z.coerce.number().optional().nullable(),
   purchasePrice: z.coerce.number().min(1, "Purchase price is required"),
   targetSellPrice: z.coerce.number().optional().default(0),
+  purchaseDate: z.string().optional().nullable(),
+  dateListed: z.string().optional().nullable(),
+  dateSold: z.string().optional().nullable(),
   status: z.enum(["in_stock", "sold", "incoming", "servicing"]),
   condition: z.enum(["New", "Mint", "Used", "Damaged"]).optional(),
   box: z.boolean().default(false),
@@ -96,6 +99,9 @@ export default function InventoryDetail() {
         year: item.year || undefined,
         purchasePrice: item.purchasePrice,
         targetSellPrice: item.targetSellPrice || 0,
+        purchaseDate: item.purchaseDate ? new Date(item.purchaseDate).toISOString().split('T')[0] : "",
+        dateListed: item.dateListed ? new Date(item.dateListed).toISOString().split('T')[0] : "",
+        dateSold: item.soldDate ? new Date(item.soldDate).toISOString().split('T')[0] : "",
         status: item.status as "in_stock" | "sold" | "incoming" | "servicing",
         condition: (item.condition as "New" | "Mint" | "Used" | "Damaged") || "Used",
         box: item.box || false,
@@ -127,8 +133,14 @@ export default function InventoryDetail() {
   };
 
   const onSubmitEdit = (data: EditFormValues) => {
+    const submissionData = {
+      ...data,
+      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
+      dateListed: data.dateListed ? new Date(data.dateListed) : null,
+      soldDate: data.dateSold ? new Date(data.dateSold) : (data.status === 'sold' ? new Date() : null),
+    };
     updateMutation.mutate(
-      { id, ...data },
+      { id, ...submissionData as any },
       {
         onSuccess: () => {
           setIsEditOpen(false);
@@ -212,6 +224,18 @@ export default function InventoryDetail() {
                   <div className="space-y-2">
                     <Label>Year</Label>
                     <Input type="number" {...form.register("year")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Received</Label>
+                    <Input type="date" {...form.register("purchaseDate")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Listed</Label>
+                    <Input type="date" {...form.register("dateListed")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Sold</Label>
+                    <Input type="date" {...form.register("dateSold")} className="bg-white border-slate-200" />
                   </div>
                   <div className="space-y-2">
                     <Label>Status</Label>
@@ -396,9 +420,21 @@ export default function InventoryDetail() {
                 <span className="text-xs text-slate-500 uppercase">DATE RECEIVED</span>
                 <div className="text-sm text-slate-700 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-slate-400" />
-                  {new Date(item.purchaseDate).toLocaleDateString()}
+                  {item.purchaseDate ? new Date(item.purchaseDate).toLocaleDateString() : "Pending"}
                 </div>
               </div>
+              {item.dateListed && (
+                <>
+                  <Separator className="bg-slate-200" />
+                  <div className="space-y-2">
+                    <span className="text-xs text-slate-500 uppercase">DATE LISTED</span>
+                    <div className="text-sm text-slate-700 flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      {new Date(item.dateListed).toLocaleDateString()}
+                    </div>
+                  </div>
+                </>
+              )}
               {item.soldDate && (
                 <>
                   <Separator className="bg-slate-200" />

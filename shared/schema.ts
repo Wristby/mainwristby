@@ -37,8 +37,10 @@ export const inventory = pgTable("inventory", {
   soldPrice: integer("sold_price"),
   
   // Dates
-  purchaseDate: timestamp("purchase_date").defaultNow().notNull(),
+  purchaseDate: timestamp("purchase_date"),
+  dateListed: timestamp("date_listed"),
   soldDate: timestamp("sold_date"),
+  dateSold: timestamp("date_sold"), // Redundant but keeping for clarity if needed, though soldDate exists
   
   // Details
   condition: text("condition", { enum: ["New", "Mint", "Used", "Damaged"] }).notNull(),

@@ -45,7 +45,9 @@ const createFormSchema = z.object({
   serialNumber: z.string().min(1, "Serial number is required"),
   clientId: z.coerce.number().min(1, "Source is required"),
   purchasePrice: z.coerce.number().min(1, "Purchase price is required"),
-  purchaseDate: z.string().optional().default(() => new Date().toISOString()),
+  purchaseDate: z.string().optional().nullable(),
+  dateListed: z.string().optional().nullable(),
+  dateSold: z.string().optional().nullable(),
   year: z.coerce.number().optional().nullable(),
   targetSellPrice: z.coerce.number().optional().default(0),
   status: z.enum(["in_stock", "sold", "incoming", "servicing"]).default("in_stock"),
@@ -53,6 +55,14 @@ const createFormSchema = z.object({
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
   notes: z.string().optional().nullable(),
+}).refine((data) => {
+  if (data.status !== "incoming" && !data.purchaseDate) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Date Received is required unless status is Incoming",
+  path: ["purchaseDate"],
 });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
@@ -99,9 +109,11 @@ export default function Inventory() {
   const onSubmit = (data: CreateFormValues) => {
     const submissionData = {
       ...data,
-      purchaseDate: new Date(data.purchaseDate)
+      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
+      dateListed: data.dateListed ? new Date(data.dateListed) : null,
+      soldDate: data.dateSold ? new Date(data.dateSold) : (data.status === 'sold' ? new Date() : null),
     };
-    createMutation.mutate(submissionData, {
+    createMutation.mutate(submissionData as any, {
       onSuccess: () => {
         setIsCreateOpen(false);
         form.reset();
@@ -260,6 +272,23 @@ export default function Inventory() {
                   <Input 
                     type="date" 
                     {...form.register("purchaseDate")} 
+                    className="bg-white border-slate-200" 
+                  />
+                  {form.formState.errors.purchaseDate && <p className="text-red-500 text-xs">{form.formState.errors.purchaseDate.message}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Date Listed</Label>
+                  <Input 
+                    type="date" 
+                    {...form.register("dateListed")} 
+                    className="bg-white border-slate-200" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date Sold</Label>
+                  <Input 
+                    type="date" 
+                    {...form.register("dateSold")} 
                     className="bg-white border-slate-200" 
                   />
                 </div>
