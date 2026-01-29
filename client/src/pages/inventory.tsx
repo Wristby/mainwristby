@@ -51,7 +51,7 @@ const createFormSchema = z.object({
   clientId: z.coerce.number().optional().nullable(),
   purchasePrice: z.coerce.number().min(1, "COGS is required"),
   importFee: z.coerce.number().optional().default(0),
-  watchRegister: z.string().optional().nullable(),
+  watchRegister: z.boolean().default(false),
   
   servicePolishFee: z.coerce.number().optional().default(0),
   
@@ -344,9 +344,13 @@ export default function Inventory() {
                     <Label>Import Fee (cents)</Label>
                     <Input type="number" {...form.register("importFee")} className="bg-white border-slate-200" />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Watch Register</Label>
-                    <Input {...form.register("watchRegister")} className="bg-white border-slate-200" />
+                  <div className="flex items-center space-x-2 pt-6">
+                    <Checkbox 
+                      id="watchRegister" 
+                      checked={form.watch("watchRegister")} 
+                      onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} 
+                    />
+                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register Check (€6)</Label>
                   </div>
                 </div>
               </div>

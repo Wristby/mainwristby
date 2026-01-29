@@ -37,7 +37,7 @@ export const inventory = pgTable("inventory", {
   paidWith: text("paid_with"),
   purchasePrice: integer("purchase_price").notNull(),
   importFee: integer("import_fee").default(0),
-  watchRegister: text("watch_register"),
+  watchRegister: boolean("watch_register").default(false),
   
   // Service & Preparation Costs (stored in cents)
   servicePolishFee: integer("service_polish_fee").default(0),

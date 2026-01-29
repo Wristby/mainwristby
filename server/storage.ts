@@ -132,14 +132,26 @@ export class DatabaseStorage implements IStorage {
     const allInventory = await db.select().from(inventory);
     
     const activeInventory = allInventory.filter(i => i.status === 'in_stock' || i.status === 'servicing' || i.status === 'incoming');
-    const soldInventory = allInventory.filter(i => i.status === 'sold');
+    const soldInventory = allInventory.filter(i => i.status === 'sold' || i.dateSold !== null);
     
-    const totalInventoryValue = activeInventory.reduce((sum, item) => sum + (item.purchasePrice || 0), 0);
+    const totalInventoryValue = activeInventory.reduce((sum, item) => {
+      const basePrice = item.purchasePrice || 0;
+      const watchRegisterFee = item.watchRegister ? 600 : 0;
+      return sum + basePrice + watchRegisterFee;
+    }, 0);
     
     const totalProfit = soldInventory.reduce((sum, item) => {
-      const sold = item.soldPrice || 0;
+      const sold = item.salePrice || 0;
       const bought = item.purchasePrice || 0;
-      return sum + (sold - bought);
+      const importFee = item.importFee || 0;
+      const serviceFee = item.servicePolishFee || 0;
+      const watchRegisterFee = item.watchRegister ? 600 : 0;
+      const platformFees = item.platformFees || 0;
+      const shippingFee = item.shippingFee || 0;
+      const insuranceFee = item.insuranceFee || 0;
+
+      const totalCosts = bought + importFee + serviceFee + watchRegisterFee + platformFees + shippingFee + insuranceFee;
+      return sum + (sold - totalCosts);
     }, 0);
 
     // Turn rate calculation (simplified: avg days held for sold items)
@@ -147,8 +159,11 @@ export class DatabaseStorage implements IStorage {
     let soldCount = 0;
     
     soldInventory.forEach(item => {
-      if (item.soldDate && item.purchaseDate) {
-        const diffTime = Math.abs(item.soldDate.getTime() - item.purchaseDate.getTime());
+      const purchaseDate = item.purchaseDate;
+      const soldDate = item.dateSold || item.soldDate;
+
+      if (soldDate && purchaseDate) {
+        const diffTime = Math.abs(soldDate.getTime() - purchaseDate.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
         totalDays += diffDays;
         soldCount++;

@@ -51,7 +51,7 @@ const editFormSchema = z.object({
   paidWith: z.string().optional().nullable(),
   purchasePrice: z.coerce.number().min(1, "COGS is required"),
   importFee: z.coerce.number().optional().default(0),
-  watchRegister: z.string().optional().nullable(),
+  watchRegister: z.boolean().default(false),
   
   servicePolishFee: z.coerce.number().optional().default(0),
   
@@ -135,7 +135,7 @@ export default function InventoryDetail() {
         paidWith: (item as any).paidWith || "",
         purchasePrice: item.purchasePrice,
         importFee: (item as any).importFee || 0,
-        watchRegister: (item as any).watchRegister || "",
+        watchRegister: !!(item as any).watchRegister,
         servicePolishFee: (item as any).servicePolishFee || 0,
         salePrice: (item as any).salePrice || 0,
         soldTo: (item as any).soldTo || "",
@@ -348,9 +348,13 @@ export default function InventoryDetail() {
                       <Label>Import Fee (cents)</Label>
                       <Input type="number" {...form.register("importFee")} className="bg-white border-slate-200" />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Watch Register</Label>
-                      <Input {...form.register("watchRegister")} className="bg-white border-slate-200" />
+                    <div className="flex items-center space-x-2 pt-6">
+                      <Checkbox 
+                        id="edit-watchRegister" 
+                        checked={form.watch("watchRegister")} 
+                        onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} 
+                      />
+                      <Label htmlFor="edit-watchRegister" className="cursor-pointer">Watch Register Check (€6)</Label>
                     </div>
                   </div>
                 </div>
@@ -467,22 +471,10 @@ export default function InventoryDetail() {
               </form>
             </DialogContent>
           </Dialog>
-          {item.status !== "sold" && (
-            <Button 
-              variant="outline" 
-              className="border-emerald-200 text-emerald-600 hover:bg-emerald-50"
-              onClick={handleMarkSold}
-              disabled={updateMutation.isPending}
-              data-testid="button-mark-sold"
-            >
-              <Check className="w-4 h-4 mr-2" />
-              Mark Sold
-            </Button>
-          )}
-          <Button variant="destructive" size="icon" onClick={handleDelete} className="bg-red-100 hover:bg-red-200 text-red-600" data-testid="button-delete-watch">
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
+                <Button variant="destructive" size="icon" onClick={handleDelete} className="bg-red-100 hover:bg-red-200 text-red-600" data-testid="button-delete-watch">
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -554,9 +546,9 @@ export default function InventoryDetail() {
               <div className="text-slate-500">COGS</div>
               <div className="text-slate-900 font-medium">{formatCurrency(item.purchasePrice)}</div>
               <div className="text-slate-500">Import Fee</div>
-              <div className="text-slate-900 font-medium">{formatCurrency((item as any).importFee || 0)}</div>
-              <div className="text-slate-500">Watch Register</div>
-              <div className="text-slate-900 font-mono">{(item as any).watchRegister || "N/A"}</div>
+              <div className="text-slate-900 font-medium">{formatCurrency((item as any).importFee || 0) || "€0.00"}</div>
+              <div className="text-slate-500">Watch Register Check</div>
+              <div className="text-slate-900 font-medium">{item.watchRegister ? "Yes (€6.00)" : "No"}</div>
             </CardContent>
           </Card>
 
@@ -569,12 +561,13 @@ export default function InventoryDetail() {
                 const cogs = item.purchasePrice || 0;
                 const importFee = (item as any).importFee || 0;
                 const serviceFee = (item as any).servicePolishFee || 0;
+                const watchRegisterFee = (item as any).watchRegister ? 600 : 0;
                 const salePrice = (item as any).salePrice || item.soldPrice || item.targetSellPrice || 0;
                 const platformFees = (item as any).platformFees || 0;
                 const shippingFee = (item as any).shippingFee || 0;
                 const insuranceFee = (item as any).insuranceFee || 0;
                 const totalFees = platformFees + shippingFee + insuranceFee;
-                const totalCosts = cogs + importFee + serviceFee + totalFees;
+                const totalCosts = cogs + importFee + serviceFee + totalFees + watchRegisterFee;
                 const netProfit = salePrice - totalCosts;
                 const marginPercent = salePrice > 0 ? ((netProfit / salePrice) * 100).toFixed(1) : 0;
                 
