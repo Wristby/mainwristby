@@ -131,7 +131,7 @@ export default function Inventory() {
       referenceNumber: "",
       serialNumber: "",
       internalSerial: "",
-      year: new Date().getFullYear(),
+      year: null,
       purchasedFrom: "",
       paidWith: "",
       clientId: undefined,
@@ -359,7 +359,14 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>Year</Label>
-                    <Input type="number" {...form.register("year")} className="bg-white border-slate-200" placeholder="2023" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("year")} 
+                      className="bg-white border-slate-200" 
+                      placeholder="2023" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Condition</Label>
