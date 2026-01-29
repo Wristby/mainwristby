@@ -97,7 +97,11 @@ export default function Inventory() {
   });
 
   const onSubmit = (data: CreateFormValues) => {
-    createMutation.mutate(data, {
+    const submissionData = {
+      ...data,
+      purchaseDate: new Date(data.purchaseDate)
+    };
+    createMutation.mutate(submissionData, {
       onSuccess: () => {
         setIsCreateOpen(false);
         form.reset();
