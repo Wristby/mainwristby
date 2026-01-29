@@ -34,7 +34,8 @@ const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(val / 100);
 };
 

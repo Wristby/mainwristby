@@ -23,7 +23,8 @@ export default function Dashboard() {
     return new Intl.NumberFormat("de-DE", {
       style: "currency",
       currency: "EUR",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(val / 100);
   };
 
@@ -38,7 +39,7 @@ export default function Dashboard() {
   const agingInventory = activeInventory
     .map((item) => ({
       ...item,
-      daysHeld: differenceInDays(today, new Date(item.purchaseDate)),
+      daysHeld: differenceInDays(today, item.purchaseDate ? new Date(item.purchaseDate) : today),
     }))
     .filter((item) => item.daysHeld > 30)
     .sort((a, b) => b.daysHeld - a.daysHeld);

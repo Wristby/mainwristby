@@ -83,7 +83,8 @@ const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(val / 100);
 };
 
@@ -197,9 +198,9 @@ export default function Inventory() {
 
   // Calculate hold time for each item
   const getHoldTime = (item: any) => {
-    const purchaseDate = new Date(item.purchaseDate);
-    const endDate = item.soldDate ? new Date(item.soldDate) : new Date();
-    return differenceInDays(endDate, purchaseDate);
+    const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
+    const endDate = item.status === "sold" && item.soldDate ? new Date(item.soldDate) : new Date();
+    return Math.max(0, differenceInDays(endDate, purchaseDate));
   };
 
   const getStatusLabel = (status: string) => {
