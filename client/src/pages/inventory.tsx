@@ -343,11 +343,11 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>Model *</Label>
-                    <Input {...form.register("model")} className="bg-white border-slate-200" placeholder="Submariner" data-testid="input-model" />
+                    <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="input-model" />
                   </div>
                   <div className="space-y-2">
                     <Label>Reference *</Label>
-                    <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" placeholder="124060" data-testid="input-reference" />
+                    <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="input-reference" />
                   </div>
                   <div className="space-y-2">
                     <Label>Serial #</Label>
@@ -355,7 +355,7 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>Movement Serial Number</Label>
-                    <Input {...form.register("internalSerial")} className="bg-white border-slate-200" placeholder="Movement serial" />
+                    <Input {...form.register("internalSerial")} className="bg-white border-slate-200" />
                   </div>
                   <div className="space-y-2">
                     <Label>Year</Label>
@@ -365,7 +365,6 @@ export default function Inventory() {
                       pattern="[0-9]*"
                       {...form.register("year")} 
                       className="bg-white border-slate-200" 
-                      placeholder="2023" 
                     />
                   </div>
                   <div className="space-y-2">
