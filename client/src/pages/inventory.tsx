@@ -42,27 +42,38 @@ const createFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
   referenceNumber: z.string().min(1, "Reference number is required"),
-  serialNumber: z.string().min(1, "Serial number is required"),
-  clientId: z.coerce.number().min(1, "Source is required"),
-  purchasePrice: z.coerce.number().min(1, "Purchase price is required"),
+  serialNumber: z.string().optional().nullable(),
+  internalSerial: z.string().optional().nullable(),
+  year: z.coerce.number().optional().nullable(),
+  
+  purchasedFrom: z.string().optional().nullable(),
+  paidWith: z.string().optional().nullable(),
+  clientId: z.coerce.number().optional().nullable(),
+  purchasePrice: z.coerce.number().min(1, "COGS is required"),
+  importFee: z.coerce.number().optional().default(0),
+  watchRegister: z.string().optional().nullable(),
+  
+  servicePolishFee: z.coerce.number().optional().default(0),
+  
+  salePrice: z.coerce.number().optional().default(0),
+  soldTo: z.string().optional().nullable(),
+  platformFees: z.coerce.number().optional().default(0),
+  shippingFee: z.coerce.number().optional().default(0),
+  insuranceFee: z.coerce.number().optional().default(0),
+  
   purchaseDate: z.string().optional().nullable(),
   dateListed: z.string().optional().nullable(),
   dateSold: z.string().optional().nullable(),
-  year: z.coerce.number().optional().nullable(),
+  
   targetSellPrice: z.coerce.number().optional().default(0),
-  status: z.enum(["in_stock", "sold", "incoming", "servicing"]).default("in_stock"),
+  status: z.enum(["in_stock", "sold", "incoming", "servicing"]).default("incoming"),
   condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
   notes: z.string().optional().nullable(),
-}).refine((data) => {
-  if (data.status !== "incoming" && !data.purchaseDate) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Date Received is required unless status is Incoming",
-  path: ["purchaseDate"],
+  
+  shippingPartner: z.string().optional().nullable(),
+  trackingNumber: z.string().optional().nullable(),
 });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
@@ -94,17 +105,31 @@ export default function Inventory() {
       model: "",
       referenceNumber: "",
       serialNumber: "",
+      internalSerial: "",
+      year: undefined,
+      purchasedFrom: "",
+      paidWith: "",
       clientId: undefined,
-      status: "in_stock",
-      condition: "Used",
       purchasePrice: 0,
+      importFee: 0,
+      watchRegister: "",
+      servicePolishFee: 0,
+      salePrice: 0,
+      soldTo: "",
+      platformFees: 0,
+      shippingFee: 0,
+      insuranceFee: 0,
       targetSellPrice: 0,
       purchaseDate: null,
       dateListed: null,
       dateSold: null,
+      status: "incoming",
+      condition: "Used",
       box: false,
       papers: false,
       notes: "",
+      shippingPartner: "",
+      trackingNumber: "",
     },
   });
 
@@ -212,118 +237,217 @@ export default function Inventory() {
               Add Watch
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl bg-white border-slate-200 text-slate-900">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
             <DialogHeader>
               <DialogTitle>Add New Watch</DialogTitle>
             </DialogHeader>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Brand</Label>
-                  <Input {...form.register("brand")} className="bg-white border-slate-200" placeholder="Rolex" data-testid="input-brand" />
-                  {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Model</Label>
-                  <Input {...form.register("model")} className="bg-white border-slate-200" placeholder="Submariner" data-testid="input-model" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Reference Number</Label>
-                  <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" placeholder="124060" data-testid="input-reference" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Serial Number</Label>
-                  <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" placeholder="Serial Number" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Year</Label>
-                  <Input type="number" {...form.register("year")} className="bg-white border-slate-200" placeholder="2023" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Source</Label>
-                  <Select onValueChange={(val) => form.setValue("clientId", parseInt(val))}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Source" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {clients?.map((c) => (
-                        <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select 
-                    value={form.watch("status")} 
-                    onValueChange={(val) => form.setValue("status", val as any)}
-                  >
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Status" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="in_stock">Listed</SelectItem>
-                      <SelectItem value="incoming">Incoming</SelectItem>
-                      <SelectItem value="servicing">In Service</SelectItem>
-                      <SelectItem value="sold">Sold</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Date Received</Label>
-                  <Input 
-                    type="date" 
-                    {...form.register("purchaseDate")} 
-                    className="bg-white border-slate-200" 
-                  />
-                  {form.formState.errors.purchaseDate && <p className="text-red-500 text-xs">{form.formState.errors.purchaseDate.message}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Date Listed</Label>
-                  <Input 
-                    type="date" 
-                    {...form.register("dateListed")} 
-                    className="bg-white border-slate-200" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date Sold</Label>
-                  <Input 
-                    type="date" 
-                    {...form.register("dateSold")} 
-                    className="bg-white border-slate-200" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Purchase Price</Label>
-                  <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="input-price" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Sold For</Label>
-                  <Input type="number" {...form.register("targetSellPrice")} className="bg-white border-slate-200" />
-                </div>
-                <div className="flex items-center space-x-2 pt-8">
-                  <Checkbox 
-                    id="box" 
-                    checked={form.watch("box")} 
-                    onCheckedChange={(checked) => form.setValue("box", !!checked)}
-                  />
-                  <Label htmlFor="box" className="cursor-pointer">Includes Box</Label>
-                </div>
-                <div className="flex items-center space-x-2 pt-8">
-                  <Checkbox 
-                    id="papers" 
-                    checked={form.watch("papers")} 
-                    onCheckedChange={(checked) => form.setValue("papers", !!checked)}
-                  />
-                  <Label htmlFor="papers" className="cursor-pointer">Includes Papers</Label>
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Brand *</Label>
+                    <Input {...form.register("brand")} className="bg-white border-slate-200" placeholder="Rolex" data-testid="input-brand" />
+                    {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Model *</Label>
+                    <Input {...form.register("model")} className="bg-white border-slate-200" placeholder="Submariner" data-testid="input-model" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Reference *</Label>
+                    <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" placeholder="124060" data-testid="input-reference" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Serial #</Label>
+                    <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Internal Serial</Label>
+                    <Input {...form.register("internalSerial")} className="bg-white border-slate-200" placeholder="Your internal ref" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Year</Label>
+                    <Input type="number" {...form.register("year")} className="bg-white border-slate-200" placeholder="2023" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Condition</Label>
+                    <Select value={form.watch("condition")} onValueChange={(val) => form.setValue("condition", val as any)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Condition" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="New">New</SelectItem>
+                        <SelectItem value="Mint">Mint</SelectItem>
+                        <SelectItem value="Used">Used</SelectItem>
+                        <SelectItem value="Damaged">Damaged</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center space-x-4 pt-6">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="box" checked={form.watch("box")} onCheckedChange={(checked) => form.setValue("box", !!checked)} />
+                      <Label htmlFor="box" className="cursor-pointer">Box</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="papers" checked={form.watch("papers")} onCheckedChange={(checked) => form.setValue("papers", !!checked)} />
+                      <Label htmlFor="papers" className="cursor-pointer">Papers</Label>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Purchased From</Label>
+                    <Input {...form.register("purchasedFrom")} className="bg-white border-slate-200" placeholder="Chrono24, eBay, Dealer..." />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Paid With</Label>
+                    <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Payment Method" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="Euro">Euro</SelectItem>
+                        <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="Card">Card</SelectItem>
+                        <SelectItem value="Crypto">Crypto</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Source (Client/Dealer)</Label>
+                    <Select onValueChange={(val) => form.setValue("clientId", parseInt(val))}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Source" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        {clients?.map((c) => (
+                          <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>COGS (cents) *</Label>
+                    <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="input-price" />
+                    {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">{form.formState.errors.purchasePrice.message}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Import Fee (cents)</Label>
+                    <Input type="number" {...form.register("importFee")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Watch Register</Label>
+                    <Input {...form.register("watchRegister")} className="bg-white border-slate-200" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Dates</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Status" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="incoming">Incoming</SelectItem>
+                        <SelectItem value="in_stock">Listed</SelectItem>
+                        <SelectItem value="servicing">In Service</SelectItem>
+                        <SelectItem value="sold">Sold</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Received</Label>
+                    <Input type="date" {...form.register("purchaseDate")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Listed</Label>
+                    <Input type="date" {...form.register("dateListed")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Sold</Label>
+                    <Input type="date" {...form.register("dateSold")} className="bg-white border-slate-200" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Costs & Fees (cents)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Service/Polish Fee</Label>
+                    <Input type="number" {...form.register("servicePolishFee")} className="bg-white border-slate-200" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Sale Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Sold To (Platform)</Label>
+                    <Input {...form.register("soldTo")} className="bg-white border-slate-200" placeholder="Chrono24, eBay..." />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sale Price (cents)</Label>
+                    <Input type="number" {...form.register("salePrice")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Platform Fees (cents)</Label>
+                    <Input type="number" {...form.register("platformFees")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Shipping Fee (cents)</Label>
+                    <Input type="number" {...form.register("shippingFee")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Insurance Fee (cents)</Label>
+                    <Input type="number" {...form.register("insuranceFee")} className="bg-white border-slate-200" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Shipper</Label>
+                    <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Shipper" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="DHL">DHL</SelectItem>
+                        <SelectItem value="FedEx">FedEx</SelectItem>
+                        <SelectItem value="UPS">UPS</SelectItem>
+                        <SelectItem value="Ferrari">Ferrari Express</SelectItem>
+                        <SelectItem value="Malca-Amit">Malca-Amit</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tracking #</Label>
+                    <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" />
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Notes</Label>
                 <Input {...form.register("notes")} className="bg-white border-slate-200" placeholder="Additional details..." />
               </div>
-              <div className="flex justify-end gap-3">
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900">Cancel</Button>
                 <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-submit-watch">
                   {createMutation.isPending ? "Adding..." : "Add Watch"}
