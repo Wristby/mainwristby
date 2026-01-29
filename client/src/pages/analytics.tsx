@@ -182,8 +182,8 @@ export default function Analytics() {
 
   // Hold time analysis
   const quickMovers = profits.filter((p) => p.daysOnMarket < 15);
-  const averageMovers = profits.filter((p) => p.daysOnMarket >= 15 && p.daysOnMarket <= 30);
-  const slowMovers = profits.filter((p) => p.daysOnMarket > 30);
+  const averageMovers = profits.filter((p) => p.daysOnMarket >= 15 && p.daysOnMarket <= 45);
+  const slowMovers = profits.filter((p) => p.daysOnMarket > 45);
 
   return (
     <div className="space-y-8">
@@ -567,7 +567,7 @@ export default function Analytics() {
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-amber-600 mb-3">Average (15-30 days)</h3>
+              <h3 className="text-sm font-medium text-amber-600 mb-3">Average (15-45 days)</h3>
               {averageMovers.length === 0 ? (
                 <p className="text-slate-400 text-sm">None</p>
               ) : (
@@ -589,7 +589,7 @@ export default function Analytics() {
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-red-600 mb-3">Slow Movers (&gt; 30 days)</h3>
+              <h3 className="text-sm font-medium text-red-600 mb-3">Slow Movers (&gt; 45 days)</h3>
               {slowMovers.length === 0 ? (
                 <p className="text-slate-400 text-sm">None</p>
               ) : (
