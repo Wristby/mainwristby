@@ -23,8 +23,8 @@ export default function Dashboard() {
     return new Intl.NumberFormat("de-DE", {
       style: "currency",
       currency: "EUR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(val / 100);
   };
 

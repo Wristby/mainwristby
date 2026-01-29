@@ -38,6 +38,18 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { differenceInDays } from "date-fns";
 
+const WATCH_BRANDS = [
+  "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
+  "Cartier", "Chopard", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
+  "H. Moser and Cie", "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
+  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe", "Parmigiani",
+  "Roger Dubuis", "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
+  "Vacheron Constantin", "Zenith"
+];
+
+const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"];
+const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
+
 const createFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
@@ -83,8 +95,8 @@ const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(val / 100);
 };
 
@@ -250,7 +262,16 @@ export default function Inventory() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label>Brand *</Label>
-                    <Input {...form.register("brand")} className="bg-white border-slate-200" placeholder="Rolex" data-testid="input-brand" />
+                    <Select value={form.watch("brand")} onValueChange={(val) => form.setValue("brand", val)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Brand" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        {WATCH_BRANDS.map(brand => (
+                          <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
                   </div>
                   <div className="space-y-2">
@@ -266,8 +287,8 @@ export default function Inventory() {
                     <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Internal Serial</Label>
-                    <Input {...form.register("internalSerial")} className="bg-white border-slate-200" placeholder="Your internal ref" />
+                    <Label>Movement Serial Number</Label>
+                    <Input {...form.register("internalSerial")} className="bg-white border-slate-200" placeholder="Movement serial" />
                   </div>
                   <div className="space-y-2">
                     <Label>Year</Label>
@@ -336,12 +357,12 @@ export default function Inventory() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>COGS (cents) *</Label>
+                    <Label>COGS (€) *</Label>
                     <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="input-price" />
                     {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">{form.formState.errors.purchasePrice.message}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Import Fee (cents)</Label>
+                    <Label>Import Fee (€)</Label>
                     <Input type="number" {...form.register("importFee")} className="bg-white border-slate-200" />
                   </div>
                   <div className="flex items-center space-x-2 pt-6">
@@ -388,7 +409,7 @@ export default function Inventory() {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Costs & Fees (cents)</h3>
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Costs & Fees (€)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label>Service/Polish Fee</Label>
@@ -401,27 +422,32 @@ export default function Inventory() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Sale Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Sold To / Platform</Label>
-                    <Input {...form.register("soldTo")} className="bg-white border-slate-200" placeholder="Buyer or Platform name" />
+                    <Label>Sold On</Label>
+                    <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Platform" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        {SOLD_ON_OPTIONS.map(opt => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Sold Platform</Label>
-                    <Input {...form.register("soldPlatform")} className="bg-white border-slate-200" placeholder="Chrono24, eBay..." />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sale Price (cents)</Label>
+                    <Label>Sale Price (€) *</Label>
                     <Input type="number" {...form.register("salePrice")} className="bg-white border-slate-200" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Platform Fees (cents)</Label>
+                    <Label>Platform Fees (€)</Label>
                     <Input type="number" {...form.register("platformFees")} className="bg-white border-slate-200" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Shipping Fee (cents)</Label>
+                    <Label>Shipping Fee (€)</Label>
                     <Input type="number" {...form.register("shippingFee")} className="bg-white border-slate-200" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Insurance Fee (cents)</Label>
+                    <Label>Insurance Fee (€)</Label>
                     <Input type="number" {...form.register("insuranceFee")} className="bg-white border-slate-200" />
                   </div>
                 </div>
@@ -437,12 +463,9 @@ export default function Inventory() {
                         <SelectValue placeholder="Select Shipper" />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="DHL">DHL</SelectItem>
-                        <SelectItem value="FedEx">FedEx</SelectItem>
-                        <SelectItem value="UPS">UPS</SelectItem>
-                        <SelectItem value="Ferrari">Ferrari Express</SelectItem>
-                        <SelectItem value="Malca-Amit">Malca-Amit</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                        {SHIPPING_PARTNERS.map(shipper => (
+                          <SelectItem key={shipper} value={shipper}>{shipper}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

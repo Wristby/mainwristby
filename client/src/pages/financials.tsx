@@ -321,8 +321,8 @@ export default function Financials() {
                   <Input {...form.register("description")} className="bg-white border-slate-200" placeholder="Monthly subscription..." data-testid="input-description" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Amount (Cents)</Label>
-                  <Input type="number" {...form.register("amount")} className="bg-white border-slate-200" placeholder="1000" data-testid="input-amount" />
+                  <Label>Amount (€)</Label>
+                  <Input type="number" {...form.register("amount")} className="bg-white border-slate-200" placeholder="10" data-testid="input-amount" />
                 </div>
                 <div className="space-y-2">
                   <Label>Category</Label>

@@ -30,6 +30,7 @@ export default function Analytics() {
       style: "currency",
       currency: "EUR",
       maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
     }).format(val / 100);
   };
 
