@@ -29,10 +29,27 @@ export const inventory = pgTable("inventory", {
   model: text("model").notNull(),
   referenceNumber: text("reference_number").notNull(),
   serialNumber: text("serial_number"),
+  internalSerial: text("internal_serial"),
   year: integer("year"),
   
-  // Financials (stored in cents)
+  // Purchase Details
+  purchasedFrom: text("purchased_from"),
+  paidWith: text("paid_with"),
   purchasePrice: integer("purchase_price").notNull(),
+  importFee: integer("import_fee").default(0),
+  watchRegister: text("watch_register"),
+  
+  // Service & Preparation Costs (stored in cents)
+  servicePolishFee: integer("service_polish_fee").default(0),
+  
+  // Sale Details (stored in cents)
+  salePrice: integer("sale_price").default(0),
+  soldTo: text("sold_to"),
+  platformFees: integer("platform_fees").default(0),
+  shippingFee: integer("shipping_fee").default(0),
+  insuranceFee: integer("insurance_fee").default(0),
+  
+  // Legacy fields (keeping for compatibility)
   targetSellPrice: integer("target_sell_price").notNull(),
   soldPrice: integer("sold_price"),
   
@@ -40,7 +57,7 @@ export const inventory = pgTable("inventory", {
   purchaseDate: timestamp("purchase_date"),
   dateListed: timestamp("date_listed"),
   soldDate: timestamp("sold_date"),
-  dateSold: timestamp("date_sold"), // Redundant but keeping for clarity if needed, though soldDate exists
+  dateSold: timestamp("date_sold"),
   
   // Details
   condition: text("condition", { enum: ["New", "Mint", "Used", "Damaged"] }).notNull(),
@@ -56,8 +73,8 @@ export const inventory = pgTable("inventory", {
   soldPlatform: text("sold_platform"),
   
   // Relations
-  clientId: integer("client_id").references(() => clients.id), // Seller (source)
-  buyerId: integer("buyer_id").references(() => clients.id),   // Buyer (destination)
+  clientId: integer("client_id").references(() => clients.id),
+  buyerId: integer("buyer_id").references(() => clients.id),
 });
 
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true });
