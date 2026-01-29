@@ -608,32 +608,46 @@ export default function InventoryDetail() {
                 const netProfit = salePrice - totalCosts;
                 const marginPercent = salePrice > 0 ? ((netProfit / salePrice) * 100).toFixed(1) : 0;
                 
+                const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
+                const soldDate = item.soldDate ? new Date(item.soldDate) : new Date();
+                const holdDays = Math.max(0, Math.floor((soldDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24)));
+                
                 return (
                   <>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">COGS</span>
-                        <div className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(cogs)}</div>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Sale Price</span>
-                        <div className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(salePrice)}</div>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Net Profit</span>
-                        <div className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {formatCurrency(netProfit)}
+                    <div className="grid grid-cols-1 gap-4 mb-6">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">COGS</span>
+                          <div className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(cogs)}</div>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Sale Price</span>
+                          <div className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(salePrice)}</div>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Net Profit</span>
+                          <div className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {formatCurrency(netProfit)}
+                          </div>
                         </div>
                       </div>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Margin</span>
-                        <div className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {marginPercent}%
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Margin</span>
+                          <div className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {marginPercent}%
+                          </div>
                         </div>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Total Fees</span>
-                        <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalFees)}</div>
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Hold Time</span>
+                          <div className="text-xl font-bold text-slate-900 mt-1">
+                            {holdDays} days
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                          <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Total Fees</span>
+                          <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalFees)}</div>
+                        </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
