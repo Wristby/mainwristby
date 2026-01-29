@@ -496,7 +496,21 @@ export default function Inventory() {
                           </div>
                   <div className="space-y-2">
                     <Label>Date Sold</Label>
-                    <Input type="date" {...form.register("dateSold")} className="bg-white border-slate-200" />
+                    <Input 
+                      type="date" 
+                      {...form.register("dateSold")} 
+                      className="bg-white border-slate-200"
+                      onChange={(e) => {
+                        form.setValue("dateSold", e.target.value);
+                        if (e.target.value) {
+                          form.setValue("status", "sold");
+                          // Override Date Listed (dateListed)
+                          form.setValue("dateListed", e.target.value);
+                          // Also override Date Received if not already overridden by Listed
+                          form.setValue("purchaseDate", e.target.value);
+                        }
+                      }}
+                    />
                   </div>
                 </div>
               </div>
