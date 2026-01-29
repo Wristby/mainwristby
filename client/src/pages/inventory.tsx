@@ -158,6 +158,7 @@ export default function Inventory() {
       ...data,
       purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
+      dateSold: data.dateSold ? new Date(data.dateSold) : (data.status === 'sold' ? new Date() : null),
       soldDate: data.dateSold ? new Date(data.dateSold) : (data.status === 'sold' ? new Date() : null),
     };
     createMutation.mutate(submissionData as any, {
