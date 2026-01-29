@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -95,6 +95,9 @@ const createFormSchema = z.object({
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
 
+type SortField = 'id' | 'brand' | 'model' | 'purchasePrice' | 'holdTime' | 'status';
+type SortOrder = 'asc' | 'desc';
+
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
@@ -110,6 +113,9 @@ export default function Inventory() {
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
   const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
+  const [sortField, setSortField] = useState<SortField>('id');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  
   const { data: inventory, isLoading } = useInventory();
   const { data: clients } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -202,11 +208,32 @@ export default function Inventory() {
     return { total, active, atService, capitalDeployed };
   }, [inventory]);
 
-  // Filter inventory
+  // Calculate hold time for each item
+  const getHoldTime = (item: any) => {
+    const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
+    const endDate = item.status === "sold" && item.soldDate ? new Date(item.soldDate) : new Date();
+    return Math.max(0, differenceInDays(endDate, purchaseDate));
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc'); // Default to desc for new field
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="ml-2 h-4 w-4 text-slate-400" />;
+    return sortOrder === 'asc' ? <ArrowUp className="ml-2 h-4 w-4 text-emerald-600" /> : <ArrowDown className="ml-2 h-4 w-4 text-emerald-600" />;
+  };
+
+  // Filter and Sort inventory
   const filteredInventory = useMemo(() => {
     if (!inventory) return [];
     
-    return inventory.filter((item) => {
+    let result = inventory.filter((item) => {
       const term = search.toLowerCase();
       const matchesSearch = 
         item.brand.toLowerCase().includes(term) ||
@@ -221,14 +248,35 @@ export default function Inventory() {
       
       return matchesSearch && matchesStatus && matchesBrand && matchesBox && matchesPapers;
     });
-  }, [inventory, search, statusFilter, brandFilter]);
 
-  // Calculate hold time for each item
-  const getHoldTime = (item: any) => {
-    const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
-    const endDate = item.status === "sold" && item.soldDate ? new Date(item.soldDate) : new Date();
-    return Math.max(0, differenceInDays(endDate, purchaseDate));
-  };
+    // Apply sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'id':
+          comparison = a.id - b.id;
+          break;
+        case 'brand':
+          comparison = a.brand.localeCompare(b.brand);
+          break;
+        case 'model':
+          comparison = a.model.localeCompare(b.model);
+          break;
+        case 'purchasePrice':
+          comparison = a.purchasePrice - b.purchasePrice;
+          break;
+        case 'holdTime':
+          comparison = getHoldTime(a) - getHoldTime(b);
+          break;
+        case 'status':
+          comparison = a.status.localeCompare(b.status);
+          break;
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [inventory, search, statusFilter, brandFilter, hasBoxFilter, hasPapersFilter, sortField, sortOrder]);
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -500,197 +548,141 @@ export default function Inventory() {
           </DialogContent>
         </Dialog>
       </div>
-      {/* Metric Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <p className="text-sm font-medium text-slate-500">Total Watches</p>
-            <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">{metrics.total}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <p className="text-sm font-medium text-slate-500">Active Inventory</p>
-            <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">{metrics.active}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <p className="text-sm font-medium text-slate-500">At Service</p>
-            <p className="text-3xl font-bold text-blue-600 mt-1 tabular-nums">{metrics.atService}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <p className="text-sm font-medium text-slate-500">Capital Deployed</p>
-            <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums">{formatCurrency(metrics.capitalDeployed)}</p>
-          </CardContent>
-        </Card>
-      </div>
-      {/* Search and Filters */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input 
-              placeholder="Search by brand, model, reference, or serial..." 
-              className="pl-10 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:ring-emerald-500/50"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              data-testid="input-search"
-            />
-          </div>
+
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+          <Input 
+            placeholder="Search brand, model, reference..." 
+            className="pl-10 bg-white border-slate-200 text-slate-900"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-2">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px] bg-white border-slate-200 text-slate-900">
+              <Filter className="w-3 h-3 mr-2 text-slate-400" />
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-slate-200 text-slate-900">
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="in_stock">Listed</SelectItem>
+              <SelectItem value="servicing">In Service</SelectItem>
+              <SelectItem value="incoming">Incoming</SelectItem>
+              <SelectItem value="sold">Sold</SelectItem>
+            </SelectContent>
+          </Select>
           
-          <div className="flex gap-3 items-center">
-            <Filter className="w-4 h-4 text-slate-400" />
-            
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] bg-white border-slate-200" data-testid="select-status">
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="in_stock">Listed</SelectItem>
-                <SelectItem value="servicing">In Service</SelectItem>
-                <SelectItem value="incoming">Incoming</SelectItem>
-                <SelectItem value="sold">Sold</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={brandFilter} onValueChange={setBrandFilter}>
-              <SelectTrigger className="w-[140px] bg-white border-slate-200" data-testid="select-brand">
-                <SelectValue placeholder="All Brands" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                <SelectItem value="all">All Brands</SelectItem>
-                {brands.map(brand => (
-                  <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="flex items-center gap-2 border-l pl-4 border-slate-200">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="filter-box" 
-                  checked={hasBoxFilter === true} 
-                  onCheckedChange={(checked) => setHasBoxFilter(checked === true ? true : null)}
-                />
-                <Label htmlFor="filter-box" className="text-sm text-slate-600 cursor-pointer">Box</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="filter-papers" 
-                  checked={hasPapersFilter === true} 
-                  onCheckedChange={(checked) => setHasPapersFilter(checked === true ? true : null)}
-                />
-                <Label htmlFor="filter-papers" className="text-sm text-slate-600 cursor-pointer">Papers</Label>
-              </div>
-            </div>
-            
-            <span className="text-sm text-slate-500 ml-2">{filteredInventory.length} watches</span>
-          </div>
-        </div>
-
-        {/* Inventory Table */}
-        <div className="rounded-lg border border-slate-200 overflow-hidden bg-white">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow className="border-slate-200 hover:bg-slate-50">
-                <TableHead className="text-slate-500">Watch</TableHead>
-                <TableHead className="text-slate-500">Reference</TableHead>
-                <TableHead className="text-slate-500">Cost</TableHead>
-                <TableHead className="text-slate-500">Status</TableHead>
-                <TableHead className="text-slate-500 text-right">Hold Time</TableHead>
-                <TableHead className="text-slate-500 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-slate-400">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                  </TableCell>
-                </TableRow>
-              ) : filteredInventory.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-slate-400">
-                    No items found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredInventory.map((item) => {
-                  const holdTime = getHoldTime(item);
-                  const isAging = holdTime > 30 && item.status !== 'sold';
-                  
-                  return (
-                    <TableRow 
-                      key={item.id} 
-                      className="border-slate-100 hover:bg-slate-50 cursor-pointer group transition-colors"
-                      data-testid={`inventory-row-${item.id}`}
-                    >
-                      <TableCell>
-                        <Link href={`/inventory/${item.id}`}>
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-                              <Watch className="h-5 w-5 text-slate-400" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-slate-900 group-hover:text-emerald-600">{item.brand}</p>
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm text-slate-500">{item.model}</p>
-                                {item.box && <Box className="w-3 h-3 text-emerald-600" />}
-                                {item.papers && <FileText className="w-3 h-3 text-emerald-600" />}
-                              </div>
-                            </div>
-                          </div>
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-mono text-sm text-slate-900">{item.referenceNumber}</p>
-                          {item.serialNumber && (
-                            <p className="font-mono text-xs text-slate-400">{item.serialNumber}</p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-slate-900 font-medium tabular-nums">
-                        {formatCurrency(item.purchasePrice)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant="outline" 
-                          className={getStatusStyles(item.status)}
-                        >
-                          {getStatusLabel(item.status)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {isAging && <AlertTriangle className="w-4 h-4 text-amber-500" />}
-                          <span className={`tabular-nums ${isAging ? 'text-amber-600 font-medium' : 'text-slate-500'}`}>
-                            {holdTime} days
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/inventory/${item.id}`}>
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-emerald-600">
-                            <Pencil className="h-4 h-4" />
-                          </Button>
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+          <Select value={brandFilter} onValueChange={setBrandFilter}>
+            <SelectTrigger className="w-[150px] bg-white border-slate-200 text-slate-900">
+              <Watch className="w-3 h-3 mr-2 text-slate-400" />
+              <SelectValue placeholder="Brand" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-slate-200 text-slate-900">
+              <SelectItem value="all">All Brands</SelectItem>
+              {brands.map(brand => (
+                <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
+
+      <Card className="bg-white border-slate-200 overflow-hidden shadow-sm">
+        <Table>
+          <TableHeader className="bg-slate-50/50">
+            <TableRow className="hover:bg-transparent">
+              <TableHead onClick={() => handleSort('brand')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
+                <div className="flex items-center">
+                  Brand <SortIcon field="brand" />
+                </div>
+              </TableHead>
+              <TableHead onClick={() => handleSort('model')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
+                <div className="flex items-center">
+                  Model <SortIcon field="model" />
+                </div>
+              </TableHead>
+              <TableHead className="font-semibold text-slate-900 h-12">Ref.</TableHead>
+              <TableHead onClick={() => handleSort('purchasePrice')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
+                <div className="flex items-center">
+                  Cost <SortIcon field="purchasePrice" />
+                </div>
+              </TableHead>
+              <TableHead onClick={() => handleSort('holdTime')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
+                <div className="flex items-center">
+                  Hold Time <SortIcon field="holdTime" />
+                </div>
+              </TableHead>
+              <TableHead onClick={() => handleSort('status')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
+                <div className="flex items-center">
+                  Status <SortIcon field="status" />
+                </div>
+              </TableHead>
+              <TableHead className="w-[80px] h-12"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-48 text-center text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-500" />
+                  Loading inventory...
+                </TableCell>
+              </TableRow>
+            ) : filteredInventory.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-48 text-center text-slate-500 font-medium">
+                  No watches found matching your search.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredInventory.map((item) => (
+                <TableRow key={item.id} className="group hover:bg-slate-50/50 transition-colors cursor-pointer border-slate-100">
+                  <TableCell className="font-medium text-slate-900 py-4">
+                    <Link href={`/inventory/${item.id}`} className="block w-full h-full">
+                      {item.brand}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-slate-600 py-4">
+                    <Link href={`/inventory/${item.id}`} className="block w-full h-full">
+                      {item.model}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="py-4">
+                    <Link href={`/inventory/${item.id}`} className="block w-full h-full">
+                      <Badge variant="outline" className="font-mono text-slate-500 border-slate-200 font-normal">
+                        {item.referenceNumber}
+                      </Badge>
+                    </Link>
+                  </TableCell>
+                  <TableCell className="font-semibold text-slate-900 py-4">
+                    {formatCurrency(item.purchasePrice)}
+                  </TableCell>
+                  <TableCell className="py-4">
+                    <div className="flex items-center text-slate-500">
+                      <Calendar className="w-3.5 h-3.5 mr-2 text-slate-400" />
+                      {getHoldTime(item)} days
+                    </div>
+                  </TableCell>
+                  <TableCell className="py-4">
+                    <Badge className={`border px-2.5 py-0.5 rounded-full font-medium ${getStatusStyles(item.status)}`}>
+                      {getStatusLabel(item.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="py-4">
+                    <Link href={`/inventory/${item.id}`}>
+                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-slate-400 hover:text-slate-900 hover:bg-slate-100">
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }
