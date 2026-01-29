@@ -156,6 +156,15 @@ export default function Inventory() {
   const onSubmit = (data: CreateFormValues) => {
     const submissionData = {
       ...data,
+      purchasePrice: Math.round(data.purchasePrice * 100),
+      importFee: Math.round(data.importFee * 100),
+      serviceFee: Math.round(data.serviceFee * 100),
+      polishFee: Math.round(data.polishFee * 100),
+      salePrice: Math.round(data.salePrice * 100),
+      platformFees: Math.round(data.platformFees * 100),
+      shippingFee: Math.round(data.shippingFee * 100),
+      insuranceFee: Math.round(data.insuranceFee * 100),
+      targetSellPrice: Math.round(data.targetSellPrice * 100),
       purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
       dateSold: data.dateSold ? new Date(data.dateSold) : (data.status === 'sold' ? new Date() : null),
