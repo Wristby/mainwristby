@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -549,6 +549,11 @@ export default function Inventory() {
               </div>
 
               <div className="space-y-2">
+                <Label>Google Drive Link</Label>
+                <Input {...form.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
+              </div>
+
+              <div className="space-y-2">
                 <Label>Notes</Label>
                 <Input {...form.register("notes")} className="bg-white border-slate-200" placeholder="Additional details..." />
               </div>
@@ -681,9 +686,23 @@ export default function Inventory() {
                     </div>
                   </TableCell>
                   <TableCell className="py-4">
-                    <Badge className={`border px-2.5 py-0.5 rounded-full font-medium ${getStatusStyles(item.status)}`}>
-                      {getStatusLabel(item.status)}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={`border px-2.5 py-0.5 rounded-full font-medium ${getStatusStyles(item.status)}`}>
+                        {getStatusLabel(item.status)}
+                      </Badge>
+                      {item.gdriveLink && (
+                        <a 
+                          href={item.gdriveLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:text-blue-700"
+                          onClick={(e) => e.stopPropagation()}
+                          data-testid={`link-gdrive-${item.id}`}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="py-4">
                     <Link href={`/inventory/${item.id}`}>

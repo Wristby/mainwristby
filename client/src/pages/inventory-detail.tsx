@@ -21,7 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, ArrowLeft, Trash2, Pencil, Calendar, Box, FileText, Check } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Calendar, Box, FileText, Check, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Separator } from "@/components/ui/separator";
@@ -519,6 +519,11 @@ export default function InventoryDetail() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label>Google Drive Link</Label>
+                  <Input {...form.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
+                </div>
+
+                <div className="space-y-2">
                   <Label>Notes</Label>
                   <Input {...form.register("notes")} className="bg-white border-slate-200" placeholder="Additional details..." />
                 </div>
@@ -743,6 +748,21 @@ export default function InventoryDetail() {
                   </div>
                 )}
               </div>
+              {item.gdriveLink && (
+                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <span className="text-xs text-blue-500 uppercase tracking-wider font-semibold">Google Drive</span>
+                  <a 
+                    href={item.gdriveLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-blue-600 hover:text-blue-800 mt-1"
+                    data-testid="link-gdrive-detail"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span className="underline">View Documentation</span>
+                  </a>
+                </div>
+              )}
               {item.notes && (
                 <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Notes</span>
