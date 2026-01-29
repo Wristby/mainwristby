@@ -416,7 +416,17 @@ export default function InventoryDetail() {
                     </div>
                     <div className="space-y-2">
                       <Label>Date Sold</Label>
-                      <Input type="date" {...form.register("dateSold")} className="bg-white border-slate-200" />
+                      <Input 
+                        type="date" 
+                        {...form.register("dateSold")} 
+                        className="bg-white border-slate-200"
+                        onChange={(e) => {
+                          form.setValue("dateSold", e.target.value);
+                          if (e.target.value) {
+                            form.setValue("status", "sold");
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
