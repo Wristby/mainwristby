@@ -596,14 +596,15 @@ export default function InventoryDetail() {
               {(() => {
                 const cogs = item.purchasePrice || 0;
                 const importFee = (item as any).importFee || 0;
-                const serviceFee = (item as any).servicePolishFee || 0;
+                const serviceFee = (item as any).serviceFee || 0;
+                const polishFee = (item as any).polishFee || 0;
                 const watchRegisterFee = (item as any).watchRegister ? 600 : 0;
                 const salePrice = (item as any).salePrice || item.soldPrice || item.targetSellPrice || 0;
                 const platformFees = (item as any).platformFees || 0;
                 const shippingFee = (item as any).shippingFee || 0;
                 const insuranceFee = (item as any).insuranceFee || 0;
                 const totalFees = platformFees + shippingFee + insuranceFee;
-                const totalCosts = cogs + importFee + serviceFee + totalFees + watchRegisterFee;
+                const totalCosts = cogs + importFee + serviceFee + polishFee + totalFees + watchRegisterFee;
                 const netProfit = salePrice - totalCosts;
                 const marginPercent = salePrice > 0 ? ((netProfit / salePrice) * 100).toFixed(1) : 0;
                 
@@ -637,10 +638,20 @@ export default function InventoryDetail() {
                           <div className="text-slate-900 font-medium text-right">{formatCurrency(cogs)}</div>
                           <div className="text-slate-500">Import Fee</div>
                           <div className="text-slate-900 font-medium text-right">{formatCurrency(importFee)}</div>
-                          <div className="text-slate-500">Service/Polish</div>
+                          {watchRegisterFee > 0 && (
+                            <>
+                              <div className="text-slate-500">Watch Register</div>
+                              <div className="text-slate-900 font-medium text-right">{formatCurrency(watchRegisterFee)}</div>
+                            </>
+                          )}
+                          <div className="text-slate-500">Service Fee</div>
                           <div className="text-slate-900 font-medium text-right">{formatCurrency(serviceFee)}</div>
+                          <div className="text-slate-500">Polish Fee</div>
+                          <div className="text-slate-900 font-medium text-right">{formatCurrency(polishFee)}</div>
                           <div className="text-slate-500 font-semibold border-t border-slate-200 pt-2">Total Costs</div>
-                          <div className="text-slate-900 font-bold text-right border-t border-slate-200 pt-2">{formatCurrency(cogs + importFee + serviceFee)}</div>
+                          <div className="text-slate-900 font-bold text-right border-t border-slate-200 pt-2">
+                            {formatCurrency(cogs + importFee + serviceFee + polishFee + watchRegisterFee)}
+                          </div>
                         </div>
                       </div>
                       <div className="space-y-4">
