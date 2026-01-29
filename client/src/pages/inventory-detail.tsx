@@ -610,7 +610,7 @@ export default function InventoryDetail() {
                 
                 return (
                   <>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">COGS</span>
                         <div className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(cogs)}</div>
@@ -620,14 +620,20 @@ export default function InventoryDetail() {
                         <div className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(salePrice)}</div>
                       </div>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Total Fees</span>
-                        <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalFees)}</div>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Net Profit</span>
                         <div className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {formatCurrency(netProfit)} ({marginPercent}%)
+                          {formatCurrency(netProfit)}
                         </div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Margin</span>
+                        <div className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {marginPercent}%
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Total Fees</span>
+                        <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalFees)}</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
