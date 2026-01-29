@@ -35,7 +35,7 @@ export function Sidebar() {
         </div>
         <div>
           <h1 className="font-bold text-lg tracking-tight">WRISTBY</h1>
-          <p className="text-xs text-slate-500 font-medium">Inventory Manager</p>
+          <p className="text-xs text-slate-500 font-medium">Watch Tracking</p>
         </div>
       </div>
       <nav className="flex-1 px-4 py-6 space-y-2">
