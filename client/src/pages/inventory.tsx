@@ -465,10 +465,22 @@ export default function Inventory() {
                         }}
                       />
                     </div>
-                  <div className="space-y-2">
-                    <Label>Date Listed</Label>
-                    <Input type="date" {...form.register("dateListed")} className="bg-white border-slate-200" />
-                  </div>
+                          <div className="space-y-2">
+                            <Label>Date Listed</Label>
+                            <Input 
+                              type="date" 
+                              {...form.register("dateListed")} 
+                              className="bg-white border-slate-200"
+                              onChange={(e) => {
+                                form.setValue("dateListed", e.target.value);
+                                if (e.target.value) {
+                                  form.setValue("status", "in_stock");
+                                  // Automatically override Date Received (purchaseDate)
+                                  form.setValue("purchaseDate", e.target.value);
+                                }
+                              }}
+                            />
+                          </div>
                   <div className="space-y-2">
                     <Label>Date Sold</Label>
                     <Input type="date" {...form.register("dateSold")} className="bg-white border-slate-200" />
@@ -666,7 +678,10 @@ export default function Inventory() {
                   </TableCell>
                   <TableCell className="text-slate-600 py-4">
                     <Link href={`/inventory/${item.id}`} className="block w-full h-full">
-                      {item.model}
+                      <div className="flex flex-col">
+                        <span>{item.model}</span>
+                        <span className="text-xs text-slate-400 font-normal mt-0.5">{item.serialNumber}</span>
+                      </div>
                     </Link>
                   </TableCell>
                   <TableCell className="py-4">
