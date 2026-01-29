@@ -81,7 +81,7 @@ const editFormSchema = z.object({
   purchaseDate: z.string().optional().nullable(),
   dateListed: z.string().optional().nullable(),
   dateSold: z.string().optional().nullable(),
-  status: z.enum(["in_stock", "sold", "incoming", "servicing"]),
+  status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"]),
   condition: z.enum(["New", "Mint", "Used", "Damaged"]).optional(),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
@@ -232,6 +232,7 @@ export default function InventoryDetail() {
       case 'in_stock': return 'Listed';
       case 'servicing': return 'In Service';
       case 'incoming': return 'Incoming';
+      case 'received': return 'Received';
       case 'sold': return 'Sold';
       default: return status;
     }
@@ -242,6 +243,7 @@ export default function InventoryDetail() {
       case 'in_stock': return 'bg-emerald-50 text-emerald-600 border-emerald-200';
       case 'servicing': return 'bg-blue-50 text-blue-600 border-blue-200';
       case 'incoming': return 'bg-amber-50 text-amber-600 border-amber-200';
+      case 'received': return 'bg-indigo-50 text-indigo-600 border-indigo-200';
       case 'sold': return 'bg-slate-100 text-slate-500 border-slate-200';
       default: return 'bg-slate-50 text-slate-500 border-slate-200';
     }
@@ -400,6 +402,7 @@ export default function InventoryDetail() {
                         </SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
                           <SelectItem value="incoming">Incoming</SelectItem>
+                          <SelectItem value="received">Received</SelectItem>
                           <SelectItem value="in_stock">Listed</SelectItem>
                           <SelectItem value="servicing">In Service</SelectItem>
                           <SelectItem value="sold">Sold</SelectItem>
@@ -408,7 +411,17 @@ export default function InventoryDetail() {
                     </div>
                     <div className="space-y-2">
                       <Label>Date Received</Label>
-                      <Input type="date" {...form.register("purchaseDate")} className="bg-white border-slate-200" />
+                      <Input 
+                        type="date" 
+                        {...form.register("purchaseDate")} 
+                        className="bg-white border-slate-200" 
+                        onChange={(e) => {
+                          form.setValue("purchaseDate", e.target.value);
+                          if (e.target.value) {
+                            form.setValue("status", "received");
+                          }
+                        }}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Date Listed</Label>

@@ -82,7 +82,7 @@ const createFormSchema = z.object({
   dateSold: z.string().optional().nullable(),
   
   targetSellPrice: z.coerce.number().optional().default(0),
-  status: z.enum(["in_stock", "sold", "incoming", "servicing"]).default("incoming"),
+  status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"]).default("incoming"),
   condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
@@ -283,6 +283,7 @@ export default function Inventory() {
       case 'in_stock': return 'Listed';
       case 'servicing': return 'In Service';
       case 'incoming': return 'Incoming';
+      case 'received': return 'Received';
       case 'sold': return 'Sold';
       default: return status;
     }
@@ -293,6 +294,7 @@ export default function Inventory() {
       case 'in_stock': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
       case 'servicing': return 'bg-blue-50 text-blue-600 border-blue-100';
       case 'incoming': return 'bg-amber-50 text-amber-600 border-amber-100';
+      case 'received': return 'bg-indigo-50 text-indigo-600 border-indigo-100';
       case 'sold': return 'bg-slate-100 text-slate-500 border-slate-200';
       default: return 'bg-slate-50 text-slate-500 border-slate-200';
     }
@@ -432,24 +434,35 @@ export default function Inventory() {
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Dates</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Status" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="incoming">Incoming</SelectItem>
-                        <SelectItem value="in_stock">Listed</SelectItem>
-                        <SelectItem value="servicing">In Service</SelectItem>
-                        <SelectItem value="sold">Sold</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date Received</Label>
-                    <Input type="date" {...form.register("purchaseDate")} className="bg-white border-slate-200" />
-                  </div>
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Status" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="incoming">Incoming</SelectItem>
+                          <SelectItem value="received">Received</SelectItem>
+                          <SelectItem value="in_stock">Listed</SelectItem>
+                          <SelectItem value="servicing">In Service</SelectItem>
+                          <SelectItem value="sold">Sold</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Received</Label>
+                      <Input 
+                        type="date" 
+                        {...form.register("purchaseDate")} 
+                        className="bg-white border-slate-200" 
+                        onChange={(e) => {
+                          form.setValue("purchaseDate", e.target.value);
+                          if (e.target.value) {
+                            form.setValue("status", "received");
+                          }
+                        }}
+                      />
+                    </div>
                   <div className="space-y-2">
                     <Label>Date Listed</Label>
                     <Input type="date" {...form.register("dateListed")} className="bg-white border-slate-200" />

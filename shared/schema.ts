@@ -62,7 +62,7 @@ export const inventory = pgTable("inventory", {
   
   // Details
   condition: text("condition", { enum: ["New", "Mint", "Used", "Damaged"] }).notNull(),
-  status: text("status", { enum: ["in_stock", "sold", "incoming", "servicing"] }).default("in_stock").notNull(),
+  status: text("status", { enum: ["in_stock", "sold", "incoming", "servicing", "received"] }).default("incoming").notNull(),
   box: boolean("box").default(false).notNull(),
   papers: boolean("papers").default(false).notNull(),
   images: text("images").array(),
