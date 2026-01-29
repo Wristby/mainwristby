@@ -55,6 +55,9 @@ const editFormSchema = z.object({
   papers: z.boolean().default(false),
   notes: z.string().optional().nullable(),
   clientId: z.coerce.number().optional().nullable(),
+  shippingPartner: z.string().optional().nullable(),
+  trackingNumber: z.string().optional().nullable(),
+  soldPlatform: z.string().optional().nullable(),
 });
 
 type EditFormValues = z.infer<typeof editFormSchema>;
@@ -108,6 +111,9 @@ export default function InventoryDetail() {
         papers: item.papers || false,
         notes: item.notes || "",
         clientId: item.clientId || undefined,
+        shippingPartner: item.shippingPartner || "",
+        trackingNumber: item.trackingNumber || "",
+        soldPlatform: item.soldPlatform || "",
       });
     }
   }, [item, form]);
@@ -269,8 +275,32 @@ export default function InventoryDetail() {
                     <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="edit-input-price" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Target Sell Price (Cents)</Label>
+                    <Label>Sold For</Label>
                     <Input type="number" {...form.register("targetSellPrice")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sold Platform</Label>
+                    <Input {...form.register("soldPlatform")} className="bg-white border-slate-200" placeholder="Chrono24, eBay, etc." />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Shipping Partner</Label>
+                    <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Shipping" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="DHL">DHL</SelectItem>
+                        <SelectItem value="FedEx">FedEx</SelectItem>
+                        <SelectItem value="UPS">UPS</SelectItem>
+                        <SelectItem value="Ferrari">Ferrari Express</SelectItem>
+                        <SelectItem value="Malca-Amit">Malca-Amit</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tracking Number</Label>
+                    <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" />
                   </div>
                   <div className="flex items-center space-x-2 pt-8">
                     <Checkbox 
@@ -374,26 +404,54 @@ export default function InventoryDetail() {
               <CardTitle className="text-slate-900 text-lg">Financials</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Cost Basis</span>
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Cost</span>
                   <div className="text-xl font-bold text-slate-900 mt-1">{formatCurrency(item.purchasePrice)}</div>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">List Price</span>
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Sold Price</span>
                   <div className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(item.targetSellPrice || 0)}</div>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Margin</span>
-                  <div className="text-xl font-bold text-slate-700 mt-1">
-                    {item.targetSellPrice && item.purchasePrice > 0 
-                      ? Math.round(((item.targetSellPrice - item.purchasePrice) / item.purchasePrice) * 100) 
-                      : 0}%
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Expenses</span>
+                  <div className="text-xl font-bold text-red-600 mt-1">{formatCurrency(item.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0)}</div>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Net Profit</span>
+                  <div className="text-xl font-bold text-slate-900 mt-1">
+                    {formatCurrency((item.targetSellPrice || 0) - item.purchasePrice - (item.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0))}
                   </div>
                 </div>
               </div>
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Sale Details</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="text-slate-500">Platform</div>
+                    <div className="text-slate-900 font-medium">{item.soldPlatform || "Not sold"}</div>
+                    <div className="text-slate-500">Shipping Partner</div>
+                    <div className="text-slate-900 font-medium">{item.shippingPartner || "N/A"}</div>
+                    <div className="text-slate-500">Tracking Number</div>
+                    <div className="text-slate-900 font-mono">{item.trackingNumber || "N/A"}</div>
+                  </div>
+                </div>
+                {item.expenses && item.expenses.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wider">Expense Breakdown</h4>
+                    <div className="space-y-2">
+                      {item.expenses.map((expense) => (
+                        <div key={expense.id} className="flex justify-between text-sm">
+                          <span className="text-slate-600">{expense.description}</span>
+                          <span className="text-slate-900 font-medium">{formatCurrency(expense.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               {item.notes && (
-                <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Notes</span>
                   <p className="text-slate-700 mt-1">{item.notes}</p>
                 </div>

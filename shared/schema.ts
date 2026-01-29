@@ -50,6 +50,11 @@ export const inventory = pgTable("inventory", {
   images: text("images").array(),
   notes: text("notes"),
   
+  // Shipping & Tracking
+  shippingPartner: text("shipping_partner"),
+  trackingNumber: text("tracking_number"),
+  soldPlatform: text("sold_platform"),
+  
   // Relations
   clientId: integer("client_id").references(() => clients.id), // Seller (source)
   buyerId: integer("buyer_id").references(() => clients.id),   // Buyer (destination)
