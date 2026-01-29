@@ -1,6 +1,21 @@
 import { z } from 'zod';
 import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses } from './schema';
 
+// Helper to transform date strings to Date objects or null
+const dateStringToDate = z.union([
+  z.string().transform((val) => val ? new Date(val) : null),
+  z.date(),
+  z.null(),
+]).optional().nullable();
+
+// Extended inventory schema that properly handles date strings from JSON
+const inventoryInputSchema = insertInventorySchema.extend({
+  purchaseDate: dateStringToDate,
+  dateListed: dateStringToDate,
+  soldDate: dateStringToDate,
+  dateSold: dateStringToDate,
+});
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -72,7 +87,7 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/inventory',
-      input: insertInventorySchema,
+      input: inventoryInputSchema,
       responses: {
         201: z.custom<typeof inventory.$inferSelect>(),
         400: errorSchemas.validation,
@@ -81,7 +96,7 @@ export const api = {
     update: {
       method: 'PUT' as const,
       path: '/api/inventory/:id',
-      input: insertInventorySchema.partial(),
+      input: inventoryInputSchema.partial(),
       responses: {
         200: z.custom<typeof inventory.$inferSelect>(),
         404: errorSchemas.notFound,
