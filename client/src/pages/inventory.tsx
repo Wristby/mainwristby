@@ -74,6 +74,7 @@ const createFormSchema = z.object({
   
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
+  soldPlatform: z.string().optional().nullable(),
 });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
@@ -130,6 +131,7 @@ export default function Inventory() {
       notes: "",
       shippingPartner: "",
       trackingNumber: "",
+      soldPlatform: "",
     },
   });
 
@@ -394,8 +396,12 @@ export default function Inventory() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Sale Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Sold To (Platform)</Label>
-                    <Input {...form.register("soldTo")} className="bg-white border-slate-200" placeholder="Chrono24, eBay..." />
+                    <Label>Sold To / Platform</Label>
+                    <Input {...form.register("soldTo")} className="bg-white border-slate-200" placeholder="Buyer or Platform name" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sold Platform</Label>
+                    <Input {...form.register("soldPlatform")} className="bg-white border-slate-200" placeholder="Chrono24, eBay..." />
                   </div>
                   <div className="space-y-2">
                     <Label>Sale Price (cents)</Label>

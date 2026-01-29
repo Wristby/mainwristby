@@ -400,8 +400,12 @@ export default function InventoryDetail() {
                   <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Sale Details</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>Sold To (Platform)</Label>
-                      <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
+                      <Label>Sold To / Platform</Label>
+                      <Input {...form.register("soldTo")} className="bg-white border-slate-200" placeholder="Buyer or Platform name" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sold Platform</Label>
+                      <Input {...form.register("soldPlatform")} className="bg-white border-slate-200" placeholder="Chrono24, eBay..." />
                     </div>
                     <div className="space-y-2">
                       <Label>Sale Price (cents)</Label>
@@ -564,7 +568,7 @@ export default function InventoryDetail() {
                 const cogs = item.purchasePrice || 0;
                 const importFee = (item as any).importFee || 0;
                 const serviceFee = (item as any).servicePolishFee || 0;
-                const salePrice = (item as any).salePrice || 0;
+                const salePrice = (item as any).salePrice || item.soldPrice || item.targetSellPrice || 0;
                 const platformFees = (item as any).platformFees || 0;
                 const shippingFee = (item as any).shippingFee || 0;
                 const insuranceFee = (item as any).insuranceFee || 0;
