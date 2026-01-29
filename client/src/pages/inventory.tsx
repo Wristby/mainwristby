@@ -86,6 +86,7 @@ const createFormSchema = z.object({
   condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
+  gdriveLink: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   
   shippingPartner: z.string().optional().nullable(),
@@ -152,6 +153,7 @@ export default function Inventory() {
       condition: "Used",
       box: false,
       papers: false,
+      gdriveLink: "",
       notes: "",
       shippingPartner: "",
       trackingNumber: "",

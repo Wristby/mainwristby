@@ -66,6 +66,7 @@ export const inventory = pgTable("inventory", {
   box: boolean("box").default(false).notNull(),
   papers: boolean("papers").default(false).notNull(),
   images: text("images").array(),
+  gdriveLink: text("gdrive_link"),
   notes: text("notes"),
   
   // Shipping & Tracking
