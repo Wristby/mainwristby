@@ -51,6 +51,9 @@ const formatCurrency = (val: number) => {
   }).format(val / 100);
 };
 
+const PURCHASE_FROM_OPTIONS = ["Chrono24", "Eni Dealer", "Ayhan Dealer", "IPLAYWATCH Dealer"];
+const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
+
 const editFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
@@ -330,33 +333,27 @@ export default function InventoryDetail() {
                   <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>Purchased From</Label>
-                      <Input {...form.register("purchasedFrom")} className="bg-white border-slate-200" />
+                      <Label>Purchase From</Label>
+                      <Select value={form.watch("purchasedFrom") || ""} onValueChange={(val) => form.setValue("purchasedFrom", val)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Source" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          {PURCHASE_FROM_OPTIONS.map(opt => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Paid With</Label>
                       <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
                         <SelectTrigger className="bg-white border-slate-200">
-                          <SelectValue placeholder="Payment Method" />
+                          <SelectValue placeholder="Select Payment" />
                         </SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          <SelectItem value="Cash">Cash</SelectItem>
-                          <SelectItem value="Euro">Euro</SelectItem>
-                          <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                          <SelectItem value="Card">Card</SelectItem>
-                          <SelectItem value="Crypto">Crypto</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Source (Client/Dealer)</Label>
-                      <Select value={form.watch("clientId")?.toString() || ""} onValueChange={(val) => form.setValue("clientId", parseInt(val))}>
-                        <SelectTrigger className="bg-white border-slate-200">
-                          <SelectValue placeholder="Select Source" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {clients?.map((c) => (
-                            <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
+                          {PAID_WITH_OPTIONS.map(opt => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
