@@ -45,9 +45,10 @@ const createFormSchema = z.object({
   serialNumber: z.string().min(1, "Serial number is required"),
   clientId: z.coerce.number().min(1, "Source is required"),
   purchasePrice: z.coerce.number().min(1, "Purchase price is required"),
+  purchaseDate: z.string().optional().default(() => new Date().toISOString()),
   year: z.coerce.number().optional().nullable(),
   targetSellPrice: z.coerce.number().optional().default(0),
-  status: z.enum(["in_stock", "sold", "incoming", "servicing"]).default("incoming"),
+  status: z.enum(["in_stock", "sold", "incoming", "servicing"]).default("in_stock"),
   condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
@@ -84,10 +85,11 @@ export default function Inventory() {
       referenceNumber: "",
       serialNumber: "",
       clientId: undefined,
-      status: "incoming",
+      status: "in_stock",
       condition: "Used",
       purchasePrice: 0,
       targetSellPrice: 0,
+      purchaseDate: new Date().toISOString().split('T')[0],
       box: false,
       papers: false,
       notes: "",
@@ -233,11 +235,36 @@ export default function Inventory() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Purchase Price (Cents)</Label>
+                  <Label>Status</Label>
+                  <Select 
+                    value={form.watch("status")} 
+                    onValueChange={(val) => form.setValue("status", val as any)}
+                  >
+                    <SelectTrigger className="bg-white border-slate-200">
+                      <SelectValue placeholder="Select Status" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900">
+                      <SelectItem value="in_stock">Listed</SelectItem>
+                      <SelectItem value="incoming">Incoming</SelectItem>
+                      <SelectItem value="servicing">In Service</SelectItem>
+                      <SelectItem value="sold">Sold</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date Received</Label>
+                  <Input 
+                    type="date" 
+                    {...form.register("purchaseDate")} 
+                    className="bg-white border-slate-200" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Purchase Price</Label>
                   <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="input-price" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Target Sell Price (Cents)</Label>
+                  <Label>Sold For</Label>
                   <Input type="number" {...form.register("targetSellPrice")} className="bg-white border-slate-200" />
                 </div>
                 <div className="flex items-center space-x-2 pt-8">
