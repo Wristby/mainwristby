@@ -425,7 +425,14 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>COGS (€) *</Label>
-                    <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" data-testid="input-price" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("purchasePrice")} 
+                      className="bg-white border-slate-200" 
+                      data-testid="input-price" 
+                    />
                     {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">{form.formState.errors.purchasePrice.message}</p>}
                   </div>
                   <div className="flex items-center space-x-2 pt-6">
@@ -499,11 +506,23 @@ export default function Inventory() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Service Fee</Label>
-                    <Input type="number" {...form.register("serviceFee")} className="bg-white border-slate-200" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("serviceFee")} 
+                      className="bg-white border-slate-200" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Polish Fee</Label>
-                    <Input type="number" {...form.register("polishFee")} className="bg-white border-slate-200" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("polishFee")} 
+                      className="bg-white border-slate-200" 
+                    />
                   </div>
                 </div>
               </div>
@@ -526,19 +545,43 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>Sale Price (€) *</Label>
-                    <Input type="number" {...form.register("salePrice")} className="bg-white border-slate-200" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("salePrice")} 
+                      className="bg-white border-slate-200" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Platform Fees (€)</Label>
-                    <Input type="number" {...form.register("platformFees")} className="bg-white border-slate-200" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("platformFees")} 
+                      className="bg-white border-slate-200" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Shipping Fee (€)</Label>
-                    <Input type="number" {...form.register("shippingFee")} className="bg-white border-slate-200" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("shippingFee")} 
+                      className="bg-white border-slate-200" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Insurance Fee (€)</Label>
-                    <Input type="number" {...form.register("insuranceFee")} className="bg-white border-slate-200" />
+                    <Input 
+                      type="text" 
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("insuranceFee")} 
+                      className="bg-white border-slate-200" 
+                    />
                   </div>
                 </div>
               </div>
