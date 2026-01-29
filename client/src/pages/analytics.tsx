@@ -15,15 +15,70 @@ import {
   Watch,
   Package
 } from "lucide-react";
-import { differenceInDays } from "date-fns";
-import type { InventoryItem, Expense } from "@shared/schema";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { useState, useMemo } from "react";
+import { differenceInDays, getMonth, getYear } from "date-fns";
+import type { InventoryItem } from "@shared/schema";
+
+const MONTHS = [
+  { value: "all", label: "All Months" },
+  { value: "0", label: "January" },
+  { value: "1", label: "February" },
+  { value: "2", label: "March" },
+  { value: "3", label: "April" },
+  { value: "4", label: "May" },
+  { value: "5", label: "June" },
+  { value: "6", label: "July" },
+  { value: "7", label: "August" },
+  { value: "8", label: "September" },
+  { value: "9", label: "October" },
+  { value: "10", label: "November" },
+  { value: "11", label: "December" },
+];
 
 export default function Analytics() {
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [yearFilter, setYearFilter] = useState<string>("all");
+
   const { data: inventory, isLoading: inventoryLoading } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
   });
 
   const isLoading = inventoryLoading;
+
+  const years = useMemo(() => {
+    if (!inventory) return [];
+    const dates = inventory
+      .map(i => i.soldDate ? new Date(i.soldDate) : i.purchaseDate ? new Date(i.purchaseDate) : null)
+      .filter((d): d is Date => d !== null);
+    const uniqueYears = Array.from(new Set(dates.map(d => getYear(d))));
+    return uniqueYears.sort((a, b) => b - a);
+  }, [inventory]);
+
+  const filteredInventory = useMemo(() => {
+    if (!inventory) return [];
+    return inventory.filter((item) => {
+      // For sold items, filter by sold date. For active items, filter by purchase date.
+      const date = item.status === 'sold' && item.soldDate 
+        ? new Date(item.soldDate) 
+        : item.purchaseDate 
+          ? new Date(item.purchaseDate) 
+          : null;
+      
+      if (!date) return true;
+
+      const matchesMonth = monthFilter === "all" || getMonth(date).toString() === monthFilter;
+      const matchesYear = yearFilter === "all" || getYear(date).toString() === yearFilter;
+      
+      return matchesMonth && matchesYear;
+    });
+  }, [inventory, monthFilter, yearFilter]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat("de-DE", {
@@ -48,8 +103,8 @@ export default function Analytics() {
     );
   }
 
-  const soldItems = inventory?.filter((i) => i.status === "sold") || [];
-  const activeItems = inventory?.filter((i) => i.status !== "sold") || [];
+  const soldItems = filteredInventory.filter((i) => i.status === "sold");
+  const activeItems = filteredInventory.filter((i) => i.status !== "sold");
   const today = new Date();
 
   // Overall Performance Metrics
@@ -132,7 +187,33 @@ export default function Analytics() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Analytics</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Analytics</h1>
+        <div className="flex gap-3 items-center">
+          <Select value={monthFilter} onValueChange={setMonthFilter}>
+            <SelectTrigger className="w-[130px] bg-white border-slate-200" data-testid="select-month">
+              <SelectValue placeholder="Month" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-slate-200 text-slate-900">
+              {MONTHS.map(m => (
+                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <Select value={yearFilter} onValueChange={setYearFilter}>
+            <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid="select-year">
+              <SelectValue placeholder="Year" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-slate-200 text-slate-900">
+              <SelectItem value="all">All Years</SelectItem>
+              {years.map(y => (
+                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       {/* Overall Performance */}
       <div className="space-y-4">

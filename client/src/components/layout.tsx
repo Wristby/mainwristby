@@ -34,11 +34,10 @@ export function Sidebar() {
           <Watch className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="font-bold text-lg tracking-tight">CHRONOS</h1>
+          <h1 className="font-bold text-lg tracking-tight">WRISTBY</h1>
           <p className="text-xs text-slate-500 font-medium">Inventory Manager</p>
         </div>
       </div>
-
       <nav className="flex-1 px-4 py-6 space-y-2">
         {NAV_ITEMS.map((item) => {
           const isActive = location === item.href;
@@ -59,7 +58,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-
       <div className="p-4 border-t border-slate-200">
         <Button
           variant="ghost"
