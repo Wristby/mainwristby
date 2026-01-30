@@ -61,8 +61,8 @@ const createFormSchema = z.object({
   internalSerial: z.string().optional().nullable(),
   year: z.coerce.number().optional().nullable(),
   
-  purchasedFrom: z.string().optional().nullable(),
-  paidWith: z.string().optional().nullable(),
+  purchasedFrom: z.string().min(1, "Purchased from is required"),
+  paidWith: z.string().min(1, "Paid with is required"),
   clientId: z.coerce.number().optional().nullable(),
   purchasePrice: z.coerce.number().min(1, "COGS is required"),
   importFee: z.coerce.number().optional().default(0),
@@ -82,7 +82,9 @@ const createFormSchema = z.object({
   dateSold: z.string().optional().nullable(),
   
   targetSellPrice: z.coerce.number().optional().default(0),
-  status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"]).default("incoming"),
+  status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"], {
+    required_error: "Status is required",
+  }),
   condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
@@ -366,12 +368,14 @@ export default function Inventory() {
                     {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Model</Label>
+                    <Label>Model *</Label>
                     <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="input-model" />
+                    {form.formState.errors.model && <p className="text-red-500 text-xs">{form.formState.errors.model.message}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Reference</Label>
+                    <Label>Reference *</Label>
                     <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="input-reference" />
+                    {form.formState.errors.referenceNumber && <p className="text-red-500 text-xs">{form.formState.errors.referenceNumber.message}</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>Serial #</Label>
@@ -426,7 +430,7 @@ export default function Inventory() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Purchase From</Label>
+                    <Label>Purchase From *</Label>
                     <Select value={form.watch("purchasedFrom") || ""} onValueChange={(val) => form.setValue("purchasedFrom", val)}>
                       <SelectTrigger className="bg-white border-slate-200">
                         <SelectValue placeholder="Select Source" />
@@ -437,9 +441,10 @@ export default function Inventory() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {form.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">{form.formState.errors.purchasedFrom.message}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Paid With</Label>
+                    <Label>Paid With *</Label>
                     <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
                       <SelectTrigger className="bg-white border-slate-200">
                         <SelectValue placeholder="Select Payment" />
@@ -450,6 +455,7 @@ export default function Inventory() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">{form.formState.errors.paidWith.message}</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>COGS</Label>
@@ -478,7 +484,7 @@ export default function Inventory() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Dates</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="space-y-2">
-                      <Label>Status</Label>
+                      <Label>Status *</Label>
                       <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
                         <SelectTrigger className="bg-white border-slate-200">
                           <SelectValue placeholder="Select Status" />
@@ -491,6 +497,7 @@ export default function Inventory() {
                           <SelectItem value="sold">Sold</SelectItem>
                         </SelectContent>
                       </Select>
+                      {form.formState.errors.status && <p className="text-red-500 text-xs">{form.formState.errors.status.message}</p>}
                     </div>
                     <div className="space-y-2">
                       <Label>Date Received</Label>
