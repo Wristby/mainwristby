@@ -458,7 +458,7 @@ export default function Inventory() {
                     {form.formState.errors.paidWith && <p className="text-red-500 text-xs">{form.formState.errors.paidWith.message}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>COGS</Label>
+                    <Label>COGS *</Label>
                     <Input 
                       type="text" 
                       inputMode="numeric"
