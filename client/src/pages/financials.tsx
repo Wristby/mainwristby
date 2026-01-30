@@ -212,9 +212,9 @@ export default function Financials() {
       totalRevenue: 0, 
       totalExpenses: 0, 
       totalCogs: 0,
-      grossProfit: 0, 
       netProfit: 0, 
-      avgRoi: 0 
+      avgRoi: 0,
+      soldCount: 0
     };
 
     const soldItems = inventory.filter(i => i.status === 'sold');
@@ -262,9 +262,9 @@ export default function Financials() {
       totalRevenue, 
       totalExpenses: filteredExpenseTotal, 
       totalCogs,
-      grossProfit, 
       netProfit, 
-      avgRoi 
+      avgRoi,
+      soldCount: soldItems.length
     };
   }, [inventory, expenses, filteredExpenses]);
 
@@ -407,7 +407,7 @@ export default function Financials() {
                         data-testid="button-date-picker"
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {form.watch("date") ? format(form.watch("date"), "PPP") : <span>Pick a date</span>}
+                        {form.watch("date") ? format(new Date(form.watch("date")!), "PPP") : <span>Pick a date</span>}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 bg-white border-slate-200">
@@ -491,7 +491,7 @@ export default function Financials() {
               </div>
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Income</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{soldItems.length}</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{metrics.soldCount}</p>
           </CardContent>
         </Card>
         
