@@ -194,8 +194,19 @@ export default function Inventory() {
   }, [watchedSalePrice, watchedSoldPlatform, form]);
 
   const onSubmit = (data: CreateFormValues) => {
+    // Reconcile status based on dates at submit time
+    let finalStatus = data.status;
+    if (data.dateSold) {
+      finalStatus = "sold";
+    } else if (data.dateListed && finalStatus !== "sold" && finalStatus !== "servicing") {
+      finalStatus = "in_stock";
+    } else if (data.purchaseDate && finalStatus === "incoming") {
+      finalStatus = "received";
+    }
+    
     const submissionData = {
       ...data,
+      status: finalStatus,
       purchasePrice: Math.round(data.purchasePrice * 100),
       importFee: Math.round(data.importFee * 100),
       serviceFee: Math.round(data.serviceFee * 100),
@@ -207,8 +218,8 @@ export default function Inventory() {
       targetSellPrice: Math.round(data.targetSellPrice * 100),
       purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
-      dateSold: data.dateSold ? new Date(data.dateSold) : (data.status === 'sold' ? new Date() : null),
-      soldDate: data.dateSold ? new Date(data.dateSold) : (data.status === 'sold' ? new Date() : null),
+      dateSold: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
+      soldDate: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
     };
     createMutation.mutate(submissionData as any, {
       onSuccess: () => {
@@ -532,7 +543,9 @@ export default function Inventory() {
                         className="bg-white border-slate-200" 
                         onChange={(e) => {
                           form.setValue("purchaseDate", e.target.value);
-                          if (e.target.value) {
+                          // Only set status to received if currently incoming
+                          const currentStatus = form.getValues("status");
+                          if (e.target.value && currentStatus === "incoming") {
                             form.setValue("status", "received");
                           }
                         }}
@@ -547,9 +560,16 @@ export default function Inventory() {
                               onChange={(e) => {
                                 form.setValue("dateListed", e.target.value);
                                 if (e.target.value) {
-                                  form.setValue("status", "in_stock");
-                                  // Automatically override Date Received (purchaseDate)
-                                  form.setValue("purchaseDate", e.target.value);
+                                  const currentStatus = form.getValues("status");
+                                  // Only upgrade status to in_stock if not already sold
+                                  if (currentStatus !== "sold") {
+                                    form.setValue("status", "in_stock");
+                                  }
+                                  // Only set purchaseDate if it's empty
+                                  const currentPurchaseDate = form.getValues("purchaseDate");
+                                  if (!currentPurchaseDate) {
+                                    form.setValue("purchaseDate", e.target.value);
+                                  }
                                 }
                               }}
                             />
@@ -564,10 +584,16 @@ export default function Inventory() {
                         form.setValue("dateSold", e.target.value);
                         if (e.target.value) {
                           form.setValue("status", "sold");
-                          // Override Date Listed (dateListed)
-                          form.setValue("dateListed", e.target.value);
-                          // Also override Date Received if not already overridden by Listed
-                          form.setValue("purchaseDate", e.target.value);
+                          // Only fill in dateListed if empty
+                          const currentDateListed = form.getValues("dateListed");
+                          if (!currentDateListed) {
+                            form.setValue("dateListed", e.target.value);
+                          }
+                          // Only fill in purchaseDate if empty
+                          const currentPurchaseDate = form.getValues("purchaseDate");
+                          if (!currentPurchaseDate) {
+                            form.setValue("purchaseDate", e.target.value);
+                          }
                         }
                       }}
                     />
