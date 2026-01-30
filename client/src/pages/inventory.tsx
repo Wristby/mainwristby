@@ -373,9 +373,9 @@ export default function Inventory() {
                     {form.formState.errors.model && <p className="text-red-500 text-xs">{form.formState.errors.model.message}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Reference *</Label>
+                    <Label>Reference Number *</Label>
                     <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="input-reference" />
-                    {form.formState.errors.referenceNumber && <p className="text-red-500 text-xs">{form.formState.errors.referenceNumber.message}</p>}
+                    {form.formState.errors.referenceNumber && <p className="text-red-500 text-xs">Reference Number is required</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>Serial #</Label>
