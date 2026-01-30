@@ -110,19 +110,19 @@ const formatCurrency = (val: number) => {
 
 export default function Inventory() {
   const [search, setSearch] = useState("");
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const queryParams = new URLSearchParams(location.split("?")[1]);
+    const queryParams = new URLSearchParams(window.location.search);
     const status = queryParams.get("status");
     if (status) {
       setStatusFilter(status);
-    } else {
-      setStatusFilter("all");
+      // Clear the query param from URL without reloading to prevent sticky filter
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, [location]);
   const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
