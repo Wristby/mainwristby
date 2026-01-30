@@ -67,8 +67,28 @@ export default function Dashboard() {
     0
   );
 
-  const totalCost = activeInventory.reduce((sum, item) => sum + item.purchasePrice, 0);
-  const averageROI = totalCost > 0 ? ((projectedProfit / totalCost) * 100) : 0;
+  const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
+  
+  const averageMargin = useMemo(() => {
+    if (soldInventory.length === 0) return 0;
+    
+    const margins = soldInventory.map(item => {
+      const revenue = item.salePrice;
+      const totalCost = item.purchasePrice + 
+                        (item.importFee || 0) + 
+                        (item.serviceFee || 0) + 
+                        (item.polishFee || 0) + 
+                        (item.platformFees || 0) + 
+                        (item.shippingFee || 0) + 
+                        (item.insuranceFee || 0) +
+                        (item.watchRegister ? 600 : 0);
+      
+      const profit = revenue - totalCost;
+      return revenue > 0 ? (profit / revenue) * 100 : 0;
+    });
+    
+    return margins.reduce((a, b) => a + b, 0) / margins.length;
+  }, [soldInventory]);
   const watchesAtPolisher = statusCounts.inService;
 
   if (isLoading) {
@@ -128,14 +148,14 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Average ROI */}
+        {/* Average Margin */}
         <Card className="bg-white border-slate-200">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">Average ROI</p>
+                <p className="text-sm font-medium text-slate-500">Average Margin</p>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {averageROI.toFixed(1)}%
+                  {averageMargin.toFixed(1)}%
                 </p>
               </div>
               <div className="p-2 bg-blue-50 rounded-full">
