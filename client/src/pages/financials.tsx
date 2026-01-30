@@ -250,14 +250,16 @@ export default function Financials() {
     let totalRoi = 0;
     let roiCount = 0;
     soldItems.forEach(item => {
-      if (item.purchasePrice > 0 && item.salePrice) {
+      if (item.purchasePrice > 0 && (item.salePrice || (item as any).soldPrice)) {
+        const salePrice = item.salePrice || (item as any).soldPrice || 0;
         const itemExpenses = (item.serviceFee || 0) + 
                             (item.polishFee || 0) + 
                             (item.platformFees || 0) + 
                             (item.shippingFee || 0) + 
                             (item.insuranceFee || 0) +
-                            (item.watchRegister ? 600 : 0);
-        const profit = item.salePrice - item.purchasePrice - itemExpenses;
+                            (item.watchRegister ? 600 : 0) +
+                            (item.importFee || 0);
+        const profit = salePrice - item.purchasePrice - itemExpenses;
         const roi = (profit / item.purchasePrice) * 100;
         totalRoi += roi;
         roiCount++;
