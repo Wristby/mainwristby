@@ -458,7 +458,7 @@ export default function Inventory() {
                       checked={form.watch("watchRegister")} 
                       onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} 
                     />
-                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register Check (€6)</Label>
+                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register Check</Label>
                   </div>
                 </div>
               </div>
@@ -669,7 +669,6 @@ export default function Inventory() {
           </DialogContent>
         </Dialog>
       </div>
-
       <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
@@ -709,7 +708,6 @@ export default function Inventory() {
           </Select>
         </div>
       </div>
-
       <Card className="bg-white border-slate-200 overflow-hidden shadow-sm">
         <Table>
           <TableHeader className="bg-slate-50/50">
