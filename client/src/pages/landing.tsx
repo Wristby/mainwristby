@@ -19,7 +19,7 @@ export default function Landing() {
           <div className="bg-emerald-600 p-4 rounded-2xl shadow-lg shadow-emerald-500/20">
             <Watch className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tighter text-white">CHRONOS</h1>
+          <h1 className="text-4xl font-extrabold tracking-tighter text-white">WRISTBY</h1>
           <p className="text-slate-400 font-medium">Internal Inventory Management</p>
         </div>
 
