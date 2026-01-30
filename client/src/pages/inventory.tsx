@@ -359,7 +359,7 @@ export default function Inventory() {
                     <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="input-model" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Reference *</Label>
+                    <Label>Reference</Label>
                     <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="input-reference" />
                   </div>
                   <div className="space-y-2">
