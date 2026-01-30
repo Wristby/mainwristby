@@ -132,6 +132,7 @@ export default function Inventory() {
   const { data: inventory, isLoading } = useInventory();
   const { data: clients } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [showSaleDetails, setShowSaleDetails] = useState(false);
   const { toast } = useToast();
   const createMutation = useCreateInventory();
 
@@ -554,85 +555,99 @@ export default function Inventory() {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Sale Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>Sold On</Label>
-                    <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Platform" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {SOLD_ON_OPTIONS.map(opt => (
-                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sale Price (€) *</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("salePrice")} 
-                      className="bg-white border-slate-200" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Platform Fees (€)</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("platformFees")} 
-                      className="bg-white border-slate-200" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Shipping Fee (€)</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("shippingFee")} 
-                      className="bg-white border-slate-200" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Insurance Fee (€)</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("insuranceFee")} 
-                      className="bg-white border-slate-200" 
-                    />
-                  </div>
+                <div 
+                  className="flex items-center justify-between cursor-pointer border-b border-slate-200 pb-2 hover:bg-slate-50 transition-colors px-1 rounded-sm"
+                  onClick={() => setShowSaleDetails(!showSaleDetails)}
+                >
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details & Shipping</h3>
+                  <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    {showSaleDetails ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                  </Button>
                 </div>
-              </div>
+                
+                {showSaleDetails && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                      <div className="space-y-2">
+                        <Label>Sold On</Label>
+                        <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
+                          <SelectTrigger className="bg-white border-slate-200">
+                            <SelectValue placeholder="Select Platform" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border-slate-200 text-slate-900">
+                            {SOLD_ON_OPTIONS.map(opt => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Sale Price (€) *</Label>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("salePrice")} 
+                          className="bg-white border-slate-200" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Platform Fees (€)</Label>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("platformFees")} 
+                          className="bg-white border-slate-200" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Shipping Fee (€)</Label>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("shippingFee")} 
+                          className="bg-white border-slate-200" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Insurance Fee (€)</Label>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("insuranceFee")} 
+                          className="bg-white border-slate-200" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Sold To</Label>
+                        <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
+                      </div>
+                    </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Shipper</Label>
-                    <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Shipper" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {SHIPPING_PARTNERS.map(shipper => (
-                          <SelectItem key={shipper} value={shipper}>{shipper}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tracking #</Label>
-                    <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" />
-                  </div>
-                </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div className="space-y-2">
+                        <Label>Shipper</Label>
+                        <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
+                          <SelectTrigger className="bg-white border-slate-200">
+                            <SelectValue placeholder="Select Shipper" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border-slate-200 text-slate-900">
+                            {SHIPPING_PARTNERS.map(shipper => (
+                              <SelectItem key={shipper} value={shipper}>{shipper}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Tracking #</Label>
+                        <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="space-y-2">
