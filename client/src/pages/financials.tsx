@@ -195,20 +195,38 @@ export default function Financials() {
 
     const soldItems = inventory.filter(i => i.status === 'sold');
     
-    const totalRevenue = soldItems.reduce((sum, item) => sum + (item.soldPrice || 0), 0);
+    const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
     const totalCogs = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    
+    const totalServicePolishFees = soldItems.reduce((sum, item) => 
+      sum + (item.serviceFee || 0) + (item.polishFee || 0), 0);
+    
+    const totalPlatformFees = soldItems.reduce((sum, item) => sum + (item.platformFees || 0), 0);
+    const totalShippingInsurance = soldItems.reduce((sum, item) => 
+      sum + (item.shippingFee || 0) + (item.insuranceFee || 0), 0);
+    
+    const totalWatchRegisterFees = soldItems.reduce((sum, item) => 
+      sum + (item.watchRegister ? 600 : 0), 0);
+
+    const totalSaleExpenses = totalServicePolishFees + totalPlatformFees + totalShippingInsurance + totalWatchRegisterFees;
     
     const filteredExpenseTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const allExpensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
     
-    const grossProfit = totalRevenue - totalCogs;
+    const grossProfit = totalRevenue - totalCogs - totalSaleExpenses;
     const netProfit = grossProfit - allExpensesTotal;
     
     let totalRoi = 0;
     let roiCount = 0;
     soldItems.forEach(item => {
-      if (item.purchasePrice > 0 && item.soldPrice) {
-        const profit = item.soldPrice - item.purchasePrice;
+      if (item.purchasePrice > 0 && item.salePrice) {
+        const itemExpenses = (item.serviceFee || 0) + 
+                            (item.polishFee || 0) + 
+                            (item.platformFees || 0) + 
+                            (item.shippingFee || 0) + 
+                            (item.insuranceFee || 0) +
+                            (item.watchRegister ? 600 : 0);
+        const profit = item.salePrice - item.purchasePrice - itemExpenses;
         const roi = (profit / item.purchasePrice) * 100;
         totalRoi += roi;
         roiCount++;
@@ -236,10 +254,17 @@ export default function Financials() {
       months[m] = { revenue: 0, expenses: 0, cogs: 0 };
     });
 
-    inventory.filter(i => i.status === 'sold' && i.soldDate).forEach(item => {
-      const month = monthNames[new Date(item.soldDate!).getMonth()];
-      months[month].revenue += item.soldPrice || 0;
+    inventory.filter(i => i.status === 'sold' && (i.soldDate || i.dateSold)).forEach(item => {
+      const month = monthNames[new Date((item.soldDate || item.dateSold)!).getMonth()];
+      months[month].revenue += item.salePrice || 0;
       months[month].cogs += item.purchasePrice;
+      const itemExpenses = (item.serviceFee || 0) + 
+                          (item.polishFee || 0) + 
+                          (item.platformFees || 0) + 
+                          (item.shippingFee || 0) + 
+                          (item.insuranceFee || 0) +
+                          (item.watchRegister ? 600 : 0);
+      months[month].expenses += itemExpenses;
     });
 
     expenses.forEach(expense => {
