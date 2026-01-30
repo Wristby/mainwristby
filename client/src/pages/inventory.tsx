@@ -109,13 +109,20 @@ const formatCurrency = (val: number) => {
 };
 
 export default function Inventory() {
-  const [search, setSearch] = useState("");
   const [location] = useLocation();
   const queryParams = new URLSearchParams(location.split("?")[1]);
   const initialStatus = queryParams.get("status") || "all";
   
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [brandFilter, setBrandFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("status");
+    if (status) {
+      setStatusFilter(status);
+    }
+  }, [window.location.search]);
   const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
   const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
   const [sortField, setSortField] = useState<SortField>('id');
