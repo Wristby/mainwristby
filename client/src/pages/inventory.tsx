@@ -348,14 +348,18 @@ export default function Inventory() {
             <span>•</span>
             <div className="flex items-center gap-1">
               <span className="text-emerald-600 font-medium">{formatCurrency(metrics.projectedProfit)} projected profit</span>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Based off a 12.5% margin</p>
-                </TooltipContent>
-              </Tooltip>
+              <TooltipProvider delayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Based off a 12.5% margin</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </div>
