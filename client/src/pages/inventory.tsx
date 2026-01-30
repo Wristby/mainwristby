@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -37,6 +37,12 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { differenceInDays } from "date-fns";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const WATCH_BRANDS = [
   "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
@@ -225,15 +231,16 @@ export default function Inventory() {
 
   // Calculate metrics
   const metrics = useMemo(() => {
-    if (!inventory) return { total: 0, active: 0, atService: 0, capitalDeployed: 0 };
+    if (!inventory) return { total: 0, active: 0, atService: 0, capitalDeployed: 0, projectedProfit: 0 };
     
     const total = inventory.length;
     const activeItems = inventory.filter(i => i.status !== 'sold');
     const active = activeItems.length;
     const atService = inventory.filter(i => i.status === 'servicing').length;
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const projectedProfit = Math.round(capitalDeployed * 0.125);
     
-    return { total, active, atService, capitalDeployed };
+    return { total, active, atService, capitalDeployed, projectedProfit };
   }, [inventory]);
 
   // Calculate hold time for each item
@@ -334,9 +341,25 @@ export default function Inventory() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Inventory</h2>
-          <p className="text-slate-500 mt-1">
-            {metrics.active} active watches • {formatCurrency(metrics.capitalDeployed)} deployed
-          </p>
+          <div className="flex items-center gap-2 text-slate-500 mt-1">
+            <span>{metrics.active} active watches</span>
+            <span>•</span>
+            <span>{formatCurrency(metrics.capitalDeployed)} deployed</span>
+            <span>•</span>
+            <div className="flex items-center gap-1">
+              <span className="text-emerald-600 font-medium">{formatCurrency(metrics.projectedProfit)} projected profit</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Based off a 12.5% margin</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
