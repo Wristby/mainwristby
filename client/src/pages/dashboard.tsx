@@ -225,22 +225,30 @@ export default function Dashboard() {
               <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span className="text-slate-500">Incoming</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span className="text-slate-500">In Service</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.inService}</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span className="text-slate-500">Listed</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.listed}</span>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-slate-500">Sold</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sold}</span>
-              </div>
+              <Link href="/inventory?status=incoming">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
+                  <span className="text-slate-500">Incoming</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=servicing">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
+                  <span className="text-slate-500">In Service</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.inService}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=in_stock">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
+                  <span className="text-slate-500">Listed</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.listed}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=sold">
+                <div className="flex items-center justify-between py-2 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
+                  <span className="text-slate-500">Sold</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sold}</span>
+                </div>
+              </Link>
             </CardContent>
             <div className="px-6 pb-5">
               <Link href="/inventory">

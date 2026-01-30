@@ -35,7 +35,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertInventorySchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { differenceInDays } from "date-fns";
 
 const WATCH_BRANDS = [
@@ -110,7 +110,11 @@ const formatCurrency = (val: number) => {
 
 export default function Inventory() {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [location] = useLocation();
+  const queryParams = new URLSearchParams(location.split("?")[1]);
+  const initialStatus = queryParams.get("status") || "all";
+  
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
   const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
