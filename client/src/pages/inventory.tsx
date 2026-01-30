@@ -341,7 +341,7 @@ export default function Inventory() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Brand *</Label>
+                    <Label>Brand</Label>
                     <Select value={form.watch("brand")} onValueChange={(val) => form.setValue("brand", val)}>
                       <SelectTrigger className="bg-white border-slate-200">
                         <SelectValue placeholder="Select Brand" />
