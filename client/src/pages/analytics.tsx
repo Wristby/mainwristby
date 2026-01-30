@@ -234,7 +234,6 @@ export default function Analytics() {
           </Select>
         </div>
       </div>
-
       {/* Overall Performance */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-slate-600">Overall Performance</h2>
@@ -271,7 +270,6 @@ export default function Analytics() {
           />
         </div>
       </div>
-
       {/* Per-Watch Metrics */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-slate-600">Per-Watch Metrics</h2>
@@ -383,7 +381,7 @@ export default function Analytics() {
             <CardContent className="pt-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Income</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">WATCHES SOLD</p>
                   <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                     {soldItems.length}
                   </p>
@@ -433,7 +431,6 @@ export default function Analytics() {
           </Card>
         </div>
       </div>
-
       {/* Top Performers and Underperformers */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="bg-white border-slate-200">
@@ -510,7 +507,6 @@ export default function Analytics() {
           </CardContent>
         </Card>
       </div>
-
       {/* Brand Performance */}
       <Card className="bg-white border-slate-200">
         <CardHeader className="flex flex-row items-center gap-2 pb-4">
@@ -555,7 +551,6 @@ export default function Analytics() {
           )}
         </CardContent>
       </Card>
-
       {/* Hold Time Analysis */}
       <Card className="bg-white border-slate-200">
         <CardHeader className="flex flex-row items-center gap-2 pb-4">
