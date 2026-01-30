@@ -241,11 +241,11 @@ export default function Financials() {
     const filteredExpenseTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const allExpensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
     
-    // Gross profit = Revenue - COGS - all watch-related fees (no business expenses)
-    const grossProfit = totalRevenue - totalCogs - totalWatchFees;
+    // Gross profit = Revenue - COGS
+    const grossProfit = totalRevenue - totalCogs;
     
-    // Net profit = Gross profit - general business expenses
-    const netProfit = grossProfit - allExpensesTotal;
+    // Net profit = Gross profit - all watch-related fees - general business expenses
+    const netProfit = grossProfit - totalWatchFees - allExpensesTotal;
     
     let totalRoi = 0;
     let roiCount = 0;
