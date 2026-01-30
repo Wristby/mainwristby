@@ -34,9 +34,7 @@ export default function Landing() {
             className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-600/10 transition-all active:scale-[0.98]"
             onClick={() => window.location.href = "/api/login"}
             data-testid="button-login"
-          >
-            Sign In with Replit
-          </Button>
+          >Sign In</Button>
         </div>
 
         <p className="text-xs text-slate-600">© 2026 Wristby</p>
