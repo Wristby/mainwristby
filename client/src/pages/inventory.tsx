@@ -586,7 +586,7 @@ export default function Inventory() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Sale Price (€) *</Label>
+                        <Label>Sale Price</Label>
                         <Input 
                           type="text" 
                           inputMode="numeric"
