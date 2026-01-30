@@ -118,7 +118,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-slate-500">Net Profit</p>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(projectedProfit)}
+                  {formatCurrency(stats?.totalProfit || 0)}
                 </p>
               </div>
               <div className="p-2 bg-emerald-50 rounded-full">
