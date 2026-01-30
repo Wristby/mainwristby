@@ -353,7 +353,15 @@ export default function Financials() {
                 </div>
                 <div className="space-y-2">
                   <Label>Amount</Label>
-                  <Input type="number" {...form.register("amount")} className="bg-white border-slate-200" placeholder="10" data-testid="input-amount" />
+                  <Input 
+                    type="text" 
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    {...form.register("amount")} 
+                    className="bg-white border-slate-200" 
+                    placeholder="10" 
+                    data-testid="input-amount" 
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Category</Label>
