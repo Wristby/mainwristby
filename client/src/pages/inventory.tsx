@@ -441,7 +441,7 @@ export default function Inventory() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {form.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">{form.formState.errors.purchasedFrom.message}</p>}
+                    {form.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">Purchased From is required</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>Paid With *</Label>
