@@ -142,6 +142,8 @@ export class DatabaseStorage implements IStorage {
     
     const totalProfit = soldInventory.reduce((sum, item) => {
       const sold = item.salePrice || 0;
+      if (sold === 0) return sum; // Only calculate profit for items that have a sale price
+
       const bought = item.purchasePrice || 0;
       const importFee = item.importFee || 0;
       const serviceFee = (item as any).serviceFee || 0;
