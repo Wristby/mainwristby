@@ -355,7 +355,7 @@ export default function Inventory() {
                     {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>Model *</Label>
+                    <Label>Model</Label>
                     <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="input-model" />
                   </div>
                   <div className="space-y-2">
