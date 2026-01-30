@@ -174,6 +174,17 @@ export default function Inventory() {
     },
   });
 
+  // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
+  const watchedSalePrice = form.watch("salePrice");
+  const watchedSoldPlatform = form.watch("soldPlatform");
+
+  useEffect(() => {
+    if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
+      const fee = Math.round(watchedSalePrice * 0.065);
+      form.setValue("platformFees", fee);
+    }
+  }, [watchedSalePrice, watchedSoldPlatform, form]);
+
   const onSubmit = (data: CreateFormValues) => {
     const submissionData = {
       ...data,
