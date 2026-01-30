@@ -47,6 +47,12 @@ import { insertExpenseSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { format, getMonth, getYear } from "date-fns";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const EXPENSE_CATEGORIES = [
   { value: "marketing", label: "Marketing" },
@@ -459,23 +465,37 @@ export default function Financials() {
             <span className="text-xs text-slate-400">Last 12 months</span>
           </div>
           <div className="h-32 flex items-end justify-between gap-1">
-            {monthlyData.map((data, idx) => {
-              const maxProfit = Math.max(...monthlyData.map(d => Math.abs(d.profit)), 1);
-              const height = Math.abs(data.profit) / maxProfit * 100;
-              const isNegative = data.profit < 0;
-              
-              return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full h-24 flex items-end justify-center">
-                    <div 
-                      className={`w-full max-w-6 rounded-t transition-all ${isNegative ? 'bg-red-400' : 'bg-emerald-500'}`}
-                      style={{ height: `${Math.max(height, 4)}%` }}
-                    />
+            <TooltipProvider delayDuration={0}>
+              {monthlyData.map((data, idx) => {
+                const maxProfit = Math.max(...monthlyData.map(d => Math.abs(d.profit)), 1);
+                const height = Math.abs(data.profit) / maxProfit * 100;
+                const isNegative = data.profit < 0;
+                
+                return (
+                  <div key={idx} className="flex-1 flex flex-col items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="w-full h-24 flex items-end justify-center cursor-pointer">
+                          <div 
+                            className={`w-full max-w-6 rounded-t transition-all hover:opacity-80 ${isNegative ? 'bg-red-400' : 'bg-emerald-500'}`}
+                            style={{ height: `${Math.max(height, 4)}%` }}
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <div className="text-center">
+                          <p className="font-semibold">{data.month}</p>
+                          <p className={isNegative ? 'text-red-500' : 'text-emerald-600'}>
+                            {formatCurrency(data.profit * 100)}
+                          </p>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                    <span className="text-xs text-slate-400">{data.month}</span>
                   </div>
-                  <span className="text-xs text-slate-400">{data.month}</span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </TooltipProvider>
           </div>
         </CardContent>
       </Card>
