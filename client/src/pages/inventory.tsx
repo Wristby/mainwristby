@@ -29,7 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertInventorySchema } from "@shared/schema";
@@ -109,21 +109,22 @@ const formatCurrency = (val: number) => {
 };
 
 export default function Inventory() {
+  const [search, setSearch] = useState("");
   const [location] = useLocation();
-  const queryParams = new URLSearchParams(location.split("?")[1]);
-  const initialStatus = queryParams.get("status") || "all";
   
-  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const status = params.get("status");
+    const queryParams = new URLSearchParams(location.split("?")[1]);
+    const status = queryParams.get("status");
     if (status) {
       setStatusFilter(status);
+    } else {
+      setStatusFilter("all");
     }
-  }, [window.location.search]);
-  const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
+  }, [location]);
   const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
   const [sortField, setSortField] = useState<SortField>('id');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
