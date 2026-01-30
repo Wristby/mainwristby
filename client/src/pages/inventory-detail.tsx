@@ -139,6 +139,17 @@ export default function InventoryDetail() {
     },
   });
 
+  // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
+  const watchedSalePrice = form.watch("salePrice");
+  const watchedSoldPlatform = form.watch("soldPlatform");
+
+  useEffect(() => {
+    if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
+      const fee = Math.round(watchedSalePrice * 0.065);
+      form.setValue("platformFees", fee);
+    }
+  }, [watchedSalePrice, watchedSoldPlatform, form.setValue]);
+
   // Reset form when item data loads
   useEffect(() => {
     if (item) {
@@ -177,7 +188,7 @@ export default function InventoryDetail() {
         soldPlatform: item.soldPlatform || "",
       });
     }
-  }, [item, form]);
+  }, [item, form.reset]);
 
   if (isLoading) return <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
   if (!item) return <div className="text-slate-600">Item not found</div>;
@@ -188,17 +199,6 @@ export default function InventoryDetail() {
       { onSuccess: () => toast({ title: "Updated", description: "Marked as sold" }) }
     );
   };
-
-  // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
-  const watchedSalePrice = form.watch("salePrice");
-  const watchedSoldPlatform = form.watch("soldPlatform");
-
-  useEffect(() => {
-    if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
-      const fee = Math.round(watchedSalePrice * 0.065);
-      form.setValue("platformFees", fee);
-    }
-  }, [watchedSalePrice, watchedSoldPlatform, form]);
 
   const handleDelete = () => {
     if (confirm("Are you sure? This cannot be undone.")) {
