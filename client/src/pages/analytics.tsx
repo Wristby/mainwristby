@@ -107,22 +107,38 @@ export default function Analytics() {
   const activeItems = filteredInventory.filter((i) => i.status !== "sold");
   const today = new Date();
 
+  // Helper to calculate total fees for an item
+  const getItemFees = (item: InventoryItem) => {
+    return (item.serviceFee || 0) + 
+           (item.polishFee || 0) + 
+           (item.platformFees || 0) + 
+           (item.shippingFee || 0) + 
+           (item.insuranceFee || 0) +
+           (item.watchRegister ? 600 : 0);
+  };
+
   // Overall Performance Metrics
-  const totalRevenue = soldItems.reduce((sum, item) => sum + (item.soldPrice || 0), 0);
+  const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
   const totalCOGS = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-  const totalNetIncome = totalRevenue - totalCOGS;
-  const totalFees = 0; // Would need expense tracking per item
+  const totalFees = soldItems.reduce((sum, item) => sum + getItemFees(item), 0);
+  const totalNetIncome = totalRevenue - totalCOGS - totalFees;
   const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
 
   // Per-Watch Metrics
-  const profits = soldItems.map((item) => ({
-    ...item,
-    profit: (item.soldPrice || 0) - item.purchasePrice,
-    roi: item.purchasePrice > 0 ? (((item.soldPrice || 0) - item.purchasePrice) / item.purchasePrice) * 100 : 0,
-    daysOnMarket: (item.soldDate && item.purchaseDate)
-      ? differenceInDays(new Date(item.soldDate), new Date(item.purchaseDate))
-      : 0,
-  }));
+  const profits = soldItems.map((item) => {
+    const revenue = item.salePrice || 0;
+    const fees = getItemFees(item);
+    const profit = revenue - item.purchasePrice - fees;
+    const soldDate = item.soldDate || item.dateSold;
+    return {
+      ...item,
+      profit,
+      roi: item.purchasePrice > 0 ? (profit / item.purchasePrice) * 100 : 0,
+      daysOnMarket: (soldDate && item.purchaseDate)
+        ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
+        : 0,
+    };
+  });
 
   const avgProfitPerWatch = soldItems.length > 0
     ? profits.reduce((sum, p) => sum + p.profit, 0) / soldItems.length
@@ -141,13 +157,14 @@ export default function Analytics() {
     : 0;
 
   // All watches hold time
-  const allWatchesWithHoldTime = (inventory || []).map((item) => ({
-    ...item,
-    holdDays: differenceInDays(
-      item.soldDate ? new Date(item.soldDate) : today,
-      item.purchaseDate ? new Date(item.purchaseDate) : today
-    ),
-  }));
+  const allWatchesWithHoldTime = (inventory || []).map((item) => {
+    const endDate = item.soldDate ? new Date(item.soldDate) : (item.dateSold ? new Date(item.dateSold) : today);
+    const startDate = item.purchaseDate ? new Date(item.purchaseDate) : today;
+    return {
+      ...item,
+      holdDays: Math.max(0, differenceInDays(endDate, startDate)),
+    };
+  });
   const avgHoldTime = allWatchesWithHoldTime.length > 0
     ? allWatchesWithHoldTime.reduce((sum, w) => sum + w.holdDays, 0) / allWatchesWithHoldTime.length
     : 0;
@@ -158,9 +175,12 @@ export default function Analytics() {
     if (!brandStats[item.brand]) {
       brandStats[item.brand] = { sold: 0, revenue: 0, profit: 0 };
     }
+    const revenue = item.salePrice || 0;
+    const fees = getItemFees(item);
+    const profit = revenue - item.purchasePrice - fees;
     brandStats[item.brand].sold += 1;
-    brandStats[item.brand].revenue += item.soldPrice || 0;
-    brandStats[item.brand].profit += (item.soldPrice || 0) - item.purchasePrice;
+    brandStats[item.brand].revenue += revenue;
+    brandStats[item.brand].profit += profit;
   });
 
   const brandList = Object.entries(brandStats)
