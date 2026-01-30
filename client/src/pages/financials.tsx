@@ -352,7 +352,7 @@ export default function Financials() {
                   <Input {...form.register("description")} className="bg-white border-slate-200" placeholder="Monthly subscription..." data-testid="input-description" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Amount (€)</Label>
+                  <Label>Amount</Label>
                   <Input type="number" {...form.register("amount")} className="bg-white border-slate-200" placeholder="10" data-testid="input-amount" />
                 </div>
                 <div className="space-y-2">
@@ -383,7 +383,6 @@ export default function Financials() {
           </Dialog>
         </div>
       </div>
-
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-6">
         <Card className="bg-white border-slate-200">
           <CardContent className="pt-5 pb-5">
@@ -457,7 +456,6 @@ export default function Financials() {
           </CardContent>
         </Card>
       </div>
-
       <Card className="bg-white border-slate-200">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">
@@ -499,7 +497,6 @@ export default function Financials() {
           </div>
         </CardContent>
       </Card>
-
       <Card className="bg-white border-slate-200">
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
