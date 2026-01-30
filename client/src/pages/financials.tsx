@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { 
   Search, 
   Plus, 
@@ -38,7 +39,9 @@ import {
   BarChart3,
   Pencil,
   Trash2,
-  DollarSign
+  DollarSign,
+  Calendar as CalendarIcon,
+  RefreshCw
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
@@ -53,6 +56,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
 const EXPENSE_CATEGORIES = [
   { value: "marketing", label: "Marketing" },
@@ -118,12 +128,18 @@ export default function Financials() {
       description: "",
       amount: 0,
       category: "other",
+      date: new Date(),
+      isRecurring: false,
     },
   });
 
   const onSubmit = (data: CreateFormValues) => {
+    const submitData = {
+      ...data,
+      date: data.date instanceof Date ? data.date : new Date(data.date),
+    };
     if (editingExpense) {
-      updateMutation.mutate({ id: editingExpense.id, ...data }, {
+      updateMutation.mutate({ id: editingExpense.id, ...submitData }, {
         onSuccess: () => {
           setIsCreateOpen(false);
           setEditingExpense(null);
@@ -135,7 +151,7 @@ export default function Financials() {
         },
       });
     } else {
-      createMutation.mutate(data, {
+      createMutation.mutate(submitData, {
         onSuccess: () => {
           setIsCreateOpen(false);
           form.reset();
@@ -153,6 +169,8 @@ export default function Financials() {
     form.setValue("description", expense.description);
     form.setValue("amount", expense.amount);
     form.setValue("category", expense.category);
+    form.setValue("date", new Date(expense.date));
+    form.setValue("isRecurring", expense.isRecurring);
     setIsCreateOpen(true);
   };
 
@@ -376,6 +394,43 @@ export default function Financials() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label>Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full justify-start text-left font-normal bg-white border-slate-200",
+                          !form.watch("date") && "text-muted-foreground"
+                        )}
+                        data-testid="button-date-picker"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {form.watch("date") ? format(form.watch("date"), "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                      <Calendar
+                        mode="single"
+                        selected={form.watch("date")}
+                        onSelect={(date) => form.setValue("date", date || new Date())}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/50">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">Recurring Expense</Label>
+                    <p className="text-xs text-slate-500">Enable for monthly repeating costs</p>
+                  </div>
+                  <Switch
+                    checked={form.watch("isRecurring")}
+                    onCheckedChange={(checked) => form.setValue("isRecurring", checked)}
+                    data-testid="switch-recurring"
+                  />
+                </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="outline" onClick={() => {
                     setIsCreateOpen(false);
@@ -567,7 +622,19 @@ export default function Financials() {
                     <TableRow key={expense.id} className="border-slate-100 hover:bg-slate-50" data-testid={`expense-row-${expense.id}`}>
                       <TableCell className="font-mono text-xs text-slate-400">{expense.id}</TableCell>
                       <TableCell className="text-slate-600 text-sm">
-                        {format(new Date(expense.date), "MMM d, yyyy h:mm a")}
+                        <div className="flex items-center gap-2">
+                          {expense.isRecurring && (
+                            <TooltipProvider delayDuration={0}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <RefreshCw className="w-3 h-3 text-emerald-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>Recurring Expense</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                          {format(new Date(expense.date), "MMM d, yyyy")}
+                        </div>
                       </TableCell>
                       <TableCell className="text-slate-600 text-sm">
                         {format(new Date(expense.date), "yyyy-MM")}

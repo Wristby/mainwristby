@@ -91,6 +91,7 @@ export const expenses = pgTable("expenses", {
   amount: integer("amount").notNull(), // cents
   date: timestamp("date").defaultNow().notNull(),
   category: text("category", { enum: ["marketing", "rent_storage", "subscriptions", "tools", "insurance", "service", "shipping", "parts", "other"] }).default("other").notNull(),
+  isRecurring: boolean("is_recurring").default(false).notNull(),
 });
 
 export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
