@@ -212,6 +212,7 @@ export default function Financials() {
       totalRevenue: 0, 
       totalExpenses: 0, 
       totalCogs: 0,
+      grossProfit: 0,
       netProfit: 0, 
       avgRoi: 0,
       soldCount: 0
@@ -231,14 +232,20 @@ export default function Financials() {
     
     const totalWatchRegisterFees = soldItems.reduce((sum, item) => 
       sum + (item.watchRegister ? 600 : 0), 0);
+    
+    const totalImportFees = soldItems.reduce((sum, item) => 
+      sum + (item.importFee || 0), 0);
 
-    const totalSaleExpenses = totalServicePolishFees + totalPlatformFees + totalShippingInsurance + totalWatchRegisterFees;
+    const totalWatchFees = totalServicePolishFees + totalPlatformFees + totalShippingInsurance + totalWatchRegisterFees + totalImportFees;
     
     const filteredExpenseTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const allExpensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
     
-    // Net profit after all watch-specific fees and general business expenses
-    const netProfit = totalRevenue - totalCogs - totalSaleExpenses - allExpensesTotal;
+    // Gross profit = Revenue - COGS - all watch-related fees (no business expenses)
+    const grossProfit = totalRevenue - totalCogs - totalWatchFees;
+    
+    // Net profit = Gross profit - general business expenses
+    const netProfit = grossProfit - allExpensesTotal;
     
     let totalRoi = 0;
     let roiCount = 0;
@@ -262,6 +269,7 @@ export default function Financials() {
       totalRevenue, 
       totalExpenses: filteredExpenseTotal, 
       totalCogs,
+      grossProfit,
       netProfit, 
       avgRoi,
       soldCount: soldItems.length
@@ -490,8 +498,8 @@ export default function Financials() {
                 <BarChart3 className="w-4 h-4 text-blue-600" />
               </div>
             </div>
-            <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Income</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{metrics.soldCount}</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Profit</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{formatCurrency(metrics.grossProfit)}</p>
           </CardContent>
         </Card>
         

@@ -74,7 +74,7 @@ export default function Dashboard() {
     if (soldInventory.length === 0) return 0;
     
     const margins = soldInventory.map(item => {
-      const revenue = item.salePrice;
+      const revenue = item.salePrice || 0;
       const totalCost = item.purchasePrice + 
                         (item.importFee || 0) + 
                         (item.serviceFee || 0) + 
