@@ -650,8 +650,8 @@ export default function InventoryDetail() {
                 const marginPercent = salePrice > 0 ? ((netProfit / salePrice) * 100).toFixed(1) : 0;
                 
                 const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
-                const soldDate = item.soldDate ? new Date(item.soldDate) : new Date();
-                const holdDays = Math.max(0, Math.floor((soldDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24)));
+                const endDate = item.status === "sold" && item.soldDate ? new Date(item.soldDate) : new Date();
+                const holdDays = Math.max(0, Math.floor((endDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24)));
                 
                 return (
                   <>
