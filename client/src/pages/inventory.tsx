@@ -404,6 +404,10 @@ export default function Inventory() {
                       <Label htmlFor="papers" className="cursor-pointer">Papers</Label>
                     </div>
                   </div>
+                  <div className="space-y-2">
+                    <Label>Google Drive Link</Label>
+                    <Input {...form.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
+                  </div>
                 </div>
               </div>
 
@@ -648,11 +652,6 @@ export default function Inventory() {
                     </div>
                   </>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Google Drive Link</Label>
-                <Input {...form.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
               </div>
 
               <div className="space-y-2">
