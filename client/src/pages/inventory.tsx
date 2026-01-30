@@ -635,7 +635,7 @@ export default function Inventory() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Insurance Fee (€)</Label>
+                        <Label>Insurance Fee</Label>
                         <Input 
                           type="text" 
                           inputMode="numeric"
