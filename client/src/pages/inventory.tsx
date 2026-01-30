@@ -455,7 +455,7 @@ export default function Inventory() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">{form.formState.errors.paidWith.message}</p>}
+                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">Paid With is required</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>COGS *</Label>
