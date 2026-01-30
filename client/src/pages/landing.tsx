@@ -41,9 +41,7 @@ export default function Landing() {
           </Button>
         </div>
 
-        <p className="text-xs text-slate-600">
-          © 2024 Chronos Management Systems. Internal Tool.
-        </p>
+        <p className="text-xs text-slate-600">© 2026 Wristby</p>
       </div>
     </div>
   );
