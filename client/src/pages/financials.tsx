@@ -136,7 +136,7 @@ export default function Financials() {
   const onSubmit = (data: CreateFormValues) => {
     const submitData = {
       ...data,
-      date: data.date instanceof Date ? data.date : new Date(data.date),
+      date: data.date instanceof Date ? data.date : (data.date ? new Date(data.date) : new Date()),
     };
     if (editingExpense) {
       updateMutation.mutate({ id: editingExpense.id, ...submitData }, {
@@ -237,8 +237,8 @@ export default function Financials() {
     const filteredExpenseTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const allExpensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
     
-    const grossProfit = totalRevenue - totalCogs - totalSaleExpenses;
-    const netProfit = grossProfit - allExpensesTotal;
+    // Net profit after all watch-specific fees and general business expenses
+    const netProfit = totalRevenue - totalCogs - totalSaleExpenses - allExpensesTotal;
     
     let totalRoi = 0;
     let roiCount = 0;
@@ -413,7 +413,7 @@ export default function Financials() {
                     <PopoverContent className="w-auto p-0 bg-white border-slate-200">
                       <Calendar
                         mode="single"
-                        selected={form.watch("date")}
+                        selected={form.watch("date") || new Date()}
                         onSelect={(date) => form.setValue("date", date || new Date())}
                         initialFocus
                       />
@@ -490,8 +490,8 @@ export default function Financials() {
                 <BarChart3 className="w-4 h-4 text-blue-600" />
               </div>
             </div>
-            <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Profit</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{formatCurrency(metrics.grossProfit)}</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Income</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{soldItems.length}</p>
           </CardContent>
         </Card>
         
