@@ -89,24 +89,6 @@ export default function Analytics() {
     }).format(val / 100);
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-48 bg-slate-200" />
-        <div className="grid gap-4 grid-cols-5">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-24 bg-slate-200 rounded-xl" />
-          ))}
-        </div>
-        <Skeleton className="h-64 bg-slate-200 rounded-xl" />
-      </div>
-    );
-  }
-
-  const soldItems = filteredInventory.filter((i) => i.status === "sold");
-  const activeItems = filteredInventory.filter((i) => i.status !== "sold");
-  const today = new Date();
-
   // Helper to calculate total fees for an item
   const getItemFees = (item: InventoryItem) => {
     return (item.serviceFee || 0) + 
@@ -117,31 +99,39 @@ export default function Analytics() {
            (item.watchRegister ? 600 : 0);
   };
 
-  // Overall Performance Metrics
-  const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
-  const totalCOGS = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-  const totalFees = soldItems.reduce((sum, item) => sum + getItemFees(item), 0);
-  const totalNetIncome = totalRevenue - totalCOGS - totalFees;
-  const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
+  // Calculate metrics (moved before loading check for hook consistency)
+  const calculatedMetrics = useMemo(() => {
+    const soldItems = filteredInventory.filter((i) => i.status === "sold");
+    const activeItems = filteredInventory.filter((i) => i.status !== "sold");
+    const today = new Date();
 
-  // Per-Watch Metrics
-  const profits = soldItems.map((item) => {
-    const revenue = item.salePrice || 0;
-    const fees = getItemFees(item);
-    const profit = revenue - item.purchasePrice - fees;
-    const soldDate = item.soldDate || item.dateSold;
-    return {
-      ...item,
-      profit,
-      roi: item.purchasePrice > 0 ? (profit / item.purchasePrice) * 100 : 0,
-      daysOnMarket: (soldDate && item.purchaseDate)
-        ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
-        : 0,
-    };
-  });
+    const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
+    const totalCOGS = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const totalFees = soldItems.reduce((sum, item) => sum + getItemFees(item), 0);
+    const totalNetIncome = totalRevenue - totalCOGS - totalFees;
+    const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
+
+    const profits = soldItems.map((item) => {
+      const revenue = item.salePrice || 0;
+      const fees = getItemFees(item);
+      const profit = revenue - item.purchasePrice - fees;
+      const soldDate = item.soldDate || item.dateSold;
+      return {
+        ...item,
+        profit,
+        roi: item.purchasePrice > 0 ? (profit / item.purchasePrice) * 100 : 0,
+        daysOnMarket: (soldDate && item.purchaseDate)
+          ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
+          : 0,
+      };
+    });
+
+    return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits };
+  }, [filteredInventory]);
 
   // Profit Per Day Calculation (matching Financials page)
   const profitPerDayData = useMemo(() => {
+    const { soldItems, today, totalNetIncome } = calculatedMetrics;
     let daysInPeriod = 0;
     let periodLabel = "";
     
@@ -182,7 +172,24 @@ export default function Analytics() {
       daysInPeriod,
       periodLabel
     };
-  }, [monthFilter, yearFilter, totalNetIncome, soldItems, today]);
+  }, [monthFilter, yearFilter, calculatedMetrics]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-48 bg-slate-200" />
+        <div className="grid gap-4 grid-cols-5">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-24 bg-slate-200 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-64 bg-slate-200 rounded-xl" />
+      </div>
+    );
+  }
+
+  // Destructure calculated metrics for use in render
+  const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits } = calculatedMetrics;
 
   const avgProfitPerWatch = soldItems.length > 0
     ? profits.reduce((sum, p) => sum + p.profit, 0) / soldItems.length

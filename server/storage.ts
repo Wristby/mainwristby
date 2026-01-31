@@ -6,7 +6,18 @@ import {
   type Expense, type InsertExpense,
   type DashboardStats
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
+
+// Fee types that should be synced to expenses
+const FEE_TYPES = [
+  { field: 'serviceFee', category: 'service' as const, label: 'Service Fee', isBoolean: false },
+  { field: 'polishFee', category: 'service' as const, label: 'Polish Fee', isBoolean: false },
+  { field: 'platformFees', category: 'other' as const, label: 'Platform Fees', isBoolean: false },
+  { field: 'shippingFee', category: 'shipping' as const, label: 'Shipping Fee', isBoolean: false },
+  { field: 'insuranceFee', category: 'insurance' as const, label: 'Insurance Fee', isBoolean: false },
+  { field: 'importFee', category: 'other' as const, label: 'Import Fee', isBoolean: false },
+  { field: 'watchRegister', category: 'other' as const, label: 'Watch Register Fee', isBoolean: true, fixedAmount: 600 },
+] as const;
 
 export interface IStorage {
   // Clients
@@ -87,12 +98,71 @@ export class DatabaseStorage implements IStorage {
 
   async createInventoryItem(insertItem: InsertInventory): Promise<InventoryItem> {
     const [item] = await db.insert(inventory).values(insertItem).returning();
+    // Sync watch fees to expenses
+    await this.syncWatchFeesToExpenses(item);
     return item;
   }
 
   async updateInventoryItem(id: number, updates: UpdateInventoryRequest): Promise<InventoryItem> {
     const [item] = await db.update(inventory).set(updates).where(eq(inventory.id, id)).returning();
+    // Sync watch fees to expenses
+    await this.syncWatchFeesToExpenses(item);
     return item;
+  }
+
+  // Sync watch fees to expense entries
+  private async syncWatchFeesToExpenses(item: InventoryItem): Promise<void> {
+    const watchRef = `${item.brand} ${item.model} - Ref#${item.referenceNumber}`;
+    const feeDate = item.purchaseDate || new Date();
+
+    for (const feeType of FEE_TYPES) {
+      // Handle boolean fees (like watchRegister) vs numeric fees
+      let feeValue: number;
+      if (feeType.isBoolean) {
+        const boolValue = (item as any)[feeType.field];
+        feeValue = boolValue ? (feeType as any).fixedAmount : 0;
+      } else {
+        feeValue = (item as any)[feeType.field] || 0;
+      }
+      
+      const description = `${feeType.label} - ${watchRef}`;
+
+      // Find existing expense for this fee type and inventory item
+      const existingExpenses = await db.select().from(expenses)
+        .where(and(
+          eq(expenses.inventoryId, item.id),
+          sql`${expenses.description} LIKE ${`${feeType.label}%`}`
+        ));
+
+      const existingExpense = existingExpenses[0];
+
+      if (feeValue > 0) {
+        if (existingExpense) {
+          // Update existing expense
+          await db.update(expenses)
+            .set({ 
+              amount: feeValue, 
+              description,
+              date: feeDate,
+              category: feeType.category 
+            })
+            .where(eq(expenses.id, existingExpense.id));
+        } else {
+          // Create new expense
+          await db.insert(expenses).values({
+            inventoryId: item.id,
+            description,
+            amount: feeValue,
+            date: feeDate,
+            category: feeType.category,
+            isRecurring: false
+          });
+        }
+      } else if (existingExpense) {
+        // Remove expense if fee is now 0
+        await db.delete(expenses).where(eq(expenses.id, existingExpense.id));
+      }
+    }
   }
 
   async deleteInventoryItem(id: number): Promise<void> {
@@ -101,8 +171,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Expenses
-  async getExpenses(): Promise<Expense[]> {
-    return await db.select().from(expenses).orderBy(desc(expenses.date));
+  async getExpenses(): Promise<(Expense & { inventory?: InventoryItem })[]> {
+    const allExpenses = await db.select().from(expenses).orderBy(desc(expenses.date));
+    
+    // Fetch inventory for expenses that have inventoryId
+    const result: (Expense & { inventory?: InventoryItem })[] = [];
+    for (const expense of allExpenses) {
+      let linkedInventory: InventoryItem | undefined;
+      if (expense.inventoryId) {
+        const [item] = await db.select().from(inventory).where(eq(inventory.id, expense.inventoryId));
+        linkedInventory = item;
+      }
+      result.push({ ...expense, inventory: linkedInventory });
+    }
+    return result;
   }
 
   async getExpense(id: number): Promise<Expense | undefined> {

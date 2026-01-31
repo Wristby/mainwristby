@@ -1,5 +1,6 @@
 import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { useInventory } from "@/hooks/use-inventory";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -324,14 +325,20 @@ export default function Financials() {
       return;
     }
     
-    const headers = ["Description", "Amount (EUR)", "Category", "Date", "Recurring"];
-    const rows = filteredExpenses.map(expense => [
-      `"${expense.description.replace(/"/g, '""')}"`,
-      (expense.amount / 100).toString(),
-      getCategoryLabel(expense.category),
-      format(new Date(expense.date), "yyyy-MM-dd"),
-      expense.isRecurring ? "Yes" : "No"
-    ]);
+    const headers = ["Description", "Amount (EUR)", "Category", "Date", "Recurring", "Watch Reference"];
+    const rows = filteredExpenses.map((expense: any) => {
+      const watchRef = expense.inventory 
+        ? `${expense.inventory.brand} ${expense.inventory.model} - Ref#${expense.inventory.referenceNumber}`
+        : "";
+      return [
+        `"${expense.description.replace(/"/g, '""')}"`,
+        (expense.amount / 100).toString(),
+        getCategoryLabel(expense.category),
+        format(new Date(expense.date), "yyyy-MM-dd"),
+        expense.isRecurring ? "Yes" : "No",
+        `"${watchRef}"`
+      ];
+    });
     
     const csvContent = [
       headers.join(","),
@@ -765,6 +772,7 @@ export default function Financials() {
                   <TableHead className="text-slate-500">Month</TableHead>
                   <TableHead className="text-slate-500">Category</TableHead>
                   <TableHead className="text-slate-500">Description</TableHead>
+                  <TableHead className="text-slate-500">Watch Reference</TableHead>
                   <TableHead className="text-slate-500 text-right">Amount</TableHead>
                   <TableHead className="text-slate-500 text-right">Actions</TableHead>
                 </TableRow>
@@ -772,12 +780,12 @@ export default function Financials() {
               <TableBody>
                 {filteredExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-slate-400">
+                    <TableCell colSpan={8} className="text-center py-8 text-slate-400">
                       No expenses found. Add your first expense to get started.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredExpenses.map((expense) => (
+                  filteredExpenses.map((expense: any) => (
                     <TableRow key={expense.id} className="border-slate-100 hover:bg-slate-50" data-testid={`expense-row-${expense.id}`}>
                       <TableCell className="font-mono text-xs text-slate-400">{expense.id}</TableCell>
                       <TableCell className="text-slate-600 text-sm">
@@ -805,6 +813,17 @@ export default function Financials() {
                       </TableCell>
                       <TableCell className="text-slate-900 max-w-xs truncate">
                         {expense.description}
+                      </TableCell>
+                      <TableCell className="text-slate-600 text-sm">
+                        {expense.inventory ? (
+                          <Link href={`/inventory/${expense.inventoryId}`}>
+                            <span className="text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer">
+                              {expense.inventory.brand} {expense.inventory.model}
+                            </span>
+                          </Link>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-medium text-slate-900 tabular-nums">
                         {formatCurrency(expense.amount)}
