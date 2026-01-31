@@ -4,7 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DollarSign, TrendingUp, Percent, Watch, AlertTriangle, Eye } from "lucide-react";
+import { 
+  DollarSign, 
+  TrendingUp, 
+  Percent, 
+  Watch, 
+  AlertTriangle, 
+  Eye, 
+  Plus, 
+  Receipt, 
+  UserPlus 
+} from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
 import type { InventoryItem, DashboardStats } from "@shared/schema";
@@ -183,6 +193,47 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Actions Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link href="/inventory">
+          <Button 
+            className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
+            variant="outline"
+            data-testid="button-quick-add-watch"
+          >
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center mr-3">
+              <Plus className="h-5 w-5 text-emerald-600" />
+            </div>
+            Add Watch
+          </Button>
+        </Link>
+        <Link href="/financials">
+          <Button 
+            className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
+            variant="outline"
+            data-testid="button-quick-add-expense"
+          >
+            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center mr-3">
+              <Receipt className="h-5 w-5 text-red-600" />
+            </div>
+            Add Expense
+          </Button>
+        </Link>
+        <Link href="/clients">
+          <Button 
+            className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
+            variant="outline"
+            data-testid="button-quick-add-client"
+          >
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3">
+              <UserPlus className="h-5 w-5 text-blue-600" />
+            </div>
+            Add Client
+          </Button>
+        </Link>
+      </div>
+
       {/* Main Content Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Aging Inventory - Left Side (2 cols) */}
