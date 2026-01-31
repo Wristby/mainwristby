@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
