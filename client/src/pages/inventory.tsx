@@ -242,7 +242,16 @@ export default function Inventory() {
 
   // Calculate metrics
   const metrics = useMemo(() => {
-    if (!inventory) return { total: 0, active: 0, atService: 0, capitalDeployed: 0, projectedProfit: 0 };
+    if (!inventory) return { 
+      total: 0, 
+      active: 0, 
+      atService: 0, 
+      capitalDeployed: 0, 
+      projectedProfit: 0,
+      listedValue: 0,
+      serviceValue: 0,
+      incomingValue: 0
+    };
     
     const total = inventory.length;
     const activeItems = inventory.filter(i => i.status !== 'sold');
@@ -251,7 +260,28 @@ export default function Inventory() {
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
     const projectedProfit = Math.round(capitalDeployed * 0.125);
     
-    return { total, active, atService, capitalDeployed, projectedProfit };
+    const listedValue = inventory
+      .filter(i => i.status === 'in_stock')
+      .reduce((sum, i) => sum + i.purchasePrice, 0);
+      
+    const serviceValue = inventory
+      .filter(i => i.status === 'servicing')
+      .reduce((sum, i) => sum + i.purchasePrice, 0);
+      
+    const incomingValue = inventory
+      .filter(i => i.status === 'incoming' || i.status === 'received')
+      .reduce((sum, i) => sum + i.purchasePrice, 0);
+    
+    return { 
+      total, 
+      active, 
+      atService, 
+      capitalDeployed, 
+      projectedProfit,
+      listedValue,
+      serviceValue,
+      incomingValue
+    };
   }, [inventory]);
 
   // Calculate hold time for each item
@@ -348,6 +378,57 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6">
+      {/* Metrics Row */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Listed Value</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {formatCurrency(metrics.listedValue)}
+                </p>
+              </div>
+              <div className="p-2 bg-emerald-50 rounded-full">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Service Value</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {formatCurrency(metrics.serviceValue)}
+                </p>
+              </div>
+              <div className="p-2 bg-blue-50 rounded-full">
+                <Watch className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Incoming Value</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {formatCurrency(metrics.incomingValue)}
+                </p>
+              </div>
+              <div className="p-2 bg-amber-50 rounded-full">
+                <Box className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
