@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -15,7 +16,11 @@ import {
   Receipt, 
   UserPlus,
   Loader2,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Target,
+  Pencil,
+  Check,
+  X
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
@@ -114,6 +119,12 @@ export default function Dashboard() {
   const [isAddWatchOpen, setIsAddWatchOpen] = useState(false);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  const [monthlyGoal, setMonthlyGoal] = useState(() => {
+    const saved = localStorage.getItem("monthlyProfitGoal");
+    return saved ? parseInt(saved, 10) : 200000; // Default €2,000 (stored in cents)
+  });
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [goalInputValue, setGoalInputValue] = useState("");
   const { toast } = useToast();
 
   const createWatchMutation = useCreateInventory();
@@ -182,7 +193,7 @@ export default function Dashboard() {
   });
 
   const [showSaleDetails, setShowSaleDetails] = useState(false);
-  const { data: clients } = useQuery({ queryKey: ["/api/clients"] });
+  const { data: clients } = useQuery<Array<{ id: number; name: string; type: string }>>({ queryKey: ["/api/clients"] });
 
   // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
   const watchedSalePrice = watchForm.watch("salePrice");
@@ -322,6 +333,54 @@ export default function Dashboard() {
   );
 
   const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
+
+  // Calculate current month's net profit
+  const currentMonthProfit = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    const thisMonthSales = soldInventory.filter(item => {
+      const dateValue = item.dateSold || item.soldDate;
+      if (!dateValue) return false;
+      const soldDate = new Date(dateValue);
+      return soldDate.getMonth() === currentMonth && soldDate.getFullYear() === currentYear;
+    });
+    
+    return thisMonthSales.reduce((sum, item) => {
+      const revenue = item.salePrice || 0;
+      const totalCost = item.purchasePrice + 
+                        (item.importFee || 0) + 
+                        (item.serviceFee || 0) + 
+                        (item.polishFee || 0) + 
+                        (item.platformFees || 0) + 
+                        (item.shippingFee || 0) + 
+                        (item.insuranceFee || 0) +
+                        (item.watchRegister ? 600 : 0);
+      return sum + (revenue - totalCost);
+    }, 0);
+  }, [soldInventory]);
+
+  const goalProgress = monthlyGoal > 0 ? Math.min((currentMonthProfit / monthlyGoal) * 100, 100) : 0;
+
+  const handleGoalEdit = () => {
+    setGoalInputValue((monthlyGoal / 100).toString());
+    setIsEditingGoal(true);
+  };
+
+  const handleGoalSave = () => {
+    const newGoal = Math.round(parseFloat(goalInputValue || "0") * 100);
+    if (newGoal > 0) {
+      setMonthlyGoal(newGoal);
+      localStorage.setItem("monthlyProfitGoal", newGoal.toString());
+      toast({ title: "Goal Updated", description: `Monthly goal set to €${(newGoal / 100).toLocaleString()}` });
+    }
+    setIsEditingGoal(false);
+  };
+
+  const handleGoalCancel = () => {
+    setIsEditingGoal(false);
+  };
   
   const averageMargin = useMemo(() => {
     if (soldInventory.length === 0) return 0;
@@ -436,6 +495,77 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Monthly Goal Progress Bar */}
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-emerald-50 rounded-md">
+                <Target className="h-4 w-4 text-emerald-600" />
+              </div>
+              <span className="font-semibold text-slate-900">Monthly Goal</span>
+              <span className="text-sm text-slate-500">
+                ({format(new Date(), "MMMM yyyy")})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {isEditingGoal ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-500">€</span>
+                  <Input
+                    type="number"
+                    value={goalInputValue}
+                    onChange={(e) => setGoalInputValue(e.target.value)}
+                    className="w-24 h-8 bg-white border-slate-200 text-right"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleGoalSave();
+                      if (e.key === "Escape") handleGoalCancel();
+                    }}
+                    data-testid="input-monthly-goal"
+                  />
+                  <Button size="icon" variant="ghost" onClick={handleGoalSave} className="h-8 w-8" data-testid="button-save-goal">
+                    <Check className="h-4 w-4 text-emerald-600" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={handleGoalCancel} className="h-8 w-8" data-testid="button-cancel-goal">
+                    <X className="h-4 w-4 text-slate-400" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-slate-900 tabular-nums">
+                    {formatCurrency(currentMonthProfit)} / {formatCurrency(monthlyGoal)}
+                  </span>
+                  <Button size="icon" variant="ghost" onClick={handleGoalEdit} className="h-8 w-8" data-testid="button-edit-goal">
+                    <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="relative">
+            <Progress 
+              value={goalProgress} 
+              className={cn(
+                "h-3",
+                goalProgress >= 100 ? "[&>div]:bg-emerald-500" : 
+                goalProgress >= 75 ? "[&>div]:bg-emerald-400" :
+                goalProgress >= 50 ? "[&>div]:bg-amber-400" :
+                "[&>div]:bg-slate-300"
+              )}
+            />
+            <div className="flex justify-between mt-1.5 text-xs text-slate-400">
+              <span>{goalProgress.toFixed(0)}% of goal</span>
+              {currentMonthProfit >= monthlyGoal ? (
+                <span className="text-emerald-600 font-medium">Goal reached!</span>
+              ) : (
+                <span>{formatCurrency(monthlyGoal - currentMonthProfit)} to go</span>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Quick Actions Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
