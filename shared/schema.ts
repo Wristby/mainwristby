@@ -12,6 +12,7 @@ export const clients = pgTable("clients", {
   name: text("name").notNull(),
   email: text("email"),
   phone: text("phone"),
+  socialHandle: text("social_handle"),
   type: text("type", { enum: ["client", "dealer"] }).default("client").notNull(),
   notes: text("notes"),
   isVip: boolean("is_vip").default(false).notNull(),

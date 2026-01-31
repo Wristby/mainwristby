@@ -43,6 +43,7 @@ export default function Clients() {
       name: "",
       email: "",
       phone: "",
+      socialHandle: "",
       type: "client",
       notes: "",
       isVip: false,
@@ -111,6 +112,10 @@ export default function Clients() {
                   <Label>Phone</Label>
                   <Input {...form.register("phone")} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Social Media Handle</Label>
+                <Input {...form.register("socialHandle")} className="bg-white border-slate-200" placeholder="@username" />
               </div>
               <div className="space-y-2">
                 <Label>Notes</Label>
