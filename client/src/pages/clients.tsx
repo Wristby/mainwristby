@@ -70,7 +70,7 @@ export default function Clients() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900">CRM</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900">Clients</h2>
           <p className="text-slate-500 mt-1">Manage client relationships and dealers.</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -141,7 +141,6 @@ export default function Clients() {
           </DialogContent>
         </Dialog>
       </div>
-
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <div className="relative mb-6">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
