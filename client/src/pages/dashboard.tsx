@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,135 @@ import {
   Eye, 
   Plus, 
   Receipt, 
-  UserPlus 
+  UserPlus,
+  Loader2,
+  Calendar as CalendarIcon
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
 import type { InventoryItem, DashboardStats } from "@shared/schema";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertInventorySchema, insertExpenseSchema, insertClientSchema } from "@shared/schema";
+import { z } from "zod";
+import { useCreateInventory } from "@/hooks/use-inventory";
+import { useCreateExpense } from "@/hooks/use-expenses";
+import { useCreateClient } from "@/hooks/use-clients";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
+
+const WATCH_BRANDS = [
+  "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
+  "Cartier", "Chopard", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
+  "H. Moser and Cie", "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
+  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe", "Parmigiani",
+  "Roger Dubuis", "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
+  "Vacheron Constantin", "Zenith"
+];
+
+const PURCHASE_FROM_OPTIONS = ["Chrono24", "Eni Dealer", "Ayhan Dealer", "IPLAYWATCH Dealer"];
+const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
+const EXPENSE_CATEGORIES = [
+  { value: "marketing", label: "Marketing" },
+  { value: "rent_storage", label: "Rent/Storage" },
+  { value: "subscriptions", label: "Subscriptions" },
+  { value: "tools", label: "Tools" },
+  { value: "insurance", label: "Insurance" },
+  { value: "service", label: "Service" },
+  { value: "shipping", label: "Shipping" },
+  { value: "parts", label: "Parts" },
+  { value: "other", label: "Other" },
+];
 
 export default function Dashboard() {
+  const [isAddWatchOpen, setIsAddWatchOpen] = useState(false);
+  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  const { toast } = useToast();
+
+  const createWatchMutation = useCreateInventory();
+  const createExpenseMutation = useCreateExpense();
+  const createClientMutation = useCreateClient();
+
+  const watchForm = useForm({
+    resolver: zodResolver(insertInventorySchema),
+    defaultValues: {
+      brand: "",
+      model: "",
+      referenceNumber: "",
+      purchasePrice: 0,
+      purchasedFrom: "",
+      paidWith: "",
+      status: "incoming",
+    }
+  });
+
+  const expenseForm = useForm({
+    resolver: zodResolver(insertExpenseSchema.extend({ amount: z.coerce.number() })),
+    defaultValues: {
+      description: "",
+      amount: 0,
+      category: "other",
+      date: new Date(),
+      isRecurring: false,
+    }
+  });
+
+  const clientForm = useForm({
+    resolver: zodResolver(insertClientSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      phone: "",
+      type: "client",
+      notes: "",
+      isVip: false,
+    }
+  });
+
+  const onWatchSubmit = (data: any) => {
+    createWatchMutation.mutate({
+      ...data,
+      purchasePrice: Math.round(data.purchasePrice * 100),
+    }, {
+      onSuccess: () => {
+        setIsAddWatchOpen(false);
+        watchForm.reset();
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+        toast({ title: "Success", description: "Watch added" });
+      }
+    });
+  };
+
+  const onExpenseSubmit = (data: any) => {
+    createExpenseMutation.mutate(data, {
+      onSuccess: () => {
+        setIsAddExpenseOpen(false);
+        expenseForm.reset();
+        toast({ title: "Success", description: "Expense added" });
+      }
+    });
+  };
+
+  const onClientSubmit = (data: any) => {
+    createClientMutation.mutate(data, {
+      onSuccess: () => {
+        setIsAddClientOpen(false);
+        clientForm.reset();
+        toast({ title: "Success", description: "Client added" });
+      }
+    });
+  };
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
   });
@@ -196,43 +318,210 @@ export default function Dashboard() {
 
       {/* Quick Actions Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link href="/inventory">
-          <Button 
-            className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
-            variant="outline"
-            data-testid="button-quick-add-watch"
-          >
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center mr-3">
-              <Plus className="h-5 w-5 text-emerald-600" />
-            </div>
-            Add Watch
-          </Button>
-        </Link>
-        <Link href="/financials">
-          <Button 
-            className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
-            variant="outline"
-            data-testid="button-quick-add-expense"
-          >
-            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center mr-3">
-              <Receipt className="h-5 w-5 text-red-600" />
-            </div>
-            Add Expense
-          </Button>
-        </Link>
-        <Link href="/clients">
-          <Button 
-            className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
-            variant="outline"
-            data-testid="button-quick-add-client"
-          >
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3">
-              <UserPlus className="h-5 w-5 text-blue-600" />
-            </div>
-            Add Client
-          </Button>
-        </Link>
+        <Button 
+          className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
+          variant="outline"
+          onClick={() => setIsAddWatchOpen(true)}
+          data-testid="button-quick-add-watch"
+        >
+          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center mr-3">
+            <Plus className="h-5 w-5 text-emerald-600" />
+          </div>
+          Add Watch
+        </Button>
+        <Button 
+          className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
+          variant="outline"
+          onClick={() => setIsAddExpenseOpen(true)}
+          data-testid="button-quick-add-expense"
+        >
+          <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center mr-3">
+            <Receipt className="h-5 w-5 text-red-600" />
+          </div>
+          Add Expense
+        </Button>
+        <Button 
+          className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
+          variant="outline"
+          onClick={() => setIsAddClientOpen(true)}
+          data-testid="button-quick-add-client"
+        >
+          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3">
+            <UserPlus className="h-5 w-5 text-blue-600" />
+          </div>
+          Add Client
+        </Button>
       </div>
+
+      {/* Add Watch Dialog */}
+      <Dialog open={isAddWatchOpen} onOpenChange={setIsAddWatchOpen}>
+        <DialogContent className="max-w-2xl bg-white border-slate-200 text-slate-900">
+          <DialogHeader>
+            <DialogTitle>Quick Add Watch</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={watchForm.handleSubmit(onWatchSubmit)} className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Brand *</Label>
+                <Select onValueChange={(val) => watchForm.setValue("brand", val)}>
+                  <SelectTrigger className="bg-white border-slate-200">
+                    <SelectValue placeholder="Select Brand" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {WATCH_BRANDS.map(brand => (
+                      <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Model *</Label>
+                <Input {...watchForm.register("model")} className="bg-white border-slate-200" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Reference *</Label>
+                <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" />
+              </div>
+              <div className="space-y-2">
+                <Label>Purchase Price (€) *</Label>
+                <Input type="number" {...watchForm.register("purchasePrice")} className="bg-white border-slate-200" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Purchased From *</Label>
+                <Select onValueChange={(val) => watchForm.setValue("purchasedFrom", val)}>
+                  <SelectTrigger className="bg-white border-slate-200">
+                    <SelectValue placeholder="Select Source" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {PURCHASE_FROM_OPTIONS.map(opt => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Paid With *</Label>
+                <Select onValueChange={(val) => watchForm.setValue("paidWith", val)}>
+                  <SelectTrigger className="bg-white border-slate-200">
+                    <SelectValue placeholder="Select Payment" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {PAID_WITH_OPTIONS.map(opt => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsAddWatchOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={createWatchMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                {createWatchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Watch"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Expense Dialog */}
+      <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
+        <DialogContent className="max-w-md bg-white border-slate-200 text-slate-900">
+          <DialogHeader>
+            <DialogTitle>Add New Expense</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="Monthly subscription..." />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (€)</Label>
+              <Input type="number" {...expenseForm.register("amount")} className="bg-white border-slate-200" placeholder="10" />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select onValueChange={(val) => expenseForm.setValue("category", val as any)} defaultValue="other">
+                <SelectTrigger className="bg-white border-slate-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900">
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={createExpenseMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                {createExpenseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Expense"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Client Dialog */}
+      <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
+        <DialogContent className="max-w-md bg-white border-slate-200 text-slate-900">
+          <DialogHeader>
+            <DialogTitle>Add New Client</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={clientForm.handleSubmit(onClientSubmit)} className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input {...clientForm.register("name")} className="bg-white border-slate-200" placeholder="John Doe" />
+              </div>
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <select 
+                  {...clientForm.register("type")} 
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                >
+                  <option value="client">Client</option>
+                  <option value="dealer">Dealer</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input {...clientForm.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input {...clientForm.register("phone")} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Controller
+                name="isVip"
+                control={clientForm.control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="isVip-dashboard"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="border-slate-300 data-[state=checked]:bg-emerald-600"
+                  />
+                )}
+              />
+              <Label htmlFor="isVip-dashboard" className="text-sm font-medium leading-none cursor-pointer">VIP Client</Label>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsAddClientOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={createClientMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                {createClientMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Client"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Main Content Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
