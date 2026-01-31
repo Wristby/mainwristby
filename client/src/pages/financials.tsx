@@ -41,7 +41,8 @@ import {
   Trash2,
   DollarSign,
   Calendar as CalendarIcon,
-  RefreshCw
+  RefreshCw,
+  Download
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
@@ -317,6 +318,39 @@ export default function Financials() {
     return EXPENSE_CATEGORIES.find(c => c.value === category)?.label || category;
   };
 
+  const exportToCSV = () => {
+    if (!filteredExpenses || filteredExpenses.length === 0) {
+      toast({ title: "No data", description: "No expenses to export", variant: "destructive" });
+      return;
+    }
+    
+    const headers = ["Description", "Amount (EUR)", "Category", "Date", "Recurring"];
+    const rows = filteredExpenses.map(expense => [
+      `"${expense.description.replace(/"/g, '""')}"`,
+      (expense.amount / 100).toString(),
+      getCategoryLabel(expense.category),
+      format(new Date(expense.date), "yyyy-MM-dd"),
+      expense.isRecurring ? "Yes" : "No"
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `expenses_${format(new Date(), "yyyy-MM-dd")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast({ title: "Success", description: `Exported ${filteredExpenses.length} expenses to CSV` });
+  };
+
   // Calculate filtered net profit and profit per day for the selected period
   const profitPerDayData = useMemo(() => {
     if (!inventory || !expenses) return { profitPerDay: 0, daysInPeriod: 0, periodLabel: "All Time", filteredNetProfit: 0 };
@@ -446,6 +480,15 @@ export default function Financials() {
               form.reset();
             }
           }}>
+            <Button 
+              variant="outline" 
+              className="border-slate-200 text-slate-600 hover:bg-slate-50" 
+              onClick={exportToCSV}
+              data-testid="button-export-csv"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
             <DialogTrigger asChild>
               <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-expense">
                 <Plus className="w-4 h-4 mr-2" />
