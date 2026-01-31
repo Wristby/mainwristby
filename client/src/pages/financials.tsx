@@ -136,6 +136,7 @@ export default function Financials() {
   const onSubmit = (data: CreateFormValues) => {
     const submitData = {
       ...data,
+      amount: Math.round(data.amount * 100),
       date: data.date instanceof Date ? data.date : (data.date ? new Date(data.date) : new Date()),
     };
     if (editingExpense) {
@@ -167,7 +168,7 @@ export default function Financials() {
   const handleEdit = (expense: any) => {
     setEditingExpense(expense);
     form.setValue("description", expense.description);
-    form.setValue("amount", expense.amount);
+    form.setValue("amount", expense.amount / 100);
     form.setValue("category", expense.category);
     form.setValue("date", new Date(expense.date));
     form.setValue("isRecurring", expense.isRecurring);

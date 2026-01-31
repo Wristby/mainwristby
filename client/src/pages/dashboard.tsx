@@ -73,8 +73,12 @@ export default function Dashboard() {
   const createExpenseMutation = useCreateExpense();
   const createClientMutation = useCreateClient();
 
+  const dashboardWatchSchema = insertInventorySchema.extend({
+    purchasePrice: z.coerce.number().min(1, "Price is required"),
+  });
+
   const watchForm = useForm({
-    resolver: zodResolver(insertInventorySchema),
+    resolver: zodResolver(dashboardWatchSchema),
     defaultValues: {
       brand: "",
       model: "",
@@ -124,7 +128,10 @@ export default function Dashboard() {
   };
 
   const onExpenseSubmit = (data: any) => {
-    createExpenseMutation.mutate(data, {
+    createExpenseMutation.mutate({
+      ...data,
+      amount: Math.round(data.amount * 100),
+    }, {
       onSuccess: () => {
         setIsAddExpenseOpen(false);
         expenseForm.reset();

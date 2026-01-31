@@ -884,6 +884,8 @@ export default function Inventory() {
                   Hold Time <SortIcon field="holdTime" />
                 </div>
               </TableHead>
+              <TableHead className="font-semibold text-slate-900 h-12">Service</TableHead>
+              <TableHead className="font-semibold text-slate-900 h-12">Polish</TableHead>
               <TableHead onClick={() => handleSort('status')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
                 <div className="flex items-center">
                   Status <SortIcon field="status" />
@@ -895,14 +897,14 @@ export default function Inventory() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-48 text-center text-slate-400">
+                <TableCell colSpan={9} className="h-48 text-center text-slate-400">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-500" />
                   Loading inventory...
                 </TableCell>
               </TableRow>
             ) : filteredInventory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-48 text-center text-slate-500 font-medium">
+                <TableCell colSpan={9} className="h-48 text-center text-slate-500 font-medium">
                   No watches found matching your search.
                 </TableCell>
               </TableRow>
@@ -937,6 +939,12 @@ export default function Inventory() {
                       <Calendar className="w-3.5 h-3.5 mr-2 text-slate-400" />
                       {getHoldTime(item)} days
                     </div>
+                  </TableCell>
+                  <TableCell className="text-slate-600 py-4">
+                    {(item as any).serviceFee ? formatCurrency((item as any).serviceFee) : '-'}
+                  </TableCell>
+                  <TableCell className="text-slate-600 py-4">
+                    {(item as any).polishFee ? formatCurrency((item as any).polishFee) : '-'}
                   </TableCell>
                   <TableCell className="py-4">
                     <div className="flex items-center gap-2">
