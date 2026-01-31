@@ -55,6 +55,7 @@ const COUNTRIES = [
 
 export default function Clients() {
   const [search, setSearch] = useState("");
+  const [, setLocation] = useLocation();
   const { data: clients, isLoading } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const { toast } = useToast();
@@ -221,6 +222,7 @@ export default function Clients() {
                   <TableRow 
                     key={client.id} 
                     className="border-slate-100 hover:bg-slate-50 cursor-pointer group transition-colors"
+                    onClick={() => setLocation(`/clients/${client.id}`)}
                   >
                     <TableCell className="font-medium text-slate-900 flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 relative">
