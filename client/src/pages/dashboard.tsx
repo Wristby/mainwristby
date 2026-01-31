@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -98,17 +98,6 @@ const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "W
 const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
 const PURCHASE_FROM_OPTIONS = ["Chrono24", "Eni Dealer", "Ayhan Dealer", "IPLAYWATCH Dealer"];
 const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
-const EXPENSE_CATEGORIES = [
-  { value: "marketing", label: "Marketing" },
-  { value: "rent_storage", label: "Rent/Storage" },
-  { value: "subscriptions", label: "Subscriptions" },
-  { value: "tools", label: "Tools" },
-  { value: "insurance", label: "Insurance" },
-  { value: "service", label: "Service" },
-  { value: "shipping", label: "Shipping" },
-  { value: "parts", label: "Parts" },
-  { value: "other", label: "Other" },
-];
 const EXPENSE_CATEGORIES = [
   { value: "marketing", label: "Marketing" },
   { value: "rent_storage", label: "Rent/Storage" },
