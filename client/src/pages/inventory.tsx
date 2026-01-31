@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,13 +36,18 @@ import { insertInventorySchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import { differenceInDays } from "date-fns";
+import { differenceInDays, format } from "date-fns";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 const WATCH_BRANDS = [
   "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
@@ -129,7 +134,6 @@ export default function Inventory() {
     const status = queryParams.get("status");
     if (status) {
       setStatusFilter(status);
-      // Clear the query param from URL without reloading to prevent sticky filter
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [location]);
@@ -182,7 +186,6 @@ export default function Inventory() {
     },
   });
 
-  // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
   const watchedSalePrice = form.watch("salePrice");
   const watchedSoldPlatform = form.watch("soldPlatform");
 
@@ -194,7 +197,6 @@ export default function Inventory() {
   }, [watchedSalePrice, watchedSoldPlatform, form]);
 
   const onSubmit = (data: CreateFormValues) => {
-    // Reconcile status based on dates at submit time
     let finalStatus = data.status;
     if (data.dateSold) {
       finalStatus = "sold";
@@ -233,14 +235,12 @@ export default function Inventory() {
     });
   };
 
-  // Get unique brands for filter
   const brands = useMemo(() => {
     if (!inventory) return [];
     const uniqueBrands = Array.from(new Set(inventory.map(item => item.brand)));
     return uniqueBrands.sort();
   }, [inventory]);
 
-  // Calculate metrics
   const metrics = useMemo(() => {
     if (!inventory) return { 
       total: 0, 
@@ -284,7 +284,6 @@ export default function Inventory() {
     };
   }, [inventory]);
 
-  // Calculate hold time for each item
   const getHoldTime = (item: any) => {
     const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
     const endDate = item.status === "sold" && item.soldDate ? new Date(item.soldDate) : new Date();
@@ -296,7 +295,7 @@ export default function Inventory() {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortOrder('desc'); // Default to desc for new field
+      setSortOrder('desc');
     }
   };
 
@@ -305,7 +304,6 @@ export default function Inventory() {
     return sortOrder === 'asc' ? <ArrowUp className="ml-2 h-4 w-4 text-emerald-600" /> : <ArrowDown className="ml-2 h-4 w-4 text-emerald-600" />;
   };
 
-  // Filter and Sort inventory
   const filteredInventory = useMemo(() => {
     if (!inventory) return [];
     
@@ -325,7 +323,6 @@ export default function Inventory() {
       return matchesSearch && matchesStatus && matchesBrand && matchesBox && matchesPapers;
     });
 
-    // Apply sorting
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -378,57 +375,6 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6">
-      {/* Metrics Row */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Listed Value</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(metrics.listedValue)}
-                </p>
-              </div>
-              <div className="p-2 bg-emerald-50 rounded-full">
-                <TrendingUp className="h-5 w-5 text-emerald-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Service Value</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(metrics.serviceValue)}
-                </p>
-              </div>
-              <div className="p-2 bg-blue-50 rounded-full">
-                <Watch className="h-5 w-5 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Incoming Value</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(metrics.incomingValue)}
-                </p>
-              </div>
-              <div className="p-2 bg-amber-50 rounded-full">
-                <Box className="h-5 w-5 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -558,7 +504,7 @@ export default function Inventory() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {form.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">Purchased From is required</p>}
+                    {form.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">Purchase source is required</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>Paid With *</Label>
@@ -572,283 +518,393 @@ export default function Inventory() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">Paid With is required</p>}
+                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">Payment method is required</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label>COGS *</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("purchasePrice")} 
-                      className="bg-white border-slate-200" 
-                      data-testid="input-price" 
-                    />
-                    {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">{form.formState.errors.purchasePrice.message}</p>}
+                    <Label>Seller / Dealer</Label>
+                    <Select value={form.watch("clientId")?.toString() || "none"} onValueChange={(val) => form.setValue("clientId", val === "none" ? null : parseInt(val))}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Dealer" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="none">None</SelectItem>
+                        {clients?.filter((c: any) => c.type === 'dealer').map((client: any) => (
+                          <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="flex items-center space-x-2 pt-6">
-                    <Checkbox 
-                      id="watchRegister" 
-                      checked={form.watch("watchRegister")} 
-                      onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} 
-                    />
-                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register Check</Label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Dates</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <Label>Status *</Label>
-                      <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
-                        <SelectTrigger className="bg-white border-slate-200">
-                          <SelectValue placeholder="Select Status" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          <SelectItem value="incoming">Incoming</SelectItem>
-                          <SelectItem value="received">Received</SelectItem>
-                          <SelectItem value="in_stock">Listed</SelectItem>
-                          <SelectItem value="servicing">In Service</SelectItem>
-                          <SelectItem value="sold">Sold</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {form.formState.errors.status && <p className="text-red-500 text-xs">{form.formState.errors.status.message}</p>}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date Received</Label>
+                  <div className="space-y-2">
+                    <Label>Purchase Price (COGS) *</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
-                        type="date" 
-                        {...form.register("purchaseDate")} 
-                        className="bg-white border-slate-200" 
-                        onChange={(e) => {
-                          form.setValue("purchaseDate", e.target.value);
-                          // Only set status to received if currently incoming
-                          const currentStatus = form.getValues("status");
-                          if (e.target.value && currentStatus === "incoming") {
-                            form.setValue("status", "received");
-                          }
-                        }}
+                        type="text" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        {...form.register("purchasePrice")} 
+                        className="pl-7 bg-white border-slate-200" 
+                        data-testid="input-purchase-price" 
                       />
                     </div>
-                          <div className="space-y-2">
-                            <Label>Date Listed</Label>
-                            <Input 
-                              type="date" 
-                              {...form.register("dateListed")} 
-                              className="bg-white border-slate-200"
-                              onChange={(e) => {
-                                form.setValue("dateListed", e.target.value);
-                                if (e.target.value) {
-                                  const currentStatus = form.getValues("status");
-                                  // Only upgrade status to in_stock if not already sold
-                                  if (currentStatus !== "sold") {
-                                    form.setValue("status", "in_stock");
-                                  }
-                                  // Only set purchaseDate if it's empty
-                                  const currentPurchaseDate = form.getValues("purchaseDate");
-                                  if (!currentPurchaseDate) {
-                                    form.setValue("purchaseDate", e.target.value);
-                                  }
-                                }
-                              }}
-                            />
-                          </div>
+                    {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">COGS is required</p>}
+                  </div>
                   <div className="space-y-2">
-                    <Label>Date Sold</Label>
-                    <Input 
-                      type="date" 
-                      {...form.register("dateSold")} 
-                      className="bg-white border-slate-200"
-                      onChange={(e) => {
-                        form.setValue("dateSold", e.target.value);
-                        if (e.target.value) {
-                          form.setValue("status", "sold");
-                          // Only fill in dateListed if empty
-                          const currentDateListed = form.getValues("dateListed");
-                          if (!currentDateListed) {
-                            form.setValue("dateListed", e.target.value);
-                          }
-                          // Only fill in purchaseDate if empty
-                          const currentPurchaseDate = form.getValues("purchaseDate");
-                          if (!currentPurchaseDate) {
-                            form.setValue("purchaseDate", e.target.value);
-                          }
-                        }
-                      }}
-                    />
+                    <Label>Import Fee</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        type="text" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        {...form.register("importFee")} 
+                        className="pl-7 bg-white border-slate-200" 
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 pt-8">
+                    <Checkbox id="watchRegister" checked={form.watch("watchRegister")} onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} />
+                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register (€6)</Label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Purchase Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-white border-slate-200",
+                            !form.watch("purchaseDate") && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.watch("purchaseDate") ? format(new Date(form.watch("purchaseDate")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <CalendarComponent
+                          mode="single"
+                          selected={form.watch("purchaseDate") ? new Date(form.watch("purchaseDate")!) : undefined}
+                          onSelect={(date) => form.setValue("purchaseDate", date ? date.toISOString() : null)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Costs & Fees (€)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Service Fee</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("serviceFee")} 
-                      className="bg-white border-slate-200" 
-                    />
+                    <Label>Current Status *</Label>
+                    <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Status" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="incoming">Incoming</SelectItem>
+                        <SelectItem value="received">Received</SelectItem>
+                        <SelectItem value="servicing">In Service</SelectItem>
+                        <SelectItem value="in_stock">Listed</SelectItem>
+                        <SelectItem value="sold">Sold</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Polish Fee</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("polishFee")} 
-                      className="bg-white border-slate-200" 
-                    />
+                    <Label>Target Sell Price</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        type="text" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        {...form.register("targetSellPrice")} 
+                        className="pl-7 bg-white border-slate-200" 
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Listed</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-white border-slate-200",
+                            !form.watch("dateListed") && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.watch("dateListed") ? format(new Date(form.watch("dateListed")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <CalendarComponent
+                          mode="single"
+                          selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined}
+                          onSelect={(date) => {
+                            form.setValue("dateListed", date ? date.toISOString() : null);
+                            if (date && form.getValues("status") === "incoming") {
+                              form.setValue("status", "in_stock");
+                            }
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div 
-                  className="flex items-center justify-between cursor-pointer border-b border-slate-200 pb-2 hover:bg-slate-50 transition-colors px-1 rounded-sm"
-                  onClick={() => setShowSaleDetails(!showSaleDetails)}
-                >
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details & Shipping</h3>
-                  <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0">
-                    {showSaleDetails ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                  </Button>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="showSale" className="text-sm font-medium text-slate-500">Show Sale Fields</Label>
+                    <Switch id="showSale" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
+                  </div>
                 </div>
                 
                 {showSaleDetails && (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                      <div className="space-y-2">
-                        <Label>Sold On</Label>
-                        <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
-                          <SelectTrigger className="bg-white border-slate-200">
-                            <SelectValue placeholder="Select Platform" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white border-slate-200 text-slate-900">
-                            {SOLD_ON_OPTIONS.map(opt => (
-                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sale Price</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-2">
+                      <Label>Sold Price</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
                           type="text" 
                           inputMode="numeric"
                           pattern="[0-9]*"
                           {...form.register("salePrice")} 
-                          className="bg-white border-slate-200" 
+                          className="pl-7 bg-white border-slate-200" 
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Platform Fees</Label>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Platform Fees</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
                           type="text" 
                           inputMode="numeric"
                           pattern="[0-9]*"
                           {...form.register("platformFees")} 
-                          className="bg-white border-slate-200" 
+                          className="pl-7 bg-white border-slate-200" 
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Shipping Fee
-</Label>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sold On</Label>
+                      <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Platform" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          {SOLD_ON_OPTIONS.map(opt => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Shipping Fee</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
                           type="text" 
                           inputMode="numeric"
                           pattern="[0-9]*"
                           {...form.register("shippingFee")} 
-                          className="bg-white border-slate-200" 
+                          className="pl-7 bg-white border-slate-200" 
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Insurance Fee</Label>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Insurance Fee</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
                           type="text" 
                           inputMode="numeric"
                           pattern="[0-9]*"
                           {...form.register("insuranceFee")} 
-                          className="bg-white border-slate-200" 
+                          className="pl-7 bg-white border-slate-200" 
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>Sold To</Label>
-                        <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
-                      </div>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      <div className="space-y-2">
-                        <Label>Shipper</Label>
-                        <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
-                          <SelectTrigger className="bg-white border-slate-200">
-                            <SelectValue placeholder="Select Shipper" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white border-slate-200 text-slate-900">
-                            {SHIPPING_PARTNERS.map(shipper => (
-                              <SelectItem key={shipper} value={shipper}>{shipper}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Tracking #</Label>
-                        <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" />
-                      </div>
+                    <div className="space-y-2">
+                      <Label>Buyer Name</Label>
+                      <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
                     </div>
-                  </>
+                    <div className="space-y-2">
+                      <Label>Date Sold</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-white border-slate-200",
+                              !form.watch("dateSold") && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {form.watch("dateSold") ? format(new Date(form.watch("dateSold")!), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                          <CalendarComponent
+                            mode="single"
+                            selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined}
+                            onSelect={(date) => {
+                              form.setValue("dateSold", date ? date.toISOString() : null);
+                              if (date) form.setValue("status", "sold");
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label>Notes</Label>
-                <Input {...form.register("notes")} className="bg-white border-slate-200" placeholder="Additional details..." />
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Service & Maintenance</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Service Fee</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        type="text" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        {...form.register("serviceFee")} 
+                        className="pl-7 bg-white border-slate-200" 
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Polish Fee</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        type="text" 
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        {...form.register("polishFee")} 
+                        className="pl-7 bg-white border-slate-200" 
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900">Cancel</Button>
-                <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-submit-watch">
-                  {createMutation.isPending ? "Adding..." : "Add Watch"}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
+                <Textarea {...form.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
+                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[120px]">
+                  {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                  Add Watch
                 </Button>
               </div>
             </form>
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Metrics Row */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Listed Value</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {formatCurrency(metrics.listedValue)}
+                </p>
+              </div>
+              <div className="p-2 bg-emerald-50 rounded-full">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Service Value</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {formatCurrency(metrics.serviceValue)}
+                </p>
+              </div>
+              <div className="p-2 bg-blue-50 rounded-full">
+                <Watch className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Incoming Value</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {formatCurrency(metrics.incomingValue)}
+                </p>
+              </div>
+              <div className="p-2 bg-amber-50 rounded-full">
+                <Box className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-          <Input 
-            placeholder="Search brand, model, reference..." 
-            className="pl-10 bg-white border-slate-200 text-slate-900"
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search brand, model, reference..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            className="pl-10 bg-white border-slate-200 h-10"
           />
         </div>
+        
         <div className="flex gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px] bg-white border-slate-200 text-slate-900">
-              <Filter className="w-3 h-3 mr-2 text-slate-400" />
-              <SelectValue placeholder="Status" />
+            <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
+              <div className="flex items-center gap-2">
+                <Filter className="h-3.5 w-3.5 text-slate-400" />
+                <SelectValue placeholder="All Status" />
+              </div>
             </SelectTrigger>
             <SelectContent className="bg-white border-slate-200 text-slate-900">
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="in_stock">Listed</SelectItem>
               <SelectItem value="servicing">In Service</SelectItem>
               <SelectItem value="incoming">Incoming</SelectItem>
+              <SelectItem value="received">Received</SelectItem>
               <SelectItem value="sold">Sold</SelectItem>
             </SelectContent>
           </Select>
-          
+
           <Select value={brandFilter} onValueChange={setBrandFilter}>
-            <SelectTrigger className="w-[150px] bg-white border-slate-200 text-slate-900">
-              <Watch className="w-3 h-3 mr-2 text-slate-400" />
-              <SelectValue placeholder="Brand" />
+            <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
+              <div className="flex items-center gap-2">
+                <Watch className="h-3.5 w-3.5 text-slate-400" />
+                <SelectValue placeholder="All Brands" />
+              </div>
             </SelectTrigger>
             <SelectContent className="bg-white border-slate-200 text-slate-900">
               <SelectItem value="all">All Brands</SelectItem>
@@ -859,125 +915,97 @@ export default function Inventory() {
           </Select>
         </div>
       </div>
-      <Card className="bg-white border-slate-200 overflow-hidden shadow-sm">
+
+      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
         <Table>
           <TableHeader className="bg-slate-50/50">
-            <TableRow className="hover:bg-transparent">
-              <TableHead onClick={() => handleSort('brand')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
-                <div className="flex items-center">
-                  Brand <SortIcon field="brand" />
-                </div>
+            <TableRow>
+              <TableHead className="w-[80px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('id')}>
+                <div className="flex items-center">ID <SortIcon field="id" /></div>
               </TableHead>
-              <TableHead onClick={() => handleSort('model')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
-                <div className="flex items-center">
-                  Model <SortIcon field="model" />
-                </div>
+              <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('brand')}>
+                <div className="flex items-center">Watch <SortIcon field="brand" /></div>
               </TableHead>
-              <TableHead className="font-semibold text-slate-900 h-12">Ref.</TableHead>
-              <TableHead onClick={() => handleSort('purchasePrice')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
-                <div className="flex items-center">
-                  Cost <SortIcon field="purchasePrice" />
-                </div>
+              <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('purchasePrice')}>
+                <div className="flex items-center">COGS <SortIcon field="purchasePrice" /></div>
               </TableHead>
-              <TableHead onClick={() => handleSort('holdTime')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
-                <div className="flex items-center">
-                  Hold Time <SortIcon field="holdTime" />
-                </div>
+              <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('holdTime')}>
+                <div className="flex items-center">Hold Time <SortIcon field="holdTime" /></div>
               </TableHead>
-              <TableHead className="font-semibold text-slate-900 h-12">Service</TableHead>
-              <TableHead className="font-semibold text-slate-900 h-12">Polish</TableHead>
-              <TableHead onClick={() => handleSort('status')} className="cursor-pointer font-semibold text-slate-900 h-12 hover:text-emerald-600 transition-colors">
-                <div className="flex items-center">
-                  Status <SortIcon field="status" />
-                </div>
+              <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('status')}>
+                <div className="flex items-center">Status <SortIcon field="status" /></div>
               </TableHead>
-              <TableHead className="w-[80px] h-12"></TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-48 text-center text-slate-400">
-                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-500" />
-                  Loading inventory...
+                <TableCell colSpan={6} className="h-24 text-center">
+                  <div className="flex items-center justify-center gap-2 text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading inventory...
+                  </div>
                 </TableCell>
               </TableRow>
             ) : filteredInventory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-48 text-center text-slate-500 font-medium">
-                  No watches found matching your search.
+                <TableCell colSpan={6} className="h-24 text-center">
+                  <div className="flex flex-col items-center justify-center gap-1 text-slate-500">
+                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    <p>No watches found matching your search.</p>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
               filteredInventory.map((item) => (
-                <TableRow key={item.id} className="group hover:bg-slate-50/50 transition-colors cursor-pointer border-slate-100">
-                  <TableCell className="font-medium text-slate-900 py-4">
-                    <Link href={`/inventory/${item.id}`} className="block w-full h-full">
-                      {item.brand}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-slate-600 py-4">
-                    <Link href={`/inventory/${item.id}`} className="block w-full h-full">
-                      <div className="flex flex-col">
-                        <span>{item.model}</span>
-                        <span className="text-xs text-slate-400 font-normal mt-0.5">{item.serialNumber}</span>
-                      </div>
-                    </Link>
-                  </TableCell>
-                  <TableCell className="py-4">
-                    <Link href={`/inventory/${item.id}`} className="block w-full h-full">
-                      <Badge variant="outline" className="font-mono text-slate-500 border-slate-200 font-normal">
-                        {item.referenceNumber}
-                      </Badge>
-                    </Link>
-                  </TableCell>
-                  <TableCell className="font-semibold text-slate-900 py-4">
-                    {formatCurrency(item.purchasePrice)}
-                  </TableCell>
-                  <TableCell className="py-4">
-                    <div className="flex items-center text-slate-500">
-                      <Calendar className="w-3.5 h-3.5 mr-2 text-slate-400" />
-                      {getHoldTime(item)} days
+                <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <TableCell className="font-mono text-xs text-slate-500">#{item.id}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-slate-900">{item.brand}</span>
+                      <span className="text-sm text-slate-500">{item.model}</span>
+                      <span className="text-xs text-slate-400 mt-0.5">{item.referenceNumber}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-slate-600 py-4">
-                    {(item as any).serviceFee ? formatCurrency((item as any).serviceFee) : '-'}
-                  </TableCell>
-                  <TableCell className="text-slate-600 py-4">
-                    {(item as any).polishFee ? formatCurrency((item as any).polishFee) : '-'}
-                  </TableCell>
-                  <TableCell className="py-4">
-                    <div className="flex items-center gap-2">
-                      <Badge className={`border px-2.5 py-0.5 rounded-full font-medium ${getStatusStyles(item.status)}`}>
-                        {getStatusLabel(item.status)}
-                      </Badge>
-                      {item.gdriveLink && (
-                        <a 
-                          href={item.gdriveLink} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-500 hover:text-blue-700"
-                          onClick={(e) => e.stopPropagation()}
-                          data-testid={`link-gdrive-${item.id}`}
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-900">{formatCurrency(item.purchasePrice)}</span>
+                      {item.purchaseDate && (
+                        <span className="text-xs text-slate-400">{format(new Date(item.purchaseDate), "MMM d, yyyy")}</span>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="py-4">
-                    <Link href={`/inventory/${item.id}`}>
-                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-slate-400 hover:text-slate-900 hover:bg-slate-100">
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                    </Link>
+                  <TableCell>
+                    <Badge variant="outline" className="bg-slate-50 font-normal">
+                      {getHoldTime(item)} days
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={cn("font-medium border shadow-none", getStatusStyles(item.status))}>
+                      {getStatusLabel(item.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Link href={`/inventory/${item.id}`}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50">
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <Link href={`/inventory/${item.id}?edit=true`}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
-      </Card>
+      </div>
     </div>
   );
 }
