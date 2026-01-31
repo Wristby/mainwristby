@@ -959,7 +959,11 @@ export default function Inventory() {
               </TableRow>
             ) : (
               filteredInventory.map((item) => (
-                <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                <TableRow 
+                  key={item.id} 
+                  className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                  onClick={() => setLocation(`/inventory/${item.id}`)}
+                >
                   <TableCell className="font-mono text-xs text-slate-500">#{item.id}</TableCell>
                   <TableCell>
                     <div className="flex flex-col">
