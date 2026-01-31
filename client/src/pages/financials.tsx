@@ -49,7 +49,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertExpenseSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { format, getMonth, getYear } from "date-fns";
+import { format, getMonth, getYear, getDaysInMonth, differenceInDays, startOfYear, endOfYear } from "date-fns";
 import {
   Tooltip,
   TooltipContent,
@@ -317,6 +317,87 @@ export default function Financials() {
     return EXPENSE_CATEGORIES.find(c => c.value === category)?.label || category;
   };
 
+  // Calculate filtered net profit and profit per day for the selected period
+  const profitPerDayData = useMemo(() => {
+    if (!inventory || !expenses) return { profitPerDay: 0, daysInPeriod: 0, periodLabel: "All Time", filteredNetProfit: 0 };
+    
+    const today = new Date();
+    const currentYear = getYear(today);
+    
+    // Filter sold items by the selected period
+    const filteredSoldItems = inventory.filter(item => {
+      if (item.status !== 'sold') return false;
+      const soldDate = item.soldDate || item.dateSold;
+      if (!soldDate) return false;
+      const date = new Date(soldDate);
+      const matchesMonth = monthFilter === "all" || getMonth(date).toString() === monthFilter;
+      const matchesYear = yearFilter === "all" || getYear(date).toString() === yearFilter;
+      return matchesMonth && matchesYear;
+    });
+    
+    // Filter expenses by the selected period
+    const filteredExpensesForPeriod = expenses.filter(expense => {
+      const expenseDate = new Date(expense.date);
+      const matchesMonth = monthFilter === "all" || getMonth(expenseDate).toString() === monthFilter;
+      const matchesYear = yearFilter === "all" || getYear(expenseDate).toString() === yearFilter;
+      return matchesMonth && matchesYear;
+    });
+    
+    // Calculate filtered net profit
+    const filteredRevenue = filteredSoldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
+    const filteredCogs = filteredSoldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const filteredWatchFees = filteredSoldItems.reduce((sum, item) => 
+      sum + (item.serviceFee || 0) + (item.polishFee || 0) + (item.platformFees || 0) + 
+      (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? 600 : 0) + (item.importFee || 0), 0);
+    const filteredExpenseTotal = filteredExpensesForPeriod.reduce((sum, e) => sum + e.amount, 0);
+    
+    const filteredNetProfit = filteredRevenue - filteredCogs - filteredWatchFees - filteredExpenseTotal;
+    
+    // Calculate days in period
+    let daysInPeriod = 0;
+    let periodLabel = "";
+    
+    if (monthFilter !== "all" && yearFilter !== "all") {
+      const selectedMonth = parseInt(monthFilter);
+      const selectedYear = parseInt(yearFilter);
+      daysInPeriod = getDaysInMonth(new Date(selectedYear, selectedMonth));
+      const monthName = MONTHS.find(m => m.value === monthFilter)?.label || "";
+      periodLabel = `${monthName} ${selectedYear}`;
+    } else if (monthFilter !== "all" && yearFilter === "all") {
+      const selectedMonth = parseInt(monthFilter);
+      daysInPeriod = getDaysInMonth(new Date(currentYear, selectedMonth));
+      const monthName = MONTHS.find(m => m.value === monthFilter)?.label || "";
+      periodLabel = `${monthName} (All Years)`;
+    } else if (monthFilter === "all" && yearFilter !== "all") {
+      const selectedYear = parseInt(yearFilter);
+      const start = startOfYear(new Date(selectedYear, 0, 1));
+      const end = endOfYear(new Date(selectedYear, 0, 1));
+      daysInPeriod = differenceInDays(end, start) + 1;
+      periodLabel = yearFilter;
+    } else {
+      // All time - calculate from earliest to latest sale date or use 365 if no data
+      if (filteredSoldItems.length > 0) {
+        const dates = filteredSoldItems
+          .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+          .sort((a, b) => a - b);
+        const earliest = new Date(dates[0]);
+        daysInPeriod = differenceInDays(today, earliest) + 1;
+      } else {
+        daysInPeriod = 365;
+      }
+      periodLabel = "All Time";
+    }
+    
+    const profitPerDay = daysInPeriod > 0 ? filteredNetProfit / daysInPeriod : 0;
+    
+    return {
+      profitPerDay,
+      daysInPeriod,
+      periodLabel,
+      filteredNetProfit
+    };
+  }, [monthFilter, yearFilter, inventory, expenses]);
+
   const isLoading = expensesLoading || inventoryLoading;
 
   if (isLoading) {
@@ -530,6 +611,30 @@ export default function Financials() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Profit Per Day Card */}
+      <Card className="bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-500" data-testid="card-profit-per-day">
+        <CardContent className="py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                <CalendarIcon className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-emerald-50/90">Profit Per Day</p>
+                <p className="text-3xl font-bold text-white tabular-nums">
+                  {formatCurrency(profitPerDayData.profitPerDay)}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-emerald-50/80">{profitPerDayData.periodLabel}</p>
+              <p className="text-xs text-emerald-50/60">{profitPerDayData.daysInPeriod} days</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="bg-white border-slate-200">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">
