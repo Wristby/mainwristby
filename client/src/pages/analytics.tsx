@@ -23,7 +23,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useState, useMemo } from "react";
-import { differenceInDays, getMonth, getYear } from "date-fns";
+import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear } from "date-fns";
 import type { InventoryItem } from "@shared/schema";
 
 const MONTHS = [
@@ -139,6 +139,50 @@ export default function Analytics() {
         : 0,
     };
   });
+
+  // Profit Per Day Calculation (matching Financials page)
+  const profitPerDayData = useMemo(() => {
+    let daysInPeriod = 0;
+    let periodLabel = "";
+    
+    if (monthFilter !== "all" && yearFilter !== "all") {
+      const selectedMonth = parseInt(monthFilter);
+      const selectedYear = parseInt(yearFilter);
+      daysInPeriod = getDaysInMonth(new Date(selectedYear, selectedMonth));
+      const monthName = MONTHS.find(m => m.value === monthFilter)?.label || "";
+      periodLabel = `${monthName} ${selectedYear}`;
+    } else if (monthFilter !== "all" && yearFilter === "all") {
+      const selectedMonth = parseInt(monthFilter);
+      daysInPeriod = getDaysInMonth(new Date(getYear(today), selectedMonth));
+      const monthName = MONTHS.find(m => m.value === monthFilter)?.label || "";
+      periodLabel = `${monthName} (All Years)`;
+    } else if (monthFilter === "all" && yearFilter !== "all") {
+      const selectedYear = parseInt(yearFilter);
+      const start = startOfYear(new Date(selectedYear, 0, 1));
+      const end = endOfYear(new Date(selectedYear, 0, 1));
+      daysInPeriod = differenceInDays(end, start) + 1;
+      periodLabel = yearFilter;
+    } else {
+      if (soldItems.length > 0) {
+        const dates = soldItems
+          .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+          .sort((a, b) => a - b);
+        const earliest = new Date(dates[0]);
+        daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
+      } else {
+        daysInPeriod = 365;
+      }
+      periodLabel = "All Time";
+    }
+    
+    const profitPerDay = daysInPeriod > 0 ? totalNetIncome / daysInPeriod : 0;
+    
+    return {
+      profitPerDay,
+      daysInPeriod,
+      periodLabel
+    };
+  }, [monthFilter, yearFilter, totalNetIncome, soldItems, today]);
 
   const avgProfitPerWatch = soldItems.length > 0
     ? profits.reduce((sum, p) => sum + p.profit, 0) / soldItems.length
@@ -270,6 +314,29 @@ export default function Analytics() {
           />
         </div>
       </div>
+
+      {/* Profit Per Day Card */}
+      <Card className="bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-500" data-testid="card-profit-per-day">
+        <CardContent className="py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                <Clock className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-emerald-50/90">Profit Per Day</p>
+                <p className="text-3xl font-bold text-white tabular-nums">
+                  {formatCurrency(profitPerDayData.profitPerDay)}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-emerald-50/80">{profitPerDayData.periodLabel}</p>
+              <p className="text-xs text-emerald-50/60">{profitPerDayData.daysInPeriod} days</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       {/* Per-Watch Metrics */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-slate-600">Per-Watch Metrics</h2>
