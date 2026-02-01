@@ -337,14 +337,15 @@ export default function Dashboard() {
   // Calculate current month's net profit
   const currentMonthProfit = useMemo(() => {
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    // Use the start of the current month in the current year
+    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     
     const thisMonthSales = soldInventory.filter(item => {
-      const dateValue = item.dateSold || item.soldDate;
+      const dateValue = item.soldDate || item.dateSold;
       if (!dateValue) return false;
       const soldDate = new Date(dateValue);
-      return soldDate.getMonth() === currentMonth && soldDate.getFullYear() === currentYear;
+      return soldDate >= startOfCurrentMonth && soldDate <= endOfCurrentMonth;
     });
     
     return thisMonthSales.reduce((sum, item) => {
