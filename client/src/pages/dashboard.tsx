@@ -544,17 +544,28 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-          <div className="relative">
+          <div className="relative pt-4">
             <Progress 
               value={goalProgress} 
               className={cn(
-                "h-3",
+                "h-4",
                 goalProgress >= 100 ? "[&>div]:bg-emerald-500" : 
                 goalProgress >= 75 ? "[&>div]:bg-emerald-400" :
                 goalProgress >= 50 ? "[&>div]:bg-amber-400" :
                 "[&>div]:bg-slate-300"
               )}
             />
+            {/* Amount visual on the bar */}
+            <div 
+              className="absolute top-0 transform -translate-x-1/2 flex flex-col items-center"
+              style={{ left: `${Math.max(5, Math.min(95, goalProgress))}%` }}
+            >
+              <div className="bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm mb-1 whitespace-nowrap">
+                {formatCurrency(currentMonthProfit)}
+              </div>
+              <div className="w-0.5 h-4 bg-slate-900/20" />
+            </div>
+
             <div className="flex justify-between mt-1.5 text-xs text-slate-400">
               <span>{goalProgress.toFixed(0)}% of goal</span>
               {currentMonthProfit >= monthlyGoal ? (
