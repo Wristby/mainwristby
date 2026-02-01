@@ -515,10 +515,15 @@ export default function Dashboard() {
                 <div className="flex items-center gap-1">
                   <span className="text-slate-500">€</span>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={goalInputValue}
-                    onChange={(e) => setGoalInputValue(e.target.value)}
-                    className="w-24 h-8 bg-white border-slate-200 text-right"
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, "");
+                      setGoalInputValue(val);
+                    }}
+                    className="w-24 h-8 bg-white border-slate-200 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleGoalSave();
