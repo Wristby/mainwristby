@@ -48,7 +48,6 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { QuickEstimate } from "@/components/quick-estimate";
 
 const WATCH_BRANDS = [
   "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
@@ -375,10 +374,9 @@ export default function Inventory() {
   };
 
   return (
-    <div className="flex gap-6">
-      <div className="flex-1 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Inventory</h2>
           <div className="flex items-center gap-2 text-slate-500 mt-1">
@@ -1013,11 +1011,5 @@ export default function Inventory() {
         </Table>
       </div>
     </div>
-
-    {/* Sidebar Widget */}
-    <div className="w-80 hidden xl:block">
-      <QuickEstimate />
-    </div>
-  </div>
-);
+  );
 }

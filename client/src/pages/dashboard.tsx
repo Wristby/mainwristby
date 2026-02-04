@@ -35,6 +35,7 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
+import { QuickEstimate } from "@/components/quick-estimate";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertInventorySchema, insertExpenseSchema, insertClientSchema } from "@shared/schema";
@@ -421,13 +422,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
-        <p className="text-slate-500 mt-1">{formattedDate}</p>
-      </div>
-      {/* KPI Cards Row */}
+    <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex-1 space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
+          <p className="text-slate-500 mt-1">{formattedDate}</p>
+        </div>
+        {/* KPI Cards Row */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Capital Deployed - Green */}
         <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
@@ -1285,7 +1287,7 @@ export default function Dashboard() {
           {recentAdditions.map((item) => (
             <Link key={item.id} href={`/inventory/${item.id}`}>
               <Card
-                className="min-w-[200px] max-w-[200px] bg-white border-slate-200 cursor-pointer hover:border-slate-300 transition-colors flex-shrink-0"
+                className="min-w-[200px] max-w-[200px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors flex-shrink-0"
                 data-testid={`recent-item-${item.id}`}
               >
                 <div className="aspect-square bg-slate-50 rounded-t-lg flex items-center justify-center">
@@ -1326,5 +1328,12 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
-  );
+  </div>
+
+  {/* Sidebar Widget */}
+  <div className="w-full lg:w-80 shrink-0">
+    <QuickEstimate />
+  </div>
+</div>
+);
 }
