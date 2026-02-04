@@ -50,61 +50,61 @@ export function QuickEstimate() {
   }, [buyPrice, serviceCost, salePrice, platform, watchRegister, shipping]);
 
   return (
-    <Card className="bg-slate-900 border-slate-800 text-white shadow-xl">
+    <Card className="bg-white border-slate-200 text-slate-900 shadow-sm">
       <CardHeader className="pb-4">
         <CardTitle className="text-lg font-bold flex items-center gap-2">
-          <Calculator className="w-5 h-5 text-emerald-400" />
+          <Calculator className="w-5 h-5 text-emerald-600" />
           Quick Estimate
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-3">
-          <div className="bg-slate-800/50 p-3 rounded-lg space-y-2">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cost Basis</p>
+          <div className="bg-slate-50 p-3 rounded-lg space-y-2 border border-slate-100">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost Basis</p>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-300">Buy Price</span>
+              <span className="text-sm text-slate-600">Buy Price</span>
               <div className="relative w-24">
-                <span className="absolute left-2 top-1.5 text-xs text-slate-500">€</span>
+                <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
                 <Input 
                   value={buyPrice}
                   onChange={(e) => setBuyPrice(e.target.value)}
-                  className="h-7 pl-5 text-right bg-slate-800 border-slate-700 text-xs"
+                  className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900"
                 />
               </div>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-300">Service Cost</span>
+              <span className="text-sm text-slate-600">Service Cost</span>
               <div className="relative w-24">
-                <span className="absolute left-2 top-1.5 text-xs text-slate-500">€</span>
+                <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
                 <Input 
                   value={serviceCost}
                   onChange={(e) => setServiceCost(e.target.value)}
-                  className="h-7 pl-5 text-right bg-slate-800 border-slate-700 text-xs"
+                  className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900"
                 />
               </div>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-400 uppercase">Trial Sale Price</Label>
+            <Label className="text-xs font-semibold text-slate-500 uppercase">Trial Sale Price</Label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-slate-500">€</span>
+              <span className="absolute left-3 top-2.5 text-slate-400">€</span>
               <Input 
                 placeholder="Enter sale price"
                 value={salePrice}
                 onChange={(e) => setSalePrice(e.target.value)}
-                className="pl-7 bg-slate-800 border-slate-700 focus:ring-emerald-500"
+                className="pl-7 bg-white border-slate-200 focus:ring-emerald-500 text-slate-900"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-400 uppercase">Platform</Label>
+            <Label className="text-xs font-semibold text-slate-500 uppercase">Platform</Label>
             <Select value={platform} onValueChange={setPlatform}>
-              <SelectTrigger className="bg-slate-800 border-slate-700">
+              <SelectTrigger className="bg-white border-slate-200 text-slate-900">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700 text-white">
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
                 <SelectItem value="none">Choose an option...</SelectItem>
                 <SelectItem value="chrono24">Chrono24 (6.5%)</SelectItem>
               </SelectContent>
@@ -112,14 +112,14 @@ export function QuickEstimate() {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-400 uppercase">Shipping Estimate</Label>
+            <Label className="text-xs font-semibold text-slate-500 uppercase">Shipping Estimate</Label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-slate-500">€</span>
+              <span className="absolute left-3 top-2.5 text-slate-400">€</span>
               <Input 
                 placeholder="Optional"
                 value={shipping}
                 onChange={(e) => setShipping(e.target.value)}
-                className="pl-7 bg-slate-800 border-slate-700"
+                className="pl-7 bg-white border-slate-200 text-slate-900"
               />
             </div>
           </div>
@@ -129,43 +129,43 @@ export function QuickEstimate() {
               id="wr" 
               checked={watchRegister} 
               onCheckedChange={(checked) => setWatchRegister(!!checked)}
-              className="border-slate-600 data-[state=checked]:bg-emerald-500"
+              className="border-slate-300 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
             />
-            <Label htmlFor="wr" className="text-sm text-slate-300 cursor-pointer">Watch Register Fee (€6)</Label>
+            <Label htmlFor="wr" className="text-sm text-slate-600 cursor-pointer">Watch Register Fee (€6)</Label>
           </div>
         </div>
 
-        <div className="bg-slate-800 rounded-xl p-4 space-y-3 mt-4">
+        <div className="bg-slate-50 rounded-xl p-4 space-y-3 mt-4 border border-slate-100">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium text-slate-300">Net Profit</span>
+              <Wallet className="w-4 h-4 text-emerald-600" />
+              <span className="text-sm font-medium text-slate-600">Net Profit</span>
             </div>
-            <span className="text-lg font-bold text-emerald-400 tabular-nums">
+            <span className="text-lg font-bold text-emerald-600 tabular-nums">
               {formatCurrency(calculate.netProfit)}
             </span>
           </div>
-          <div className="flex justify-between items-center border-t border-slate-700/50 pt-2">
+          <div className="flex justify-between items-center border-t border-slate-200 pt-2">
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium text-slate-300">ROI</span>
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              <span className="text-sm font-medium text-slate-600">ROI</span>
             </div>
-            <span className="text-lg font-bold text-emerald-400 tabular-nums">
+            <span className="text-lg font-bold text-emerald-600 tabular-nums">
               {calculate.roi.toFixed(1)}%
             </span>
           </div>
-          <div className="flex justify-between items-center border-t border-slate-700/50 pt-2">
+          <div className="flex justify-between items-center border-t border-slate-200 pt-2">
             <div className="flex items-center gap-2">
-              <Percent className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium text-slate-300">Margin</span>
+              <Percent className="w-4 h-4 text-emerald-600" />
+              <span className="text-sm font-medium text-slate-600">Margin</span>
             </div>
-            <span className="text-lg font-bold text-emerald-400 tabular-nums">
+            <span className="text-lg font-bold text-emerald-600 tabular-nums">
               {calculate.margin.toFixed(1)}%
             </span>
           </div>
         </div>
 
-        <Button className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold h-12 rounded-xl mt-2">
+        <Button className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 rounded-xl mt-2 shadow-sm transition-all active:scale-[0.98]">
           Calculate Estimate
         </Button>
       </CardContent>

@@ -328,12 +328,6 @@ export default function Dashboard() {
     })
     .slice(0, 5);
 
-  // Calculate projected profit and ROI
-  const projectedProfit = activeInventory.reduce(
-    (sum, item) => sum + (item.targetSellPrice - item.purchasePrice),
-    0
-  );
-
   const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
 
   // Calculate current month's net profit
@@ -422,288 +416,290 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
-      <div className="flex-1 space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
-          <p className="text-slate-500 mt-1">{formattedDate}</p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
+        <p className="text-slate-500 mt-1">{formattedDate}</p>
+      </div>
 
-        {/* KPI Cards Row */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-emerald-50/90">Capital Deployed</p>
-                  <p className="text-3xl font-bold text-white mt-1 tabular-nums">
-                    {formatCurrency(stats?.totalInventoryValue || 0)}
-                  </p>
-                </div>
-                <div className="p-2 bg-white/20 rounded-full">
-                  <DollarSign className="h-5 w-5 text-white" />
-                </div>
+      {/* KPI Cards Row - Top */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-emerald-50/90">Capital Deployed</p>
+                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                  {formatCurrency(stats?.totalInventoryValue || 0)}
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-slate-200">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-500">Net Profit</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                    {formatCurrency(stats?.totalProfit || 0)}
-                  </p>
-                </div>
-                <div className="p-2 bg-emerald-50 rounded-full">
-                  <TrendingUp className="h-5 w-5 text-emerald-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border-slate-200">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-500">Average Margin</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                    {averageMargin.toFixed(1)}%
-                  </p>
-                </div>
-                <div className="p-2 bg-blue-50 rounded-full">
-                  <Percent className="h-5 w-5 text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-emerald-600 border-emerald-500">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm font-medium text-emerald-50/90">Watches at Service</p>
-                  <p className="text-3xl font-bold text-white mt-1 tabular-nums">
-                    {watchesAtPolisher}
-                  </p>
-                </div>
-                <div className="p-2 bg-white/20 rounded-full">
-                  <Watch className="h-5 w-5 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Monthly Goal Progress Bar */}
-        <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-emerald-50 rounded-md">
-                  <Target className="h-4 w-4 text-emerald-600" />
-                </div>
-                <span className="font-semibold text-slate-900">Monthly Goal</span>
-                <span className="text-sm text-slate-500">({format(new Date(), "MMMM yyyy")})</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {isEditingGoal ? (
-                  <div className="flex items-center gap-1">
-                    <span className="text-slate-500">€</span>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={goalInputValue}
-                      onChange={(e) => setGoalInputValue(e.target.value.replace(/[^0-9]/g, ""))}
-                      className="w-24 h-8 bg-white border-slate-200 text-right"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleGoalSave();
-                        if (e.key === "Escape") handleGoalCancel();
-                      }}
-                    />
-                    <Button size="icon" variant="ghost" onClick={handleGoalSave} className="h-8 w-8">
-                      <Check className="h-4 w-4 text-emerald-600" />
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={handleGoalCancel} className="h-8 w-8">
-                      <X className="h-4 w-4 text-slate-400" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold text-slate-900 tabular-nums">
-                      {formatCurrency(currentMonthProfit)} / {formatCurrency(monthlyGoal)}
-                    </span>
-                    <Button size="icon" variant="ghost" onClick={handleGoalEdit} className="h-8 w-8">
-                      <Pencil className="h-3.5 w-3.5 text-slate-400" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="relative pt-4">
-              <Progress 
-                value={goalProgress} 
-                className={cn(
-                  "h-4",
-                  goalProgress >= 100 ? "[&>div]:bg-emerald-500" : 
-                  goalProgress >= 75 ? "[&>div]:bg-emerald-400" :
-                  goalProgress >= 50 ? "[&>div]:bg-amber-400" :
-                  "[&>div]:bg-slate-300"
-                )}
-              />
-              <div 
-                className="absolute top-0 transform -translate-x-1/2 flex flex-col items-center"
-                style={{ left: `${Math.max(5, Math.min(95, goalProgress))}%` }}
-              >
-                <div className="bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm mb-1 whitespace-nowrap">
-                  {formatCurrency(currentMonthProfit)}
-                </div>
-                <div className="w-0.5 h-4 bg-slate-900/20" />
-              </div>
-              <div className="flex justify-between mt-1.5 text-xs text-slate-400">
-                <span>{goalProgress.toFixed(0)}% of goal</span>
-                {currentMonthProfit >= monthlyGoal ? (
-                  <span className="text-emerald-600 font-medium">Goal reached!</span>
-                ) : (
-                  <span>{formatCurrency(monthlyGoal - currentMonthProfit)} to go</span>
-                )}
+              <div className="p-2 bg-white/20 rounded-full">
+                <DollarSign className="h-5 w-5 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Main Content Grid */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Aging Inventory */}
-          <Card className="bg-white border-slate-200">
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
-                <div>
-                  <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
-                </div>
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Net Profit</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {formatCurrency(stats?.totalProfit || 0)}
+                </p>
               </div>
-              <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
-                {agingInventory.length} watches
-              </Badge>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {agingInventory.length === 0 ? (
-                <div className="text-center py-8 text-slate-400">No aging inventory.</div>
+              <div className="p-2 bg-emerald-50 rounded-full">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-500">Average Margin</p>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {averageMargin.toFixed(1)}%
+                </p>
+              </div>
+              <div className="p-2 bg-blue-50 rounded-full">
+                <Percent className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-emerald-600 border-emerald-500">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-emerald-50/90">Watches at Service</p>
+                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                  {watchesAtPolisher}
+                </p>
+              </div>
+              <div className="p-2 bg-white/20 rounded-full">
+                <Watch className="h-5 w-5 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Actions Card - Below KPIs */}
+      <Card className="bg-white border-slate-200">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col md:flex-row gap-4">
+          <Button 
+            className="flex-1 h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
+            variant="outline"
+            onClick={() => setIsAddWatchOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-3 text-emerald-600" /> Add Watch
+          </Button>
+          <Button 
+            className="flex-1 h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
+            variant="outline"
+            onClick={() => setIsAddExpenseOpen(true)}
+          >
+            <Receipt className="h-4 w-4 mr-3 text-red-600" /> Add Expense
+          </Button>
+          <Button 
+            className="flex-1 h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
+            variant="outline"
+            onClick={() => setIsAddClientOpen(true)}
+          >
+            <UserPlus className="h-4 w-4 mr-3 text-blue-600" /> Add Client
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Monthly Goal Progress Bar - Below Quick Actions */}
+      <Card className="bg-white border-slate-200 shadow-sm">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-emerald-50 rounded-md">
+                <Target className="h-4 w-4 text-emerald-600" />
+              </div>
+              <span className="font-semibold text-slate-900">Monthly Goal</span>
+              <span className="text-sm text-slate-500">({format(new Date(), "MMMM yyyy")})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {isEditingGoal ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-500">€</span>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={goalInputValue}
+                    onChange={(e) => setGoalInputValue(e.target.value.replace(/[^0-9]/g, ""))}
+                    className="w-24 h-8 bg-white border-slate-200 text-right"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleGoalSave();
+                      if (e.key === "Escape") handleGoalCancel();
+                    }}
+                  />
+                  <Button size="icon" variant="ghost" onClick={handleGoalSave} className="h-8 w-8">
+                    <Check className="h-4 w-4 text-emerald-600" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={handleGoalCancel} className="h-8 w-8">
+                    <X className="h-4 w-4 text-slate-400" />
+                  </Button>
+                </div>
               ) : (
-                agingInventory.slice(0, 5).map((item) => (
-                  <Link key={item.id} href={`/inventory/${item.id}`}>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors">
-                      <div className="flex items-center gap-3">
-                        <Watch className="h-5 w-5 text-slate-400" />
-                        <div>
-                          <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
-                          <p className="text-xs text-slate-500">{formatCurrency(item.purchasePrice)}</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-slate-900 tabular-nums">
+                    {formatCurrency(currentMonthProfit)} / {formatCurrency(monthlyGoal)}
+                  </span>
+                  <Button size="icon" variant="ghost" onClick={handleGoalEdit} className="h-8 w-8">
+                    <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="relative pt-4">
+            <Progress 
+              value={goalProgress} 
+              className={cn(
+                "h-4",
+                goalProgress >= 100 ? "[&>div]:bg-emerald-500" : 
+                goalProgress >= 75 ? "[&>div]:bg-emerald-400" :
+                goalProgress >= 50 ? "[&>div]:bg-amber-400" :
+                "[&>div]:bg-slate-300"
+              )}
+            />
+            <div 
+              className="absolute top-0 transform -translate-x-1/2 flex flex-col items-center"
+              style={{ left: `${Math.max(5, Math.min(95, goalProgress))}%` }}
+            >
+              <div className="bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm mb-1 whitespace-nowrap">
+                {formatCurrency(currentMonthProfit)}
+              </div>
+              <div className="w-0.5 h-4 bg-slate-900/20" />
+            </div>
+            <div className="flex justify-between mt-1.5 text-xs text-slate-400">
+              <span>{goalProgress.toFixed(0)}% of goal</span>
+              {currentMonthProfit >= monthlyGoal ? (
+                <span className="text-emerald-600 font-medium">Goal reached!</span>
+              ) : (
+                <span>{formatCurrency(monthlyGoal - currentMonthProfit)} to go</span>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Main Content (Aging & Recent) */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="grid gap-6 md:grid-cols-1">
+            {/* Aging Inventory */}
+            <Card className="bg-white border-slate-200">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <div>
+                    <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
+                  {agingInventory.length} watches
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {agingInventory.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">No aging inventory.</div>
+                ) : (
+                  agingInventory.slice(0, 5).map((item) => (
+                    <Link key={item.id} href={`/inventory/${item.id}`}>
+                      <div className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors">
+                        <div className="flex items-center gap-3">
+                          <Watch className="h-5 w-5 text-slate-400" />
+                          <div>
+                            <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
+                            <p className="text-xs text-slate-500">{formatCurrency(item.purchasePrice)}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-amber-600">{item.daysHeld} days</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-amber-600">{item.daysHeld} days</p>
-                      </div>
-                    </div>
-                  </Link>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                    </Link>
+                  ))
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Recent Additions */}
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
-            <div className="flex gap-4 overflow-x-auto pb-2">
-              {recentAdditions.map((item) => (
-                <Link key={item.id} href={`/inventory/${item.id}`}>
-                  <Card className="min-w-[160px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors">
-                    <CardContent className="p-3">
-                      <p className="font-medium text-slate-900 text-sm truncate">{item.brand}</p>
-                      <p className="text-xs text-slate-500 truncate">{item.model}</p>
-                      <Badge variant="secondary" className="mt-2 text-[10px]">
-                        {item.status.replace("_", " ")}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+            {/* Recent Additions */}
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {recentAdditions.map((item) => (
+                  <Link key={item.id} href={`/inventory/${item.id}`}>
+                    <Card className="min-w-[160px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors">
+                      <CardContent className="p-3">
+                        <p className="font-medium text-slate-900 text-sm truncate">{item.brand}</p>
+                        <p className="text-xs text-slate-500 truncate">{item.model}</p>
+                        <Badge variant="secondary" className="mt-2 text-[10px]">
+                          {item.status.replace("_", " ")}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Sidebar - Column 3 */}
-      <div className="w-full lg:w-80 shrink-0 space-y-6">
-        {/* Quick Actions Card */}
-        <Card className="bg-white border-slate-200">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button 
-              className="w-full h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
-              variant="outline"
-              onClick={() => setIsAddWatchOpen(true)}
-            >
-              <Plus className="h-4 w-4 mr-3 text-emerald-600" /> Add Watch
-            </Button>
-            <Button 
-              className="w-full h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
-              variant="outline"
-              onClick={() => setIsAddExpenseOpen(true)}
-            >
-              <Receipt className="h-4 w-4 mr-3 text-red-600" /> Add Expense
-            </Button>
-            <Button 
-              className="w-full h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
-              variant="outline"
-              onClick={() => setIsAddClientOpen(true)}
-            >
-              <UserPlus className="h-4 w-4 mr-3 text-blue-600" /> Add Client
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Sidebar widgets */}
+        <div className="space-y-6">
+          {/* Quick Estimate Widget - Below Month Goal in hierarchy, but side-by-side on large screens */}
+          <QuickEstimate />
 
-        {/* Quick Estimate Widget */}
-        <QuickEstimate />
-
-        {/* Inventory Status */}
-        <Card className="bg-white border-slate-200">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Link href="/inventory?status=incoming">
-              <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
-                <span className="text-sm text-slate-500">Incoming</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
-              </div>
-            </Link>
-            <Link href="/inventory?status=servicing">
-              <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
-                <span className="text-sm text-slate-500">In Service</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.inService}</span>
-              </div>
-            </Link>
-            <Link href="/inventory?status=in_stock">
-              <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
-                <span className="text-sm text-slate-500">Listed</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.listed}</span>
-              </div>
-            </Link>
-            <Link href="/inventory?status=sold">
-              <div className="flex items-center justify-between py-2 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
-                <span className="text-sm text-slate-500">Sold</span>
-                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sold}</span>
-              </div>
-            </Link>
-          </CardContent>
-        </Card>
+          {/* Inventory Status */}
+          <Card className="bg-white border-slate-200">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/inventory?status=incoming">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                  <span className="text-sm text-slate-500">Incoming</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=servicing">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                  <span className="text-sm text-slate-500">In Service</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.inService}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=in_stock">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                  <span className="text-sm text-slate-500">Listed</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.listed}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=sold">
+                <div className="flex items-center justify-between py-2 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                  <span className="text-sm text-slate-500">Sold</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sold}</span>
+                </div>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Add Watch Dialog */}
