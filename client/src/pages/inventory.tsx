@@ -162,7 +162,20 @@ export default function Inventory() {
   });
 
   const onSubmit = (data: any) => {
-    createMutation.mutate(data);
+    // Ensure all numeric fields are properly handled as numbers
+    const processedData = {
+      ...data,
+      purchasePrice: Number(data.purchasePrice) || 0,
+      importFee: Number(data.importFee) || 0,
+      salePrice: Number(data.salePrice) || 0,
+      platformFees: Number(data.platformFees) || 0,
+      shippingFee: Number(data.shippingFee) || 0,
+      insuranceFee: Number(data.insuranceFee) || 0,
+      serviceFee: Number(data.serviceFee) || 0,
+      polishFee: Number(data.polishFee) || 0,
+      year: data.year ? Number(data.year) : null,
+    };
+    createMutation.mutate(processedData);
   };
 
   const formatCurrency = (cents: number) => {
