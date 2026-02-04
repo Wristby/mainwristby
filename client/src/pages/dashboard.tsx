@@ -21,14 +21,12 @@ import {
   Pencil,
   Check,
   X,
-  Scale,
-  Download,
-  Info
+  Scale
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
 import type { InventoryItem, DashboardStats } from "@shared/schema";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -121,36 +119,13 @@ const EXPENSE_CATEGORIES = [
   { value: "other", label: "Other" },
 ];
 
-const COUNTRIES = [
-  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
-  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
-  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
-  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
-  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
-  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon",
-  "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
-  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
-  "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kosovo",
-  "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania",
-  "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius",
-  "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia",
-  "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman",
-  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
-  "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent", "Samoa", "San Marino", "Sao Tome and Principe",
-  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
-  "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
-  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
-  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
-  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
-];
-
 export default function Dashboard() {
   const [isAddWatchOpen, setIsAddWatchOpen] = useState(false);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [monthlyGoal, setMonthlyGoal] = useState(() => {
     const saved = localStorage.getItem("monthlyProfitGoal");
-    return saved ? parseInt(saved, 10) : 200000;
+    return saved ? parseInt(saved, 10) : 200000; // Default €2,000 (stored in cents)
   });
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalInputValue, setGoalInputValue] = useState("");
@@ -217,16 +192,16 @@ export default function Dashboard() {
       name: "",
       email: "",
       phone: "",
-      socialHandle: "",
-      country: "",
       type: "client",
       notes: "",
       isVip: false,
     }
   });
 
+  const [showSaleDetails, setShowSaleDetails] = useState(false);
   const { data: clients } = useQuery<Array<{ id: number; name: string; type: string }>>({ queryKey: ["/api/clients"] });
 
+  // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
   const watchedSalePrice = watchForm.watch("salePrice");
   const watchedSoldPlatform = watchForm.watch("soldPlatform");
 
@@ -305,7 +280,6 @@ export default function Dashboard() {
       }
     });
   };
-
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
   });
@@ -328,6 +302,7 @@ export default function Dashboard() {
   const today = new Date();
   const formattedDate = format(today, "EEEE, MMMM d, yyyy");
 
+  // Calculate aging inventory (held > 45 days, only active items)
   const activeInventory = inventory?.filter(
     (item) => item.status !== "sold"
   ) || [];
@@ -340,6 +315,7 @@ export default function Dashboard() {
     .filter((item) => item.daysHeld > 45)
     .sort((a, b) => b.daysHeld - a.daysHeld);
 
+  // Inventory status counts
   const statusCounts = {
     incoming: inventory?.filter((i) => i.status === "incoming").length || 0,
     inService: inventory?.filter((i) => i.status === "servicing").length || 0,
@@ -347,6 +323,7 @@ export default function Dashboard() {
     sold: inventory?.filter((i) => i.status === "sold").length || 0,
   };
 
+  // Recent additions (last 5 items by purchase date)
   const recentAdditions = [...(inventory || [])]
     .sort((a, b) => {
       const dateA = a.purchaseDate ? new Date(a.purchaseDate).getTime() : 0;
@@ -357,8 +334,10 @@ export default function Dashboard() {
 
   const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
 
+  // Calculate current month's net profit
   const currentMonthProfit = useMemo(() => {
     const now = new Date();
+    // Use the start of the current month in the current year
     const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     
@@ -424,7 +403,6 @@ export default function Dashboard() {
     
     return margins.reduce((a, b) => a + b, 0) / margins.length;
   }, [soldInventory]);
-
   const watchesAtPolisher = statusCounts.inService;
 
   if (isLoading) {
@@ -604,21 +582,71 @@ export default function Dashboard() {
                 "[&>div]:bg-slate-300"
               )}
             />
+            <div 
+              className="absolute top-0 transform -translate-x-1/2 flex flex-col items-center"
+              style={{ left: `${Math.max(5, Math.min(95, goalProgress))}%` }}
+            >
+              <div className="bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm mb-1 whitespace-nowrap">
+                {formatCurrency(currentMonthProfit)}
+              </div>
+              <div className="w-0.5 h-4 bg-slate-900/20" />
+            </div>
+            <div className="flex justify-between mt-1.5 text-xs text-slate-400">
+              <span>{goalProgress.toFixed(0)}% of goal</span>
+              {currentMonthProfit >= monthlyGoal ? (
+                <span className="text-emerald-600 font-medium">Goal reached!</span>
+              ) : (
+                <span>{formatCurrency(monthlyGoal - currentMonthProfit)} to go</span>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Inventory Status - Moved here above Aging Inventory */}
+          <Card className="bg-white border-slate-200">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Link href="/inventory?status=incoming">
+                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                  <span className="text-xs text-slate-500 uppercase font-semibold">Incoming</span>
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=servicing">
+                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                  <span className="text-xs text-slate-500 uppercase font-semibold">In Service</span>
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.inService}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=in_stock">
+                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                  <span className="text-xs text-slate-500 uppercase font-semibold">Listed</span>
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.listed}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=sold">
+                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                  <span className="text-xs text-slate-500 uppercase font-semibold">Sold</span>
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.sold}</span>
+                </div>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 md:grid-cols-1">
             {/* Aging Inventory */}
             <Card className="bg-white border-slate-200">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div className="flex items-center gap-2">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
+                <div className="flex items-center gap-3">
                   <AlertTriangle className="h-5 w-5 text-amber-500" />
                   <div>
-                    <CardTitle className="text-lg font-bold text-slate-900">Aging Inventory</CardTitle>
-                    <p className="text-xs text-slate-500">Held for more than 45 days</p>
+                    <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
                   </div>
                 </div>
                 <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
@@ -729,240 +757,72 @@ export default function Dashboard() {
 
       {/* Add Watch Dialog */}
       <Dialog open={isAddWatchOpen} onOpenChange={setIsAddWatchOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
-          <DialogHeader>
-            <DialogTitle>Add New Watch</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200">
+          <DialogHeader><DialogTitle>Add New Watch</DialogTitle></DialogHeader>
           <form onSubmit={watchForm.handleSubmit(onWatchSubmit)} className="space-y-6 mt-4">
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Brand *</Label>
-                  <Select value={watchForm.watch("brand")} onValueChange={(val) => watchForm.setValue("brand", val)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Brand" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {WATCH_BRANDS.map(brand => (
-                        <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {watchForm.formState.errors.brand && <p className="text-red-500 text-xs">{watchForm.formState.errors.brand.message}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Model *</Label>
-                  <Input {...watchForm.register("model")} className="bg-white border-slate-200" data-testid="input-model" />
-                  {watchForm.formState.errors.model && <p className="text-red-500 text-xs">{watchForm.formState.errors.model.message}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Reference Number *</Label>
-                  <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" data-testid="input-reference" />
-                  {watchForm.formState.errors.referenceNumber && <p className="text-red-500 text-xs">Reference Number is required</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Serial #</Label>
-                  <Input {...watchForm.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Movement Serial Number</Label>
-                  <Input {...watchForm.register("internalSerial")} className="bg-white border-slate-200" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Year</Label>
-                  <Input 
-                    type="text" 
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    {...watchForm.register("year")} 
-                    className="bg-white border-slate-200" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Condition</Label>
-                  <Select value={watchForm.watch("condition")} onValueChange={(val) => watchForm.setValue("condition", val as any)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Condition" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="New">New</SelectItem>
-                      <SelectItem value="Mint">Mint</SelectItem>
-                      <SelectItem value="Used">Used</SelectItem>
-                      <SelectItem value="Damaged">Damaged</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center space-x-4 pt-6">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="box" checked={watchForm.watch("box")} onCheckedChange={(checked) => watchForm.setValue("box", !!checked)} />
-                    <Label htmlFor="box" className="cursor-pointer">Box</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="papers" checked={watchForm.watch("papers")} onCheckedChange={(checked) => watchForm.setValue("papers", !!checked)} />
-                    <Label htmlFor="papers" className="cursor-pointer">Papers</Label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Google Drive Link</Label>
-                  <Input {...watchForm.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Brand *</Label>
+                <Select value={watchForm.watch("brand")} onValueChange={(val) => watchForm.setValue("brand", val)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Brand" /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {WATCH_BRANDS.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Purchase From *</Label>
-                  <Select value={watchForm.watch("purchasedFrom") || ""} onValueChange={(val) => watchForm.setValue("purchasedFrom", val)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Source" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {PURCHASE_FROM_OPTIONS.map(opt => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {watchForm.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">Purchase source is required</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Paid With *</Label>
-                  <Select value={watchForm.watch("paidWith") || ""} onValueChange={(val) => watchForm.setValue("paidWith", val)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Payment" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {PAID_WITH_OPTIONS.map(opt => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {watchForm.formState.errors.paidWith && <p className="text-red-500 text-xs">Payment method is required</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Seller / Dealer</Label>
-                  <Select value={watchForm.watch("clientId")?.toString() || "none"} onValueChange={(val) => watchForm.setValue("clientId", val === "none" ? null : parseInt(val))}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Dealer" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="none">No specific dealer</SelectItem>
-                      {clients?.filter(c => c.type === 'dealer').map(dealer => (
-                        <SelectItem key={dealer.id} value={dealer.id.toString()}>{dealer.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Purchase Price (COGS) *</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...watchForm.register("purchasePrice")} 
-                      className="pl-7 bg-white border-slate-200" 
-                      placeholder="0" 
+              <div className="space-y-2">
+                <Label>Model *</Label>
+                <Input {...watchForm.register("model")} className="bg-white border-slate-200" />
+              </div>
+              <div className="space-y-2">
+                <Label>Reference *</Label>
+                <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" />
+              </div>
+              <div className="space-y-2">
+                <Label>Status *</Label>
+                <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    <SelectItem value="incoming">Incoming</SelectItem>
+                    <SelectItem value="received">Received</SelectItem>
+                    <SelectItem value="in_stock">Listed</SelectItem>
+                    <SelectItem value="servicing">In Service</SelectItem>
+                    <SelectItem value="sold">Sold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Date Received</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900",
+                        !watchForm.watch("dateReceived") && "text-slate-500"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {watchForm.watch("dateReceived") ? format(new Date(watchForm.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={watchForm.watch("dateReceived") ? new Date(watchForm.watch("dateReceived")!) : undefined}
+                      onSelect={(date) => {
+                        watchForm.setValue("dateReceived", date?.toISOString() || null);
+                        if (date) watchForm.setValue("status", "received");
+                      }}
+                      initialFocus
                     />
-                  </div>
-                  {watchForm.formState.errors.purchasePrice && <p className="text-red-500 text-xs">{watchForm.formState.errors.purchasePrice.message}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Import Fee</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...watchForm.register("importFee")} 
-                      className="pl-7 bg-white border-slate-200" 
-                      placeholder="0" 
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2 pt-6">
-                  <Checkbox id="watchRegister" checked={watchForm.watch("watchRegister")} onCheckedChange={(checked) => watchForm.setValue("watchRegister", !!checked)} />
-                  <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register Check (€6)</Label>
-                </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Status & Dates</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Current Status *</Label>
-                  <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Status" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="incoming">Incoming</SelectItem>
-                      <SelectItem value="received">Received</SelectItem>
-                      <SelectItem value="in_stock">Listed</SelectItem>
-                      <SelectItem value="servicing">In Service</SelectItem>
-                      <SelectItem value="sold">Sold</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Date Received</Label>
-                  <Input 
-                    type="date" 
-                    {...watchForm.register("dateReceived")} 
-                    className="bg-white border-slate-200"
-                    onChange={(e) => {
-                      watchForm.setValue("dateReceived", e.target.value);
-                      if (e.target.value) watchForm.setValue("status", "received");
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Purchase Date</Label>
-                  <Input 
-                    type="date" 
-                    {...watchForm.register("purchaseDate")} 
-                    className="bg-white border-slate-200"
-                    onChange={(e) => {
-                      watchForm.setValue("purchaseDate", e.target.value);
-                      if (e.target.value && watchForm.getValues("status") === "incoming") {
-                        watchForm.setValue("status", "incoming");
-                      }
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date Listed</Label>
-                  <Input 
-                    type="date" 
-                    {...watchForm.register("dateListed")} 
-                    className="bg-white border-slate-200"
-                    onChange={(e) => {
-                      watchForm.setValue("dateListed", e.target.value);
-                      if (e.target.value) watchForm.setValue("status", "in_stock");
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
-              <Textarea {...watchForm.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
-            </div>
-
             <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
               <Button type="button" variant="outline" onClick={() => setIsAddWatchOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createWatchMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[120px]">
-                {createWatchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                Add Watch
-              </Button>
+              <Button type="submit" className="bg-emerald-600 text-white">Add Watch</Button>
             </div>
           </form>
         </DialogContent>
@@ -970,82 +830,20 @@ export default function Dashboard() {
 
       {/* Add Expense Dialog */}
       <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
-        <DialogContent className="max-w-md bg-white border-slate-200 text-slate-900">
-          <DialogHeader>
-            <DialogTitle>Add New Expense</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-md bg-white border-slate-200">
+          <DialogHeader><DialogTitle>Add New Expense</DialogTitle></DialogHeader>
           <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label>Description</Label>
-              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="Monthly subscription..." data-testid="input-description" />
+              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="" />
             </div>
             <div className="space-y-2">
-              <Label>Amount</Label>
-              <Input 
-                type="text" 
-                inputMode="numeric"
-                pattern="[0-9]*"
-                {...expenseForm.register("amount")} 
-                className="bg-white border-slate-200" 
-                placeholder="10" 
-                data-testid="input-amount" 
-              />
+              <Label>Amount (€)</Label>
+              <Input {...expenseForm.register("amount")} type="number" className="bg-white border-slate-200" />
             </div>
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select onValueChange={(val) => expenseForm.setValue("category", val as any)} defaultValue={expenseForm.getValues("category")}>
-                <SelectTrigger className="bg-white border-slate-200" data-testid="select-category-form">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 text-slate-900">
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal bg-white border-slate-200",
-                      !expenseForm.watch("date") && "text-muted-foreground"
-                    )}
-                    data-testid="button-date-picker"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {expenseForm.watch("date") ? format(new Date(expenseForm.watch("date")!), "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                  <Calendar
-                    mode="single"
-                    selected={expenseForm.watch("date") || new Date()}
-                    onSelect={(date) => expenseForm.setValue("date", date || new Date())}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/50">
-              <div className="space-y-0.5">
-                <Label className="text-sm font-medium">Recurring Expense</Label>
-                <p className="text-xs text-slate-500">Enable for monthly repeating costs</p>
-              </div>
-              <Switch
-                checked={expenseForm.watch("isRecurring")}
-                onCheckedChange={(checked) => expenseForm.setValue("isRecurring", checked)}
-                data-testid="switch-recurring"
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50">Cancel</Button>
-              <Button type="submit" disabled={createExpenseMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
-                {createExpenseMutation.isPending ? "Adding..." : "Add Expense"}
-              </Button>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 text-white">Add Expense</Button>
             </div>
           </form>
         </DialogContent>
@@ -1053,78 +851,16 @@ export default function Dashboard() {
 
       {/* Add Client Dialog */}
       <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900">
-          <DialogHeader>
-            <DialogTitle>Add New Client</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-md bg-white border-slate-200">
+          <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
           <form onSubmit={clientForm.handleSubmit(onClientSubmit)} className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input {...clientForm.register("name")} className="bg-white border-slate-200" placeholder="John Doe" />
-                {clientForm.formState.errors.name && <p className="text-red-500 text-xs">{(clientForm.formState.errors.name as any).message}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <select 
-                  {...clientForm.register("type")} 
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                >
-                  <option value="client">Client</option>
-                  <option value="dealer">Dealer</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input {...clientForm.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
-              </div>
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input {...clientForm.register("phone")} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
-              </div>
-            </div>
             <div className="space-y-2">
-              <Label>Social Media Handle</Label>
-              <Input {...clientForm.register("socialHandle")} className="bg-white border-slate-200" placeholder="@username" />
-            </div>
-            <div className="space-y-2">
-              <Label>Country</Label>
-              <select 
-                {...clientForm.register("country")} 
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              >
-                <option value="">Select Country</option>
-                {COUNTRIES.map(country => (
-                  <option key={country} value={country}>{country}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea {...clientForm.register("notes")} className="bg-white border-slate-200" placeholder="Special requirements or preferences..." />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Controller
-                name="isVip"
-                control={clientForm.control}
-                render={({ field }) => (
-                  <Checkbox
-                    id="isVip"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                    className="border-slate-300 data-[state=checked]:bg-emerald-600"
-                  />
-                )}
-              />
-              <Label htmlFor="isVip" className="text-sm font-medium leading-none cursor-pointer">VIP Client</Label>
+              <Label>Name</Label>
+              <Input {...clientForm.register("name")} className="bg-white border-slate-200" />
             </div>
             <div className="flex justify-end gap-3 pt-4">
-              <Button type="button" variant="outline" onClick={() => setIsAddClientOpen(false)} className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900">Cancel</Button>
-              <Button type="submit" disabled={createClientMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
-                {createClientMutation.isPending ? "Adding..." : "Add Client"}
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setIsAddClientOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 text-white">Add Client</Button>
             </div>
           </form>
         </DialogContent>
