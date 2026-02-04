@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { setupAuth, isAuthenticated } from "./auth";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -11,26 +11,22 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Setup Auth
   await setupAuth(app);
-  registerAuthRoutes(app);
 
   // === API ROUTES ===
 
   // Clients
-  app.get(api.clients.list.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.get(api.clients.list.path, isAuthenticated, async (req, res) => {
     const clients = await storage.getClients();
     res.json(clients);
   });
 
-  app.get(api.clients.get.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.get(api.clients.get.path, isAuthenticated, async (req, res) => {
     const client = await storage.getClient(Number(req.params.id));
     if (!client) return res.status(404).json({ message: "Client not found" });
     res.json(client);
   });
 
-  app.post(api.clients.create.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.post(api.clients.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.clients.create.input.parse(req.body);
       const client = await storage.createClient(input);
@@ -43,8 +39,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put(api.clients.update.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.put(api.clients.update.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.clients.update.input.parse(req.body);
       const client = await storage.updateClient(Number(req.params.id), input);
@@ -58,22 +53,19 @@ export async function registerRoutes(
   });
 
   // Inventory
-  app.get(api.inventory.list.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.get(api.inventory.list.path, isAuthenticated, async (req, res) => {
     const status = req.query.status as string;
     const items = await storage.getInventoryItems(status);
     res.json(items);
   });
 
-  app.get(api.inventory.get.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.get(api.inventory.get.path, isAuthenticated, async (req, res) => {
     const item = await storage.getInventoryItem(Number(req.params.id));
     if (!item) return res.status(404).json({ message: "Item not found" });
     res.json(item);
   });
 
-  app.post(api.inventory.create.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.post(api.inventory.create.path, isAuthenticated, async (req, res) => {
     try {
       // Coerce numeric fields from strings if necessary (though zod schema should handle types if frontend sends JSON)
       const input = api.inventory.create.input.parse(req.body);
@@ -87,8 +79,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put(api.inventory.update.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.put(api.inventory.update.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.inventory.update.input.parse(req.body);
       const item = await storage.updateInventoryItem(Number(req.params.id), input);
@@ -101,8 +92,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete(api.inventory.delete.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.delete(api.inventory.delete.path, isAuthenticated, async (req, res) => {
     try {
       await storage.deleteInventoryItem(Number(req.params.id));
       res.sendStatus(204);
@@ -112,14 +102,12 @@ export async function registerRoutes(
   });
 
   // Expenses
-  app.get(api.expenses.list.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.get(api.expenses.list.path, isAuthenticated, async (req, res) => {
     const expenses = await storage.getExpenses();
     res.json(expenses);
   });
 
-  app.post(api.expenses.create.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.post(api.expenses.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.expenses.create.input.parse(req.body);
       const expense = await storage.createExpense(input);
@@ -132,8 +120,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put(api.expenses.update.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.put(api.expenses.update.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.expenses.update.input.parse(req.body);
       const expense = await storage.updateExpense(Number(req.params.id), input);
@@ -146,8 +133,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete(api.expenses.delete.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.delete(api.expenses.delete.path, isAuthenticated, async (req, res) => {
     try {
       await storage.deleteExpense(Number(req.params.id));
       res.sendStatus(204);
@@ -157,8 +143,7 @@ export async function registerRoutes(
   });
 
   // Dashboard
-  app.get(api.dashboard.stats.path, async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+  app.get(api.dashboard.stats.path, isAuthenticated, async (req, res) => {
     const stats = await storage.getDashboardStats();
     res.json(stats);
   });

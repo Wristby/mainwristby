@@ -17,8 +17,48 @@ async function fetchUser(): Promise<User | null> {
   return response.json();
 }
 
-async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
+async function logoutFn(): Promise<void> {
+  await fetch("/api/logout", {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
+interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+async function loginFn(credentials: LoginCredentials): Promise<User> {
+  const response = await fetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Login failed");
+  }
+
+  return response.json();
+}
+
+async function registerFn(credentials: LoginCredentials): Promise<User> {
+  const response = await fetch("/api/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Registration failed");
+  }
+
+  return response.json();
 }
 
 export function useAuth() {
@@ -27,13 +67,30 @@ export function useAuth() {
     queryKey: ["/api/auth/user"],
     queryFn: fetchUser,
     retry: false,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   const logoutMutation = useMutation({
-    mutationFn: logout,
+    mutationFn: logoutFn,
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
+      window.location.href = "/landing";
+    },
+  });
+
+  const loginMutation = useMutation({
+    mutationFn: loginFn,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/auth/user"], data);
+      window.location.href = "/";
+    },
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: registerFn,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/auth/user"], data);
+      window.location.href = "/";
     },
   });
 
@@ -43,5 +100,11 @@ export function useAuth() {
     isAuthenticated: !!user,
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
+    login: loginMutation.mutateAsync,
+    isLoggingIn: loginMutation.isPending,
+    loginError: loginMutation.error?.message,
+    register: registerMutation.mutateAsync,
+    isRegistering: registerMutation.isPending,
+    registerError: registerMutation.error?.message,
   };
 }
