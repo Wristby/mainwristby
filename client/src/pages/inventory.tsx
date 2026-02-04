@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon, Download } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -367,65 +367,6 @@ export default function Inventory() {
     return result;
   }, [inventory, search, statusFilter, brandFilter, hasBoxFilter, hasPapersFilter, sortField, sortOrder]);
 
-  const exportToCSV = () => {
-    if (!filteredInventory || filteredInventory.length === 0) {
-      toast({ title: "No data", description: "No watches to export", variant: "destructive" });
-      return;
-    }
-    
-    const headers = [
-      "ID", "Brand", "Model", "Reference", "Serial #", "Movement Serial", 
-      "Status", "Condition", "Purchase Date", "Purchase Price (EUR)", 
-      "Purchased From", "Box", "Papers", "Hold Time (Days)",
-      "Sold Date", "Sold Price (EUR)", "Margin %"
-    ];
-    
-    const rows = filteredInventory.map((item: any) => {
-      const totalCost = (item.purchasePrice || 0) + (item.importFee || 0) + (item.serviceFee || 0) + (item.polishFee || 0) + (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? 600 : 0);
-      const netSale = (item.salePrice || 0) - (item.platformFees || 0);
-      const marginPercent = totalCost > 0 && item.status === "sold" 
-        ? (((netSale - totalCost) / totalCost) * 100).toFixed(2) + "%"
-        : "N/A";
-
-      return [
-        item.id.toString(),
-        `"${item.brand.replace(/"/g, '""')}"`,
-        `"${item.model.replace(/"/g, '""')}"`,
-        `"${item.referenceNumber.replace(/"/g, '""')}"`,
-        `"${(item.serialNumber || "").replace(/"/g, '""')}"`,
-        `"${(item.internalSerial || "").replace(/"/g, '""')}"`,
-        getStatusLabel(item.status),
-        item.condition,
-        item.purchaseDate ? format(new Date(item.purchaseDate), "yyyy-MM-dd") : "",
-        (item.purchasePrice / 100).toString(),
-        `"${(item.purchasedFrom || "").replace(/"/g, '""')}"`,
-        item.box ? "Yes" : "No",
-        item.papers ? "Yes" : "No",
-        getHoldTime(item).toString(),
-        item.dateSold ? format(new Date(item.dateSold), "yyyy-MM-dd") : "",
-        item.salePrice ? (item.salePrice / 100).toString() : "0",
-        marginPercent
-      ];
-    });
-    
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.join(","))
-    ].join("\n");
-    
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `inventory_${format(new Date(), "yyyy-MM-dd")}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    toast({ title: "Success", description: `Exported ${filteredInventory.length} watches to CSV` });
-  };
-
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'in_stock': return 'Listed';
@@ -476,24 +417,14 @@ export default function Inventory() {
             </div>
           </div>
         </div>
-        <div className="flex gap-3 items-center">
-          <Button 
-            variant="outline" 
-            className="border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm" 
-            onClick={exportToCSV}
-            data-testid="button-export-inventory-csv"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export CSV
-          </Button>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Watch
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Watch
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
             <DialogHeader>
               <DialogTitle>Add New Watch</DialogTitle>
             </DialogHeader>
@@ -612,9 +543,9 @@ export default function Inventory() {
                         <SelectValue placeholder="Select Dealer" />
                       </SelectTrigger>
                       <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="none">No specific dealer</SelectItem>
-                        {clients?.filter(c => c.type === 'dealer').map(dealer => (
-                          <SelectItem key={dealer.id} value={dealer.id.toString()}>{dealer.name}</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
+                        {clients?.filter((c: any) => c.type === 'dealer').map((client: any) => (
+                          <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -622,44 +553,69 @@ export default function Inventory() {
                   <div className="space-y-2">
                     <Label>Purchase Price (COGS) *</Label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
                         type="text" 
                         inputMode="numeric"
                         pattern="[0-9]*"
                         {...form.register("purchasePrice")} 
                         className="pl-7 bg-white border-slate-200" 
-                        placeholder="0" 
+                        data-testid="input-purchase-price" 
                       />
                     </div>
-                    {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">{form.formState.errors.purchasePrice.message}</p>}
+                    {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">COGS is required</p>}
                   </div>
                   <div className="space-y-2">
                     <Label>Import Fee</Label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
                         type="text" 
                         inputMode="numeric"
                         pattern="[0-9]*"
                         {...form.register("importFee")} 
                         className="pl-7 bg-white border-slate-200" 
-                        placeholder="0" 
                       />
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2 pt-6">
+                  <div className="flex items-center space-x-2 pt-8">
                     <Checkbox id="watchRegister" checked={form.watch("watchRegister")} onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} />
-                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register Check (€6)</Label>
+                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register (€6)</Label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Purchase Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-white border-slate-200",
+                            !form.watch("purchaseDate") && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.watch("purchaseDate") ? format(new Date(form.watch("purchaseDate")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <CalendarComponent
+                          mode="single"
+                          selected={form.watch("purchaseDate") ? new Date(form.watch("purchaseDate")!) : undefined}
+                          onSelect={(date) => {
+                            form.setValue("purchaseDate", date ? date.toISOString() : null);
+                            if (date) form.setValue("status", "incoming");
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Status & Dates</h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label>Current Status *</Label>
                     <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
@@ -669,93 +625,254 @@ export default function Inventory() {
                       <SelectContent className="bg-white border-slate-200 text-slate-900">
                         <SelectItem value="incoming">Incoming</SelectItem>
                         <SelectItem value="received">Received</SelectItem>
-                        <SelectItem value="in_stock">Listed</SelectItem>
                         <SelectItem value="servicing">In Service</SelectItem>
+                        <SelectItem value="in_stock">Listed</SelectItem>
                         <SelectItem value="sold">Sold</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Date Received</Label>
-                    <Input 
-                      type="date" 
-                      {...form.register("dateReceived")} 
-                      className="bg-white border-slate-200"
-                      onChange={(e) => {
-                        form.setValue("dateReceived", e.target.value);
-                        if (e.target.value) form.setValue("status", "received");
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Purchase Date</Label>
-                    <Input 
-                      type="date" 
-                      {...form.register("purchaseDate")} 
-                      className="bg-white border-slate-200"
-                      onChange={(e) => {
-                        form.setValue("purchaseDate", e.target.value);
-                        if (e.target.value && form.getValues("status") === "incoming") {
-                          form.setValue("status", "incoming");
-                        }
-                      }}
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900",
+                            !form.watch("dateReceived") && "text-slate-500"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.watch("dateReceived") ? format(new Date(form.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <CalendarComponent
+                          mode="single"
+                          selected={form.watch("dateReceived") ? new Date(form.watch("dateReceived")!) : undefined}
+                          onSelect={(date) => {
+                            form.setValue("dateReceived", date ? date.toISOString() : null);
+                            if (date) form.setValue("status", "received");
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div className="space-y-2">
                     <Label>Date Listed</Label>
-                    <Input 
-                      type="date" 
-                      {...form.register("dateListed")} 
-                      className="bg-white border-slate-200"
-                      onChange={(e) => {
-                        form.setValue("dateListed", e.target.value);
-                        if (e.target.value) form.setValue("status", "in_stock");
-                      }}
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-white border-slate-200",
+                            !form.watch("dateListed") && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.watch("dateListed") ? format(new Date(form.watch("dateListed")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <CalendarComponent
+                          mode="single"
+                          selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined}
+                          onSelect={(date) => {
+                            form.setValue("dateListed", date ? date.toISOString() : null);
+                            if (date) form.setValue("status", "in_stock");
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="showSale" className="text-sm font-medium text-slate-500">Show Sale Fields</Label>
+                    <Switch id="showSale" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
+                  </div>
+                </div>
+                
+                {showSaleDetails && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-2">
+                      <Label>Sold Price</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("salePrice")} 
+                          className="pl-7 bg-white border-slate-200" 
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Platform Fees</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("platformFees")} 
+                          className="pl-7 bg-white border-slate-200" 
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sold On</Label>
+                      <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Platform" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          {SOLD_ON_OPTIONS.map(opt => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Shipping Fee</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("shippingFee")} 
+                          className="pl-7 bg-white border-slate-200" 
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Insurance Fee</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          {...form.register("insuranceFee")} 
+                          className="pl-7 bg-white border-slate-200" 
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Buyer Name</Label>
+                      <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Sold</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-white border-slate-200",
+                              !form.watch("dateSold") && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {form.watch("dateSold") ? format(new Date(form.watch("dateSold")!), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                          <CalendarComponent
+                            mode="single"
+                            selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined}
+                            onSelect={(date) => {
+                              form.setValue("dateSold", date ? date.toISOString() : null);
+                              if (date) form.setValue("status", "sold");
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service & Maintenance</h3>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="service-toggle" className="text-xs text-slate-500">Track Service</Label>
-                    <Switch 
-                      id="service-toggle"
-                      checked={showServiceDetails}
-                      onCheckedChange={setShowServiceDetails}
-                    />
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="showService" className="text-sm font-medium text-slate-500">Show Service Fields</Label>
+                    <Switch id="showService" checked={showServiceDetails} onCheckedChange={setShowServiceDetails} />
                   </div>
                 </div>
                 
                 {showServiceDetails && (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Date Sent to Service</Label>
-                        <Input 
-                          type="date" 
-                          {...form.register("dateSentToService")} 
-                          className="bg-white border-slate-200"
-                          onChange={(e) => {
-                            form.setValue("dateSentToService", e.target.value);
-                            if (e.target.value) form.setValue("status", "servicing");
-                          }}
-                        />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-white border-slate-200",
+                                !form.watch("dateSentToService") && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {form.watch("dateSentToService") ? format(new Date(form.watch("dateSentToService")!), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                            <CalendarComponent
+                              mode="single"
+                              selected={form.watch("dateSentToService") ? new Date(form.watch("dateSentToService")!) : undefined}
+                              onSelect={(date) => {
+                                form.setValue("dateSentToService", date ? date.toISOString() : null);
+                                if (date) form.setValue("status", "servicing");
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                       <div className="space-y-2">
                         <Label>Date Returned</Label>
-                        <Input 
-                          type="date" 
-                          {...form.register("dateReturnedFromService")} 
-                          className="bg-white border-slate-200" 
-                        />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-white border-slate-200",
+                                !form.watch("dateReturnedFromService") && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {form.watch("dateReturnedFromService") ? format(new Date(form.watch("dateReturnedFromService")!), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                            <CalendarComponent
+                              mode="single"
+                              selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined}
+                              onSelect={(date) => form.setValue("dateReturnedFromService", date ? date.toISOString() : null)}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Service Fee</Label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
+                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
                             type="text" 
                             inputMode="numeric"
@@ -768,7 +885,7 @@ export default function Inventory() {
                       <div className="space-y-2">
                         <Label>Polish Fee</Label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">€</span>
+                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
                             type="text" 
                             inputMode="numeric"
@@ -805,8 +922,7 @@ export default function Inventory() {
               </div>
             </form>
           </DialogContent>
-          </Dialog>
-        </div>
+        </Dialog>
       </div>
 
       {/* Metrics Row */}
@@ -873,23 +989,28 @@ export default function Inventory() {
         
         <div className="flex gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px] bg-white border-slate-200">
-              <Filter className="w-4 h-4 mr-2 text-slate-400" />
-              <SelectValue placeholder="Status" />
+            <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
+              <div className="flex items-center gap-2">
+                <Filter className="h-3.5 w-3.5 text-slate-400" />
+                <SelectValue placeholder="All Status" />
+              </div>
             </SelectTrigger>
             <SelectContent className="bg-white border-slate-200 text-slate-900">
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="incoming">Incoming</SelectItem>
-              <SelectItem value="received">Received</SelectItem>
               <SelectItem value="in_stock">Listed</SelectItem>
               <SelectItem value="servicing">In Service</SelectItem>
+              <SelectItem value="incoming">Incoming</SelectItem>
+              <SelectItem value="received">Received</SelectItem>
               <SelectItem value="sold">Sold</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={brandFilter} onValueChange={setBrandFilter}>
-            <SelectTrigger className="w-[150px] bg-white border-slate-200">
-              <SelectValue placeholder="Brand" />
+            <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
+              <div className="flex items-center gap-2">
+                <Watch className="h-3.5 w-3.5 text-slate-400" />
+                <SelectValue placeholder="All Brands" />
+              </div>
             </SelectTrigger>
             <SelectContent className="bg-white border-slate-200 text-slate-900">
               <SelectItem value="all">All Brands</SelectItem>
@@ -901,10 +1022,10 @@ export default function Inventory() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
         <Table>
           <TableHeader className="bg-slate-50/50">
-            <TableRow className="hover:bg-transparent">
+            <TableRow>
               <TableHead className="w-[80px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('id')}>
                 <div className="flex items-center">ID <SortIcon field="id" /></div>
               </TableHead>
@@ -912,7 +1033,7 @@ export default function Inventory() {
                 <div className="flex items-center">Watch <SortIcon field="brand" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('purchasePrice')}>
-                <div className="flex items-center">Purchase <SortIcon field="purchasePrice" /></div>
+                <div className="flex items-center">COGS <SortIcon field="purchasePrice" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('holdTime')}>
                 <div className="flex items-center">Hold Time <SortIcon field="holdTime" /></div>
