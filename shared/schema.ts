@@ -6,15 +6,6 @@ import { users } from "./models/auth";
 
 export * from "./models/auth";
 
-// === WATCH BRANDS ===
-export const WATCH_BRANDS = [
-  "Rolex", "Patek Philippe", "Audemars Piguet", "Vacheron Constantin", "Omega",
-  "Cartier", "IWC", "Jaeger-LeCoultre", "Tudor", "Panerai",
-  "Hublot", "Breitling", "Tag Heuer", "Zenith", "Girard-Perregaux",
-  "Blancpain", "Breguet", "A. Lange & Söhne", "Richard Mille", "F.P. Journe",
-  "Glashütte Original", "Longines", "Hamilton", "Oris", "Seiko", "Grand Seiko", "NOMOS Glashütte"
-] as const;
-
 // === CLIENTS ===
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
@@ -95,7 +86,6 @@ export const inventory = pgTable("inventory", {
 });
 
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true });
-export const insertWatchSchema = insertInventorySchema;
 export type InventoryItem = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 
