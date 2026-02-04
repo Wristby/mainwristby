@@ -245,12 +245,12 @@ export default function InventoryDetail() {
       platformFees: Math.round(data.platformFees * 100),
       shippingFee: Math.round(data.shippingFee * 100),
       insuranceFee: Math.round(data.insuranceFee * 100),
-      dateReceived: (data as any).dateReceived ? new Date((data as any).dateReceived) : null,
-      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
-      dateListed: data.dateListed ? new Date(data.dateListed) : null,
-      soldDate: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
-      dateSentToService: data.dateSentToService ? new Date(data.dateSentToService) : null,
-      dateReturnedFromService: data.dateReturnedFromService ? new Date(data.dateReturnedFromService) : null,
+      dateReceived: (data as any).dateReceived || null,
+      purchaseDate: data.purchaseDate || null,
+      dateListed: data.dateListed || null,
+      soldDate: data.dateSold || (finalStatus === 'sold' ? new Date().toISOString().split('T')[0] : null),
+      dateSentToService: data.dateSentToService || null,
+      dateReturnedFromService: data.dateReturnedFromService || null,
       serviceNotes: data.serviceNotes || null,
     };
     updateMutation.mutate(

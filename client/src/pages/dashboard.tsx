@@ -233,11 +233,11 @@ export default function Dashboard() {
       platformFees: Math.round((data.platformFees || 0) * 100),
       shippingFee: Math.round((data.shippingFee || 0) * 100),
       insuranceFee: Math.round((data.insuranceFee || 0) * 100),
-      dateReceived: data.dateReceived ? new Date(data.dateReceived) : null,
-      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
-      dateListed: data.dateListed ? new Date(data.dateListed) : null,
-      dateSold: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
-      soldDate: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
+      dateReceived: data.dateReceived || null,
+      purchaseDate: data.purchaseDate || null,
+      dateListed: data.dateListed || null,
+      dateSold: data.dateSold || null,
+      soldDate: data.dateSold || null,
     };
 
     createWatchMutation.mutate(submissionData as any, {
