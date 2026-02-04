@@ -1,15 +1,32 @@
-import { useInventory, useCreateInventory } from "@/hooks/use-inventory";
-import { useClients } from "@/hooks/use-clients";
+import { useState, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { 
+  Plus, 
+  Search, 
+  Filter, 
+  ArrowUpDown, 
+  ArrowUp, 
+  ArrowDown, 
+  Loader2, 
+  AlertTriangle,
+  Download,
+  Info,
+  TrendingUp,
+  Watch,
+  Box,
+  ExternalLink,
+  Pencil,
+  Calendar as CalendarIcon
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
 } from "@/components/ui/table";
 import {
   Dialog,
@@ -26,229 +43,134 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon, Download } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { insertInventorySchema } from "@shared/schema";
-import { z } from "zod";
-import { useToast } from "@/hooks/use-toast";
-import { Link, useLocation } from "wouter";
-import { differenceInDays, format } from "date-fns";
-import {
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Card, CardContent } from "@/components/ui/card";
+import { 
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertWatchSchema, WATCH_BRANDS } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { format, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-
-const WATCH_BRANDS = [
-  "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
-  "Cartier", "Chopard", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
-  "H. Moser and Cie", "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
-  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe", "Parmigiani",
-  "Roger Dubuis", "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
-  "Vacheron Constantin", "Zenith"
-];
-
-const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"];
-const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
-
-const PURCHASE_FROM_OPTIONS = ["Chrono24", "Eni Dealer", "Ayhan Dealer", "IPLAYWATCH Dealer"];
-const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
-
-const createFormSchema = z.object({
-  brand: z.string().min(1, "Brand is required"),
-  model: z.string().min(1, "Model is required"),
-  referenceNumber: z.string().min(1, "Reference number is required"),
-  serialNumber: z.string().optional().nullable(),
-  internalSerial: z.string().optional().nullable(),
-  year: z.coerce.number().optional().nullable(),
-  
-  purchasedFrom: z.string().min(1, "Purchased from is required"),
-  paidWith: z.string().min(1, "Paid with is required"),
-  clientId: z.coerce.number().optional().nullable(),
-  purchasePrice: z.coerce.number().min(1, "COGS is required"),
-  importFee: z.coerce.number().optional().default(0),
-  watchRegister: z.boolean().default(false),
-  
-  serviceFee: z.coerce.number().optional().default(0),
-  polishFee: z.coerce.number().optional().default(0),
-  
-  salePrice: z.coerce.number().optional().default(0),
-  soldTo: z.string().optional().nullable(),
-  platformFees: z.coerce.number().optional().default(0),
-  shippingFee: z.coerce.number().optional().default(0),
-  insuranceFee: z.coerce.number().optional().default(0),
-  dateReceived: z.string().optional().nullable(),
-  purchaseDate: z.string().optional().nullable(),
-  dateListed: z.string().optional().nullable(),
-  dateSold: z.string().optional().nullable(),
-  
-  targetSellPrice: z.coerce.number().optional().default(0),
-  status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"], {
-    required_error: "Status is required",
-  }),
-  condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
-  box: z.boolean().default(false),
-  papers: z.boolean().default(false),
-  gdriveLink: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
-  
-  shippingPartner: z.string().optional().nullable(),
-  trackingNumber: z.string().optional().nullable(),
-  soldPlatform: z.string().optional().nullable(),
-  dateSentToService: z.string().optional().nullable(),
-  dateReturnedFromService: z.string().optional().nullable(),
-  serviceNotes: z.string().optional().nullable(),
-});
-
-type CreateFormValues = z.infer<typeof createFormSchema>;
+import { useLocation, Link } from "wouter";
 
 type SortField = 'id' | 'brand' | 'model' | 'purchasePrice' | 'holdTime' | 'status';
 type SortOrder = 'asc' | 'desc';
 
-const formatCurrency = (val: number) => {
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(val / 100);
-};
+const SOLD_ON_OPTIONS = ["Chrono24", "eBay", "WhatsApp", "Instagram", "Dealer", "Other"];
+const PURCHASE_FROM_OPTIONS = ["Dealer", "Private", "Auction", "Other"];
+const PAID_WITH_OPTIONS = ["Wire", "Cash", "Crypto", "Other"];
 
 export default function Inventory() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [location, setLocation] = useLocation();
-  
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [brandFilter, setBrandFilter] = useState("all");
   const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const queryParams = new URLSearchParams(window.location.search);
-    const status = queryParams.get("status");
-    if (status) {
-      setStatusFilter(status);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [location]);
   const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
-  const [sortField, setSortField] = useState<SortField>('id');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  
-  const { data: inventory, isLoading } = useInventory();
-  const { data: clients } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
-  const { toast } = useToast();
-  const createMutation = useCreateInventory();
+  const [sortField, setSortField] = useState<SortField>('id');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
-  const form = useForm<CreateFormValues>({
-    resolver: zodResolver(createFormSchema),
+  const { data: inventory, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/inventory"],
+  });
+
+  const { data: clients } = useQuery<any[]>({
+    queryKey: ["/api/clients"],
+  });
+
+  const form = useForm({
+    resolver: zodResolver(insertWatchSchema),
     defaultValues: {
       brand: "",
       model: "",
       referenceNumber: "",
       serialNumber: "",
       internalSerial: "",
-      year: null,
-      purchasedFrom: "",
-      paidWith: "",
-      clientId: undefined,
-      purchasePrice: 0,
-      importFee: 0,
-      watchRegister: false,
-      serviceFee: 0,
-      polishFee: 0,
-      salePrice: 0,
-      soldTo: "",
-      platformFees: 0,
-      shippingFee: 0,
-      insuranceFee: 0,
-      dateReceived: null,
-      purchaseDate: null,
-      dateListed: null,
-      dateSold: null,
-      status: "incoming",
+      year: "",
       condition: "Used",
       box: false,
       papers: false,
-      gdriveLink: "",
-      notes: "",
-      shippingPartner: "",
-      trackingNumber: "",
+      purchasePrice: 0,
+      importFee: 0,
+      purchaseDate: null,
+      status: "incoming",
+      dateReceived: null,
+      dateListed: null,
+      salePrice: 0,
       soldPlatform: "",
+      platformFees: 0,
+      shippingFee: 0,
+      insuranceFee: 0,
+      soldTo: "",
+      dateSold: null,
+      serviceFee: 0,
+      polishFee: 0,
       dateSentToService: null,
       dateReturnedFromService: null,
       serviceNotes: "",
+      notes: "",
+      googleDriveLink: "",
+      watchRegister: false,
+      purchasedFrom: "Dealer",
+      paidWith: "Wire",
+      clientId: null,
     },
   });
 
-  const watchedSalePrice = form.watch("salePrice");
-  const watchedSoldPlatform = form.watch("soldPlatform");
-  const watchedStatus = form.watch("status");
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const formattedData = {
+        ...data,
+        purchasePrice: Math.round(Number(data.purchasePrice) * 100),
+        importFee: Math.round(Number(data.importFee || 0) * 100),
+        salePrice: data.salePrice ? Math.round(Number(data.salePrice) * 100) : 0,
+        platformFees: data.platformFees ? Math.round(Number(data.platformFees) * 100) : 0,
+        shippingFee: data.shippingFee ? Math.round(Number(data.shippingFee) * 100) : 0,
+        insuranceFee: data.insuranceFee ? Math.round(Number(data.insuranceFee) * 100) : 0,
+        serviceFee: data.serviceFee ? Math.round(Number(data.serviceFee) * 100) : 0,
+        polishFee: data.polishFee ? Math.round(Number(data.polishFee) * 100) : 0,
+      };
+      const res = await apiRequest("POST", "/api/inventory", formattedData);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      setIsCreateOpen(false);
+      form.reset();
+      toast({ title: "Watch added to inventory" });
+    },
+  });
 
-  useEffect(() => {
-    if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
-      const fee = Math.round(watchedSalePrice * 0.065);
-      form.setValue("platformFees", fee);
-    }
-  }, [watchedSalePrice, watchedSoldPlatform, form]);
+  const onSubmit = (data: any) => {
+    createMutation.mutate(data);
+  };
 
-  useEffect(() => {
-    if (watchedStatus === "servicing") {
-      setShowServiceDetails(true);
-    }
-  }, [watchedStatus]);
-
-  const onSubmit = (data: CreateFormValues) => {
-    let finalStatus = data.status;
-    if (data.dateSold) {
-      finalStatus = "sold";
-    } else if (data.dateListed && finalStatus !== "sold" && finalStatus !== "servicing") {
-      finalStatus = "in_stock";
-    } else if (data.purchaseDate && finalStatus === "incoming") {
-      finalStatus = "received";
-    }
-    
-    const submissionData = {
-      ...data,
-      status: finalStatus,
-      purchasePrice: Math.round(data.purchasePrice * 100),
-      importFee: Math.round(data.importFee * 100),
-      serviceFee: Math.round(data.serviceFee * 100),
-      polishFee: Math.round(data.polishFee * 100),
-      salePrice: Math.round(data.salePrice * 100),
-      platformFees: Math.round(data.platformFees * 100),
-      shippingFee: Math.round(data.shippingFee * 100),
-      insuranceFee: Math.round(data.insuranceFee * 100),
-      dateReceived: data.dateReceived || null,
-      purchaseDate: data.purchaseDate || null,
-      dateListed: data.dateListed || null,
-      dateSold: data.dateSold || null,
-      dateSentToService: data.dateSentToService || null,
-      dateReturnedFromService: data.dateReturnedFromService || null,
-      serviceNotes: data.serviceNotes || null,
-    };
-    createMutation.mutate(submissionData as any, {
-      onSuccess: () => {
-        setIsCreateOpen(false);
-        form.reset();
-        toast({ title: "Success", description: "Inventory item added" });
-      },
-      onError: (err) => {
-        toast({ title: "Error", description: err.message, variant: "destructive" });
-      },
-    });
+  const formatCurrency = (cents: number) => {
+    return new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: 0,
+    }).format(cents / 100);
   };
 
   const exportToCSV = () => {
@@ -256,28 +178,14 @@ export default function Inventory() {
     
     const headers = [
       "ID", "Brand", "Model", "Reference", "Serial #", "Movement Serial", 
-      "Condition", "Status", "Box", "Papers", "Purchase Date", "COGS (€)", 
-      "Import Fee (€)", "Service Fee (€)", "Polish Fee (€)", "Target Sell (€)", 
-      "Sold Date", "Sold Price (€)", "Margin (%)", "Notes"
+      "Condition", "Status", "Box", "Papers", "Purchase Date", "COGS", 
+      "Import Fee", "Service Fee", "Polish Fee", "Target Sell", "Sold Date", "Sold Price", "Margin %"
     ];
-
+    
     const rows = filteredInventory.map(item => {
-      const purchasePrice = item.purchasePrice / 100;
-      const soldPrice = (item.salePrice || 0) / 100;
-      const totalCost = (
-        item.purchasePrice + 
-        (item.importFee || 0) + 
-        (item.serviceFee || 0) + 
-        (item.polishFee || 0) + 
-        (item.platformFees || 0) + 
-        (item.shippingFee || 0) + 
-        (item.insuranceFee || 0) +
-        (item.watchRegister ? 600 : 0)
-      ) / 100;
+      const margin = item.salePrice ? 
+        Math.round(((item.salePrice - (item.purchasePrice + (item.importFee || 0) + (item.serviceFee || 0) + (item.polishFee || 0))) / item.salePrice) * 100) : 0;
       
-      const profit = soldPrice - totalCost;
-      const margin = soldPrice > 0 ? (profit / soldPrice) * 100 : 0;
-
       return [
         item.id,
         item.brand,
@@ -290,28 +198,27 @@ export default function Inventory() {
         item.box ? "Yes" : "No",
         item.papers ? "Yes" : "No",
         item.purchaseDate ? format(new Date(item.purchaseDate), "yyyy-MM-dd") : "",
-        purchasePrice,
-        (item.importFee || 0) / 100,
-        (item.serviceFee || 0) / 100,
-        (item.polishFee || 0) / 100,
-        item.targetSellPrice / 100,
-        item.soldDate ? format(new Date(item.soldDate), "yyyy-MM-dd") : "",
-        soldPrice,
-        margin.toFixed(2),
-        item.notes || ""
+        (item.purchasePrice / 100).toFixed(0),
+        ((item.importFee || 0) / 100).toFixed(0),
+        ((item.serviceFee || 0) / 100).toFixed(0),
+        ((item.polishFee || 0) / 100).toFixed(0),
+        (Math.round(item.purchasePrice * 1.125) / 100).toFixed(0),
+        item.dateSold ? format(new Date(item.dateSold), "yyyy-MM-dd") : "",
+        item.salePrice ? (item.salePrice / 100).toFixed(0) : "",
+        item.salePrice ? `${margin}%` : ""
       ];
     });
 
     const csvContent = [
       headers.join(","),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `inventory_export_${format(new Date(), "yyyy-MM-dd")}.csv`);
+    link.setAttribute("download", `chronos_inventory_${format(new Date(), "yyyy-MM-dd")}.csv`);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
@@ -458,7 +365,6 @@ export default function Inventory() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Inventory</h2>
@@ -506,500 +412,66 @@ export default function Inventory() {
                 <DialogTitle>Add New Watch</DialogTitle>
               </DialogHeader>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>Brand *</Label>
-                    <Select value={form.watch("brand")} onValueChange={(val) => form.setValue("brand", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Brand" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {WATCH_BRANDS.map(brand => (
-                          <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.brand && <p className="text-red-500 text-xs">{form.formState.errors.brand.message}</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Model *</Label>
-                    <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="input-model" />
-                    {form.formState.errors.model && <p className="text-red-500 text-xs">{form.formState.errors.model.message}</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Reference Number *</Label>
-                    <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="input-reference" />
-                    {form.formState.errors.referenceNumber && <p className="text-red-500 text-xs">Reference Number is required</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Serial #</Label>
-                    <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Movement Serial Number</Label>
-                    <Input {...form.register("internalSerial")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Year</Label>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...form.register("year")} 
-                      className="bg-white border-slate-200" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Condition</Label>
-                    <Select value={form.watch("condition")} onValueChange={(val) => form.setValue("condition", val as any)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Condition" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="New">New</SelectItem>
-                        <SelectItem value="Mint">Mint</SelectItem>
-                        <SelectItem value="Used">Used</SelectItem>
-                        <SelectItem value="Damaged">Damaged</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center space-x-4 pt-6">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox id="box" checked={form.watch("box")} onCheckedChange={(checked) => form.setValue("box", !!checked)} />
-                      <Label htmlFor="box" className="cursor-pointer">Box</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox id="papers" checked={form.watch("papers")} onCheckedChange={(checked) => form.setValue("papers", !!checked)} />
-                      <Label htmlFor="papers" className="cursor-pointer">Papers</Label>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Google Drive Link</Label>
-                    <Input {...form.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>Purchase From *</Label>
-                    <Select value={form.watch("purchasedFrom") || ""} onValueChange={(val) => form.setValue("purchasedFrom", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Source" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {PURCHASE_FROM_OPTIONS.map(opt => (
-                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">Purchase source is required</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Paid With *</Label>
-                    <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Payment" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {PAID_WITH_OPTIONS.map(opt => (
-                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">Payment method is required</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Seller / Dealer</Label>
-                    <Select value={form.watch("clientId")?.toString() || "none"} onValueChange={(val) => form.setValue("clientId", val === "none" ? null : parseInt(val))}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Dealer" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="none">None</SelectItem>
-                        {clients?.filter((c: any) => c.type === 'dealer').map((client: any) => (
-                          <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Purchase Price (COGS) *</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...form.register("purchasePrice")} 
-                        className="pl-7 bg-white border-slate-200" 
-                        data-testid="input-purchase-price" 
-                      />
-                    </div>
-                    {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">COGS is required</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Import Fee</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...form.register("importFee")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2 pt-8">
-                    <Checkbox id="watchRegister" checked={form.watch("watchRegister")} onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} />
-                    <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register (€6)</Label>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Purchase Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal bg-white border-slate-200",
-                            !form.watch("purchaseDate") && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch("purchaseDate") ? format(new Date(form.watch("purchaseDate")!), "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                        <CalendarComponent
-                          mode="single"
-                          selected={form.watch("purchaseDate") ? new Date(form.watch("purchaseDate")!) : undefined}
-                          onSelect={(date) => {
-                            form.setValue("purchaseDate", date ? date.toISOString() : null);
-                            if (date) form.setValue("status", "incoming");
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>Current Status *</Label>
-                    <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Status" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="incoming">Incoming</SelectItem>
-                        <SelectItem value="received">Received</SelectItem>
-                        <SelectItem value="servicing">In Service</SelectItem>
-                        <SelectItem value="in_stock">Listed</SelectItem>
-                        <SelectItem value="sold">Sold</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date Received</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900",
-                            !form.watch("dateReceived") && "text-slate-500"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch("dateReceived") ? format(new Date(form.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                        <CalendarComponent
-                          mode="single"
-                          selected={form.watch("dateReceived") ? new Date(form.watch("dateReceived")!) : undefined}
-                          onSelect={(date) => {
-                            form.setValue("dateReceived", date ? date.toISOString() : null);
-                            if (date) form.setValue("status", "received");
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date Listed</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal bg-white border-slate-200",
-                            !form.watch("dateListed") && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch("dateListed") ? format(new Date(form.watch("dateListed")!), "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                        <CalendarComponent
-                          mode="single"
-                          selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined}
-                          onSelect={(date) => {
-                            form.setValue("dateListed", date ? date.toISOString() : null);
-                            if (date) form.setValue("status", "in_stock");
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
-                  <div className="flex items-center space-x-2">
-                    <Label htmlFor="showSale" className="text-sm font-medium text-slate-500">Show Sale Fields</Label>
-                    <Switch id="showSale" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
-                  </div>
-                </div>
-                
-                {showSaleDetails && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>Sold Price</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          {...form.register("salePrice")} 
-                          className="pl-7 bg-white border-slate-200" 
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Platform Fees</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          {...form.register("platformFees")} 
-                          className="pl-7 bg-white border-slate-200" 
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Sold On</Label>
-                      <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
+                      <Label>Brand *</Label>
+                      <Select value={form.watch("brand")} onValueChange={(val) => form.setValue("brand", val)}>
                         <SelectTrigger className="bg-white border-slate-200">
-                          <SelectValue placeholder="Select Platform" />
+                          <SelectValue placeholder="Select Brand" />
                         </SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {SOLD_ON_OPTIONS.map(opt => (
-                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          {WATCH_BRANDS.map(brand => (
+                            <SelectItem key={brand} value={brand}>{brand}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Shipping Fee</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          {...form.register("shippingFee")} 
-                          className="pl-7 bg-white border-slate-200" 
-                        />
-                      </div>
+                      <Label>Model *</Label>
+                      <Input {...form.register("model")} className="bg-white border-slate-200" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Insurance Fee</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          {...form.register("insuranceFee")} 
-                          className="pl-7 bg-white border-slate-200" 
-                        />
-                      </div>
+                      <Label>Reference Number *</Label>
+                      <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Buyer Name</Label>
-                      <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date Sold</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full justify-start text-left font-normal bg-white border-slate-200",
-                              !form.watch("dateSold") && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {form.watch("dateSold") ? format(new Date(form.watch("dateSold")!), "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <CalendarComponent
-                            mode="single"
-                            selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined}
-                            onSelect={(date) => {
-                              form.setValue("dateSold", date ? date.toISOString() : null);
-                              if (date) form.setValue("status", "sold");
-                            }}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service & Maintenance</h3>
-                  <div className="flex items-center space-x-2">
-                    <Label htmlFor="showService" className="text-sm font-medium text-slate-500">Show Service Fields</Label>
-                    <Switch id="showService" checked={showServiceDetails} onCheckedChange={setShowServiceDetails} />
                   </div>
                 </div>
-                
-                {showServiceDetails && (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Date Sent to Service</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full justify-start text-left font-normal bg-white border-slate-200",
-                                !form.watch("dateSentToService") && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {form.watch("dateSentToService") ? format(new Date(form.watch("dateSentToService")!), "PPP") : <span>Pick a date</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                            <CalendarComponent
-                              mode="single"
-                              selected={form.watch("dateSentToService") ? new Date(form.watch("dateSentToService")!) : undefined}
-                              onSelect={(date) => {
-                                form.setValue("dateSentToService", date ? date.toISOString() : null);
-                                if (date) form.setValue("status", "servicing");
-                              }}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Date Returned</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full justify-start text-left font-normal bg-white border-slate-200",
-                                !form.watch("dateReturnedFromService") && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {form.watch("dateReturnedFromService") ? format(new Date(form.watch("dateReturnedFromService")!), "PPP") : <span>Pick a date</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                            <CalendarComponent
-                              mode="single"
-                              selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined}
-                              onSelect={(date) => form.setValue("dateReturnedFromService", date ? date.toISOString() : null)}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Service Fee</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input 
-                            type="text" 
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            {...form.register("serviceFee")} 
-                            className="pl-7 bg-white border-slate-200" 
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Polish Fee</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input 
-                            type="text" 
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            {...form.register("polishFee")} 
-                            className="pl-7 bg-white border-slate-200" 
-                          />
-                        </div>
-                      </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Purchase Price (COGS) *</Label>
+                      <Input type="number" {...form.register("purchasePrice")} className="bg-white border-slate-200" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Service Notes</Label>
-                      <Textarea 
-                        {...form.register("serviceNotes")} 
-                        className="bg-white border-slate-200 min-h-[80px]" 
-                        placeholder="Notes about the service work performed..."
-                      />
+                      <Label>Status *</Label>
+                      <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Status" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="incoming">Incoming</SelectItem>
+                          <SelectItem value="received">Received</SelectItem>
+                          <SelectItem value="servicing">In Service</SelectItem>
+                          <SelectItem value="in_stock">Listed</SelectItem>
+                          <SelectItem value="sold">Sold</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
-                <Textarea {...form.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[120px]">
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                  Add Watch
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
+                  <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white">Add Watch</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -1081,21 +553,6 @@ export default function Inventory() {
               <SelectItem value="sold">Sold</SelectItem>
             </SelectContent>
           </Select>
-
-          <Select value={brandFilter} onValueChange={setBrandFilter}>
-            <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
-              <div className="flex items-center gap-2">
-                <Watch className="h-3.5 w-3.5 text-slate-400" />
-                <SelectValue placeholder="All Brands" />
-              </div>
-            </SelectTrigger>
-            <SelectContent className="bg-white border-slate-200 text-slate-900">
-              <SelectItem value="all">All Brands</SelectItem>
-              {brands.map(brand => (
-                <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
@@ -1104,19 +561,19 @@ export default function Inventory() {
           <TableHeader className="bg-slate-50/50">
             <TableRow>
               <TableHead className="w-[80px] cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('id')}>
-                <div className="flex items-center">ID <SortIcon field="id" /></div>
+                <div className="flex items-center gap-1">ID <SortIcon field="id" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('brand')}>
-                <div className="flex items-center">Watch <SortIcon field="brand" /></div>
+                <div className="flex items-center gap-1">Watch <SortIcon field="brand" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('purchasePrice')}>
-                <div className="flex items-center">COGS <SortIcon field="purchasePrice" /></div>
+                <div className="flex items-center gap-1">COGS <SortIcon field="purchasePrice" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('holdTime')}>
-                <div className="flex items-center">Hold Time <SortIcon field="holdTime" /></div>
+                <div className="flex items-center gap-1">Hold Time <SortIcon field="holdTime" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('status')}>
-                <div className="flex items-center">Status <SortIcon field="status" /></div>
+                <div className="flex items-center gap-1">Status <SortIcon field="status" /></div>
               </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -1127,16 +584,7 @@ export default function Inventory() {
                 <TableCell colSpan={6} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2 text-slate-500">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading inventory...
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : filteredInventory.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
-                  <div className="flex flex-col items-center justify-center gap-1 text-slate-500">
-                    <AlertTriangle className="h-5 w-5 text-amber-500" />
-                    <p>No watches found matching your search.</p>
+                    Loading...
                   </div>
                 </TableCell>
               </TableRow>
@@ -1144,7 +592,7 @@ export default function Inventory() {
               filteredInventory.map((item) => (
                 <TableRow 
                   key={item.id} 
-                  className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                  className="hover:bg-slate-50/50 transition-colors cursor-pointer"
                   onClick={() => setLocation(`/inventory/${item.id}`)}
                 >
                   <TableCell className="font-mono text-xs text-slate-500">#{item.id}</TableCell>
@@ -1152,40 +600,19 @@ export default function Inventory() {
                     <div className="flex flex-col">
                       <span className="font-semibold text-slate-900">{item.brand}</span>
                       <span className="text-sm text-slate-500">{item.model}</span>
-                      <span className="text-xs text-slate-400 mt-0.5">{item.referenceNumber}</span>
                     </div>
                   </TableCell>
+                  <TableCell>{formatCurrency(item.purchasePrice)}</TableCell>
+                  <TableCell>{getHoldTime(item)} days</TableCell>
                   <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium text-slate-900">{formatCurrency(item.purchasePrice)}</span>
-                      {item.purchaseDate && (
-                        <span className="text-xs text-slate-400">{format(new Date(item.purchaseDate), "MMM d, yyyy")}</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="bg-slate-50 font-normal">
-                      {getHoldTime(item)} days
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={cn("font-medium border shadow-none", getStatusStyles(item.status))}>
+                    <Badge className={cn("font-medium", getStatusStyles(item.status))}>
                       {getStatusLabel(item.status)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Link href={`/inventory/${item.id}`}>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50">
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                      <Link href={`/inventory/${item.id}?edit=true`}>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </div>
+                    <Button size="icon" variant="ghost" className="h-8 w-8">
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
