@@ -585,7 +585,10 @@ export default function Inventory() {
                         <CalendarComponent
                           mode="single"
                           selected={form.watch("purchaseDate") ? new Date(form.watch("purchaseDate")!) : undefined}
-                          onSelect={(date) => form.setValue("purchaseDate", date ? date.toISOString() : null)}
+                          onSelect={(date) => {
+                            form.setValue("purchaseDate", date ? date.toISOString() : null);
+                            if (date) form.setValue("status", "incoming");
+                          }}
                           initialFocus
                         />
                       </PopoverContent>
@@ -597,6 +600,21 @@ export default function Inventory() {
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Current Status *</Label>
+                    <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Status" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="incoming">Incoming</SelectItem>
+                        <SelectItem value="received">Received</SelectItem>
+                        <SelectItem value="servicing">In Service</SelectItem>
+                        <SelectItem value="in_stock">Listed</SelectItem>
+                        <SelectItem value="sold">Sold</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="space-y-2">
                     <Label>Date Received</Label>
                     <Popover>
@@ -616,26 +634,14 @@ export default function Inventory() {
                         <CalendarComponent
                           mode="single"
                           selected={form.watch("dateReceived") ? new Date(form.watch("dateReceived")!) : undefined}
-                          onSelect={(date) => form.setValue("dateReceived", date ? date.toISOString() : null)}
+                          onSelect={(date) => {
+                            form.setValue("dateReceived", date ? date.toISOString() : null);
+                            if (date) form.setValue("status", "received");
+                          }}
                           initialFocus
                         />
                       </PopoverContent>
                     </Popover>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Current Status *</Label>
-                    <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Status" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        <SelectItem value="incoming">Incoming</SelectItem>
-                        <SelectItem value="received">Received</SelectItem>
-                        <SelectItem value="servicing">In Service</SelectItem>
-                        <SelectItem value="in_stock">Listed</SelectItem>
-                        <SelectItem value="sold">Sold</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Date Listed</Label>
@@ -658,9 +664,7 @@ export default function Inventory() {
                           selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined}
                           onSelect={(date) => {
                             form.setValue("dateListed", date ? date.toISOString() : null);
-                            if (date && form.getValues("status") === "incoming") {
-                              form.setValue("status", "in_stock");
-                            }
+                            if (date) form.setValue("status", "in_stock");
                           }}
                           initialFocus
                         />

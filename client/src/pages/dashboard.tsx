@@ -779,6 +779,19 @@ export default function Dashboard() {
                 <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" />
               </div>
               <div className="space-y-2">
+                <Label>Status *</Label>
+                <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    <SelectItem value="incoming">Incoming</SelectItem>
+                    <SelectItem value="received">Received</SelectItem>
+                    <SelectItem value="in_stock">Listed</SelectItem>
+                    <SelectItem value="servicing">In Service</SelectItem>
+                    <SelectItem value="sold">Sold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Date Received</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -797,22 +810,14 @@ export default function Dashboard() {
                     <Calendar
                       mode="single"
                       selected={watchForm.watch("dateReceived") ? new Date(watchForm.watch("dateReceived")!) : undefined}
-                      onSelect={(date) => watchForm.setValue("dateReceived", date?.toISOString() || null)}
+                      onSelect={(date) => {
+                        watchForm.setValue("dateReceived", date?.toISOString() || null);
+                        if (date) watchForm.setValue("status", "received");
+                      }}
                       initialFocus
                     />
                   </PopoverContent>
                 </Popover>
-              </div>
-              <div className="space-y-2">
-                <Label>Status *</Label>
-                <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
-                  <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-white border-slate-200 text-slate-900">
-                    <SelectItem value="incoming">Incoming</SelectItem>
-                    <SelectItem value="in_stock">Listed</SelectItem>
-                    <SelectItem value="servicing">In Service</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">

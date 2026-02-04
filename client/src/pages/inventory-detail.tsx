@@ -441,6 +441,10 @@ export default function InventoryDetail() {
                         type="date" 
                         {...form.register("dateReceived" as any)} 
                         className="bg-white border-slate-200" 
+                        onChange={(e) => {
+                          form.setValue("dateReceived" as any, e.target.value);
+                          if (e.target.value) form.setValue("status", "received");
+                        }}
                       />
                     </div>
                     <div className="space-y-2">
@@ -451,11 +455,7 @@ export default function InventoryDetail() {
                         className="bg-white border-slate-200" 
                         onChange={(e) => {
                           form.setValue("purchaseDate", e.target.value);
-                          // Only set status to received if currently incoming
-                          const currentStatus = form.getValues("status");
-                          if (e.target.value && currentStatus === "incoming") {
-                            form.setValue("status", "received");
-                          }
+                          if (e.target.value) form.setValue("status", "incoming");
                         }}
                       />
                     </div>
@@ -467,18 +467,7 @@ export default function InventoryDetail() {
                         className="bg-white border-slate-200"
                         onChange={(e) => {
                           form.setValue("dateListed", e.target.value);
-                          if (e.target.value) {
-                            const currentStatus = form.getValues("status");
-                            // Only upgrade status to in_stock if not already sold
-                            if (currentStatus !== "sold") {
-                              form.setValue("status", "in_stock");
-                            }
-                            // Only set purchaseDate if it's empty
-                            const currentPurchaseDate = form.getValues("purchaseDate");
-                            if (!currentPurchaseDate) {
-                              form.setValue("purchaseDate", e.target.value);
-                            }
-                          }
+                          if (e.target.value) form.setValue("status", "in_stock");
                         }}
                       />
                     </div>
@@ -490,19 +479,7 @@ export default function InventoryDetail() {
                         className="bg-white border-slate-200"
                         onChange={(e) => {
                           form.setValue("dateSold", e.target.value);
-                          if (e.target.value) {
-                            form.setValue("status", "sold");
-                            // Only fill in dateListed if empty
-                            const currentDateListed = form.getValues("dateListed");
-                            if (!currentDateListed) {
-                              form.setValue("dateListed", e.target.value);
-                            }
-                            // Only fill in purchaseDate if empty
-                            const currentPurchaseDate = form.getValues("purchaseDate");
-                            if (!currentPurchaseDate) {
-                              form.setValue("purchaseDate", e.target.value);
-                            }
-                          }
+                          if (e.target.value) form.setValue("status", "sold");
                         }}
                       />
                     </div>
