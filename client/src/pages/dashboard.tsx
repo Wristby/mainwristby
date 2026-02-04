@@ -429,765 +429,162 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
           <p className="text-slate-500 mt-1">{formattedDate}</p>
         </div>
+
         {/* KPI Cards Row */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Capital Deployed - Green */}
-        <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-emerald-50/90">Capital Deployed</p>
-                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
-                  {formatCurrency(stats?.totalInventoryValue || 0)}
-                </p>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-emerald-50/90">Capital Deployed</p>
+                  <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                    {formatCurrency(stats?.totalInventoryValue || 0)}
+                  </p>
+                </div>
+                <div className="p-2 bg-white/20 rounded-full">
+                  <DollarSign className="h-5 w-5 text-white" />
+                </div>
               </div>
-              <div className="p-2 bg-white/20 rounded-full">
-                <DollarSign className="h-5 w-5 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Projected Net Profit */}
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Net Profit</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(stats?.totalProfit || 0)}
-                </p>
+          <Card className="bg-white border-slate-200">
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">Net Profit</p>
+                  <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                    {formatCurrency(stats?.totalProfit || 0)}
+                  </p>
+                </div>
+                <div className="p-2 bg-emerald-50 rounded-full">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
+                </div>
               </div>
-              <div className="p-2 bg-emerald-50 rounded-full">
-                <TrendingUp className="h-5 w-5 text-emerald-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Average Margin */}
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Average Margin</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {averageMargin.toFixed(1)}%
-                </p>
+          <Card className="bg-white border-slate-200">
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">Average Margin</p>
+                  <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                    {averageMargin.toFixed(1)}%
+                  </p>
+                </div>
+                <div className="p-2 bg-blue-50 rounded-full">
+                  <Percent className="h-5 w-5 text-blue-600" />
+                </div>
               </div>
-              <div className="p-2 bg-blue-50 rounded-full">
-                <Percent className="h-5 w-5 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Watches at Service - Green */}
-        <Card className="bg-emerald-600 border-emerald-500">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-emerald-50/90">Watches at Service</p>
-                <p className="text-3xl font-bold text-white mt-1 tabular-nums">
-                  {watchesAtPolisher}
-                </p>
-              </div>
-              <div className="p-2 bg-white/20 rounded-full">
-                <Watch className="h-5 w-5 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Monthly Goal Progress Bar */}
-      <Card className="bg-white border-slate-200 shadow-sm">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-emerald-50 rounded-md">
-                <Target className="h-4 w-4 text-emerald-600" />
-              </div>
-              <span className="font-semibold text-slate-900">Monthly Goal</span>
-              <span className="text-sm text-slate-500">
-                ({format(new Date(), "MMMM yyyy")})
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {isEditingGoal ? (
-                <div className="flex items-center gap-1">
-                  <span className="text-slate-500">€</span>
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={goalInputValue}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9]/g, "");
-                      setGoalInputValue(val);
-                    }}
-                    className="w-24 h-8 bg-white border-slate-200 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleGoalSave();
-                      if (e.key === "Escape") handleGoalCancel();
-                    }}
-                    data-testid="input-monthly-goal"
-                  />
-                  <Button size="icon" variant="ghost" onClick={handleGoalSave} className="h-8 w-8" data-testid="button-save-goal">
-                    <Check className="h-4 w-4 text-emerald-600" />
-                  </Button>
-                  <Button size="icon" variant="ghost" onClick={handleGoalCancel} className="h-8 w-8" data-testid="button-cancel-goal">
-                    <X className="h-4 w-4 text-slate-400" />
-                  </Button>
+          <Card className="bg-emerald-600 border-emerald-500">
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-emerald-50/90">Watches at Service</p>
+                  <p className="text-3xl font-bold text-white mt-1 tabular-nums">
+                    {watchesAtPolisher}
+                  </p>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold text-slate-900 tabular-nums">
-                    {formatCurrency(currentMonthProfit)} / {formatCurrency(monthlyGoal)}
-                  </span>
-                  <Button size="icon" variant="ghost" onClick={handleGoalEdit} className="h-8 w-8" data-testid="button-edit-goal">
-                    <Pencil className="h-3.5 w-3.5 text-slate-400" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="relative pt-4">
-            <Progress 
-              value={goalProgress} 
-              className={cn(
-                "h-4",
-                goalProgress >= 100 ? "[&>div]:bg-emerald-500" : 
-                goalProgress >= 75 ? "[&>div]:bg-emerald-400" :
-                goalProgress >= 50 ? "[&>div]:bg-amber-400" :
-                "[&>div]:bg-slate-300"
-              )}
-            />
-            {/* Amount visual on the bar */}
-            <div 
-              className="absolute top-0 transform -translate-x-1/2 flex flex-col items-center"
-              style={{ left: `${Math.max(5, Math.min(95, goalProgress))}%` }}
-            >
-              <div className="bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm mb-1 whitespace-nowrap">
-                {formatCurrency(currentMonthProfit)}
-              </div>
-              <div className="w-0.5 h-4 bg-slate-900/20" />
-            </div>
-
-            <div className="flex justify-between mt-1.5 text-xs text-slate-400">
-              <span>{goalProgress.toFixed(0)}% of goal</span>
-              {currentMonthProfit >= monthlyGoal ? (
-                <span className="text-emerald-600 font-medium">Goal reached!</span>
-              ) : (
-                <span>{formatCurrency(monthlyGoal - currentMonthProfit)} to go</span>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Actions Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Button 
-          className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
-          variant="outline"
-          onClick={() => setIsAddWatchOpen(true)}
-          data-testid="button-quick-add-watch"
-        >
-          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center mr-3">
-            <Plus className="h-5 w-5 text-emerald-600" />
-          </div>
-          Add Watch
-        </Button>
-        <Button 
-          className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
-          variant="outline"
-          onClick={() => setIsAddExpenseOpen(true)}
-          data-testid="button-quick-add-expense"
-        >
-          <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center mr-3">
-            <Receipt className="h-5 w-5 text-red-600" />
-          </div>
-          Add Expense
-        </Button>
-        <Button 
-          className="w-full h-14 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-4 text-lg font-semibold shadow-sm"
-          variant="outline"
-          onClick={() => setIsAddClientOpen(true)}
-          data-testid="button-quick-add-client"
-        >
-          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center mr-3">
-            <UserPlus className="h-5 w-5 text-blue-600" />
-          </div>
-          Add Client
-        </Button>
-      </div>
-
-      {/* Add Watch Dialog */}
-      <Dialog open={isAddWatchOpen} onOpenChange={setIsAddWatchOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
-          <DialogHeader>
-            <DialogTitle>Add New Watch</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={watchForm.handleSubmit(onWatchSubmit)} className="space-y-6 mt-4">
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Brand *</Label>
-                  <Select value={watchForm.watch("brand")} onValueChange={(val) => watchForm.setValue("brand", val)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Brand" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {WATCH_BRANDS.map(brand => (
-                        <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {watchForm.formState.errors.brand && <p className="text-red-500 text-xs">{watchForm.formState.errors.brand.message}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Model *</Label>
-                  <Input {...watchForm.register("model")} className="bg-white border-slate-200" data-testid="input-model" />
-                  {watchForm.formState.errors.model && <p className="text-red-500 text-xs">{watchForm.formState.errors.model.message}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Reference Number *</Label>
-                  <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" data-testid="input-reference" />
-                  {watchForm.formState.errors.referenceNumber && <p className="text-red-500 text-xs">Reference Number is required</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Serial #</Label>
-                  <Input {...watchForm.register("serialNumber")} className="bg-white border-slate-200" data-testid="input-serial" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Movement Serial Number</Label>
-                  <Input {...watchForm.register("internalSerial")} className="bg-white border-slate-200" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Year</Label>
-                  <Input 
-                    type="text" 
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    {...watchForm.register("year")} 
-                    className="bg-white border-slate-200" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Condition</Label>
-                  <Select value={watchForm.watch("condition")} onValueChange={(val) => watchForm.setValue("condition", val as any)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Condition" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="New">New</SelectItem>
-                      <SelectItem value="Mint">Mint</SelectItem>
-                      <SelectItem value="Used">Used</SelectItem>
-                      <SelectItem value="Damaged">Damaged</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center space-x-4 pt-6">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="box" checked={watchForm.watch("box")} onCheckedChange={(checked) => watchForm.setValue("box", !!checked)} />
-                    <Label htmlFor="box" className="cursor-pointer">Box</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="papers" checked={watchForm.watch("papers")} onCheckedChange={(checked) => watchForm.setValue("papers", !!checked)} />
-                    <Label htmlFor="papers" className="cursor-pointer">Papers</Label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Google Drive Link</Label>
-                  <Input {...watchForm.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
+                <div className="p-2 bg-white/20 rounded-full">
+                  <Watch className="h-5 w-5 text-white" />
                 </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
+        </div>
 
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Purchase From *</Label>
-                  <Select value={watchForm.watch("purchasedFrom") || ""} onValueChange={(val) => watchForm.setValue("purchasedFrom", val)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Source" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {PURCHASE_FROM_OPTIONS.map(opt => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {watchForm.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">Purchase source is required</p>}
+        {/* Monthly Goal Progress Bar */}
+        <Card className="bg-white border-slate-200 shadow-sm">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-50 rounded-md">
+                  <Target className="h-4 w-4 text-emerald-600" />
                 </div>
-                <div className="space-y-2">
-                  <Label>Paid With *</Label>
-                  <Select value={watchForm.watch("paidWith") || ""} onValueChange={(val) => watchForm.setValue("paidWith", val)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Payment" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {PAID_WITH_OPTIONS.map(opt => (
-                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {watchForm.formState.errors.paidWith && <p className="text-red-500 text-xs">Payment method is required</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Seller / Dealer</Label>
-                  <Select value={watchForm.watch("clientId")?.toString() || "none"} onValueChange={(val) => watchForm.setValue("clientId", val === "none" ? null : parseInt(val))}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Dealer" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="none">None</SelectItem>
-                      {clients?.filter(c => c.type === 'dealer').map(client => (
-                        <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Purchase Price (COGS) *</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                    <Input 
-                      type="text" 
+                <span className="font-semibold text-slate-900">Monthly Goal</span>
+                <span className="text-sm text-slate-500">({format(new Date(), "MMMM yyyy")})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {isEditingGoal ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-500">€</span>
+                    <Input
+                      type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      {...watchForm.register("purchasePrice")} 
-                      className="pl-7 bg-white border-slate-200" 
-                      data-testid="input-purchase-price" 
+                      value={goalInputValue}
+                      onChange={(e) => setGoalInputValue(e.target.value.replace(/[^0-9]/g, ""))}
+                      className="w-24 h-8 bg-white border-slate-200 text-right"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleGoalSave();
+                        if (e.key === "Escape") handleGoalCancel();
+                      }}
                     />
+                    <Button size="icon" variant="ghost" onClick={handleGoalSave} className="h-8 w-8">
+                      <Check className="h-4 w-4 text-emerald-600" />
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={handleGoalCancel} className="h-8 w-8">
+                      <X className="h-4 w-4 text-slate-400" />
+                    </Button>
                   </div>
-                  {watchForm.formState.errors.purchasePrice && <p className="text-red-500 text-xs">COGS is required</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label>Import Fee</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...watchForm.register("importFee")} 
-                      className="pl-7 bg-white border-slate-200" 
-                    />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold text-slate-900 tabular-nums">
+                      {formatCurrency(currentMonthProfit)} / {formatCurrency(monthlyGoal)}
+                    </span>
+                    <Button size="icon" variant="ghost" onClick={handleGoalEdit} className="h-8 w-8">
+                      <Pencil className="h-3.5 w-3.5 text-slate-400" />
+                    </Button>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2 pt-8">
-                  <Checkbox id="watchRegister" checked={watchForm.watch("watchRegister")} onCheckedChange={(checked) => watchForm.setValue("watchRegister", !!checked)} />
-                  <Label htmlFor="watchRegister" className="cursor-pointer">Watch Register (€6)</Label>
-                </div>
-                <div className="space-y-2">
-                  <Label>Purchase Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={"outline"}
-                        className={cn(
-                          "w-full justify-start text-left font-normal bg-white border-slate-200",
-                          !watchForm.watch("purchaseDate") && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {watchForm.watch("purchaseDate") ? format(new Date(watchForm.watch("purchaseDate")!), "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                      <Calendar
-                        mode="single"
-                        selected={watchForm.watch("purchaseDate") ? new Date(watchForm.watch("purchaseDate")!) : undefined}
-                        onSelect={(date) => watchForm.setValue("purchaseDate", date ? date.toISOString() : null)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                )}
               </div>
             </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Current Status *</Label>
-                  <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Status" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="incoming">Incoming</SelectItem>
-                      <SelectItem value="received">Received</SelectItem>
-                      <SelectItem value="servicing">In Service</SelectItem>
-                      <SelectItem value="in_stock">Listed</SelectItem>
-                      <SelectItem value="sold">Sold</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Target Sell Price</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...watchForm.register("targetSellPrice")} 
-                      className="pl-7 bg-white border-slate-200" 
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Date Listed</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={"outline"}
-                        className={cn(
-                          "w-full justify-start text-left font-normal bg-white border-slate-200",
-                          !watchForm.watch("dateListed") && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {watchForm.watch("dateListed") ? format(new Date(watchForm.watch("dateListed")!), "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                      <Calendar
-                        mode="single"
-                        selected={watchForm.watch("dateListed") ? new Date(watchForm.watch("dateListed")!) : undefined}
-                        onSelect={(date) => {
-                          watchForm.setValue("dateListed", date ? date.toISOString() : null);
-                          if (date && watchForm.getValues("status") === "incoming") {
-                            watchForm.setValue("status", "in_stock");
-                          }
-                        }}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
-                <div className="flex items-center space-x-2">
-                  <Label htmlFor="showSale" className="text-sm font-medium text-slate-500">Show Sale Fields</Label>
-                  <Switch id="showSale" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
-                </div>
-              </div>
-              
-              {showSaleDetails && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="space-y-2">
-                    <Label>Sold Price</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...watchForm.register("salePrice")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Platform Fees</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...watchForm.register("platformFees")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sold On</Label>
-                    <Select value={watchForm.watch("soldPlatform") || ""} onValueChange={(val) => watchForm.setValue("soldPlatform", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Platform" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {SOLD_ON_OPTIONS.map(opt => (
-                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Shipping Fee</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...watchForm.register("shippingFee")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Insurance Fee</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...watchForm.register("insuranceFee")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Buyer Name</Label>
-                    <Input {...watchForm.register("soldTo")} className="bg-white border-slate-200" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date Sold</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full justify-start text-left font-normal bg-white border-slate-200",
-                            !watchForm.watch("dateSold") && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {watchForm.watch("dateSold") ? format(new Date(watchForm.watch("dateSold")!), "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                        <Calendar
-                          mode="single"
-                          selected={watchForm.watch("dateSold") ? new Date(watchForm.watch("dateSold")!) : undefined}
-                          onSelect={(date) => {
-                            watchForm.setValue("dateSold", date ? date.toISOString() : null);
-                            if (date) watchForm.setValue("status", "sold");
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Service & Maintenance</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Service Fee</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...watchForm.register("serviceFee")} 
-                      className="pl-7 bg-white border-slate-200" 
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Polish Fee</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                    <Input 
-                      type="text" 
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      {...watchForm.register("polishFee")} 
-                      className="pl-7 bg-white border-slate-200" 
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
-              <Textarea {...watchForm.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
-              <Button type="button" variant="outline" onClick={() => setIsAddWatchOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createWatchMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[120px]">
-                {createWatchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                Add Watch
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Expense Dialog */}
-      <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
-        <DialogContent className="max-w-md bg-white border-slate-200 text-slate-900">
-          <DialogHeader>
-            <DialogTitle>Add New Expense</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="Monthly subscription..." data-testid="input-description" />
-            </div>
-            <div className="space-y-2">
-              <Label>Amount (€)</Label>
-              <Input 
-                type="text" 
-                inputMode="numeric"
-                pattern="[0-9]*"
-                {...expenseForm.register("amount")} 
-                className="bg-white border-slate-200" 
-                placeholder="10" 
-                data-testid="input-amount" 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select onValueChange={(val) => expenseForm.setValue("category", val as any)} defaultValue="other">
-                <SelectTrigger className="bg-white border-slate-200" data-testid="select-category-form">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 text-slate-900">
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal bg-white border-slate-200",
-                      !expenseForm.watch("date") && "text-muted-foreground"
-                    )}
-                    data-testid="button-date-picker"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {expenseForm.watch("date") ? format(new Date(expenseForm.watch("date")!), "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                  <Calendar
-                    mode="single"
-                    selected={expenseForm.watch("date") || new Date()}
-                    onSelect={(date) => expenseForm.setValue("date", date || new Date())}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/50">
-              <div className="space-y-0.5">
-                <Label className="text-sm font-medium">Recurring Expense</Label>
-                <p className="text-xs text-slate-500">Enable for monthly repeating costs</p>
-              </div>
-              <Switch
-                checked={expenseForm.watch("isRecurring")}
-                onCheckedChange={(checked) => expenseForm.setValue("isRecurring", checked)}
-                data-testid="switch-recurring"
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createExpenseMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-submit-expense">
-                {createExpenseMutation.isPending ? "Saving..." : "Add Expense"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Client Dialog */}
-      <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
-        <DialogContent className="max-w-md bg-white border-slate-200 text-slate-900">
-          <DialogHeader>
-            <DialogTitle>Add New Client</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={clientForm.handleSubmit(onClientSubmit)} className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input {...clientForm.register("name")} className="bg-white border-slate-200" placeholder="John Doe" />
-              </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <select 
-                  {...clientForm.register("type")} 
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                >
-                  <option value="client">Client</option>
-                  <option value="dealer">Dealer</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input {...clientForm.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
-              </div>
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input {...clientForm.register("phone")} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Controller
-                name="isVip"
-                control={clientForm.control}
-                render={({ field }) => (
-                  <Checkbox
-                    id="isVip-dashboard"
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                    className="border-slate-300 data-[state=checked]:bg-emerald-600"
-                  />
+            <div className="relative pt-4">
+              <Progress 
+                value={goalProgress} 
+                className={cn(
+                  "h-4",
+                  goalProgress >= 100 ? "[&>div]:bg-emerald-500" : 
+                  goalProgress >= 75 ? "[&>div]:bg-emerald-400" :
+                  goalProgress >= 50 ? "[&>div]:bg-amber-400" :
+                  "[&>div]:bg-slate-300"
                 )}
               />
-              <Label htmlFor="isVip-dashboard" className="text-sm font-medium leading-none cursor-pointer">VIP Client</Label>
+              <div 
+                className="absolute top-0 transform -translate-x-1/2 flex flex-col items-center"
+                style={{ left: `${Math.max(5, Math.min(95, goalProgress))}%` }}
+              >
+                <div className="bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm mb-1 whitespace-nowrap">
+                  {formatCurrency(currentMonthProfit)}
+                </div>
+                <div className="w-0.5 h-4 bg-slate-900/20" />
+              </div>
+              <div className="flex justify-between mt-1.5 text-xs text-slate-400">
+                <span>{goalProgress.toFixed(0)}% of goal</span>
+                {currentMonthProfit >= monthlyGoal ? (
+                  <span className="text-emerald-600 font-medium">Goal reached!</span>
+                ) : (
+                  <span>{formatCurrency(monthlyGoal - currentMonthProfit)} to go</span>
+                )}
+              </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button type="button" variant="outline" onClick={() => setIsAddClientOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createClientMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
-                {createClientMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add Client"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </CardContent>
+        </Card>
 
-      {/* Main Content Grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Aging Inventory - Left Side (2 cols) */}
-        <div className="lg:col-span-2 space-y-4">
+        {/* Main Content Grid */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Aging Inventory */}
           <Card className="bg-white border-slate-200">
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
                 <div>
                   <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
-                  <p className="text-sm text-slate-500">Watches held for more than 45 days</p>
                 </div>
               </div>
               <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
@@ -1196,34 +593,20 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-2">
               {agingInventory.length === 0 ? (
-                <div className="text-center py-8 text-slate-400">
-                  No aging inventory. Great work!
-                </div>
+                <div className="text-center py-8 text-slate-400">No aging inventory.</div>
               ) : (
-                agingInventory.slice(0, 6).map((item) => (
+                agingInventory.slice(0, 5).map((item) => (
                   <Link key={item.id} href={`/inventory/${item.id}`}>
-                    <div
-                      className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors"
-                      data-testid={`aging-item-${item.id}`}
-                    >
+                    <div className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center">
-                          <Watch className="h-6 w-6 text-slate-400" />
-                        </div>
+                        <Watch className="h-5 w-5 text-slate-400" />
                         <div>
-                          <p className="font-medium text-slate-900">
-                            {item.brand} {item.model}
-                          </p>
-                          <p className="text-sm text-slate-500 tabular-nums">
-                            {formatCurrency(item.purchasePrice)}
-                          </p>
+                          <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
+                          <p className="text-xs text-slate-500">{formatCurrency(item.purchasePrice)}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-semibold text-amber-600 tabular-nums">
-                          {item.daysHeld} days
-                        </p>
-                        <p className="text-xs text-slate-400">held</p>
+                        <p className="text-sm font-semibold text-amber-600">{item.daysHeld} days</p>
                       </div>
                     </div>
                   </Link>
@@ -1231,109 +614,182 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
-        </div>
 
-        {/* Inventory Status - Right Side (1 col) */}
-        <div className="space-y-4">
-          <Card className="bg-white border-slate-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/inventory?status=incoming">
-                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
-                  <span className="text-slate-500">Incoming</span>
-                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
-                </div>
-              </Link>
-              <Link href="/inventory?status=servicing">
-                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
-                  <span className="text-slate-500">In Service</span>
-                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.inService}</span>
-                </div>
-              </Link>
-              <Link href="/inventory?status=in_stock">
-                <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
-                  <span className="text-slate-500">Listed</span>
-                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.listed}</span>
-                </div>
-              </Link>
-              <Link href="/inventory?status=sold">
-                <div className="flex items-center justify-between py-2 hover:bg-slate-50 cursor-pointer transition-colors px-2 -mx-2 rounded-md">
-                  <span className="text-slate-500">Sold</span>
-                  <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sold}</span>
-                </div>
-              </Link>
-            </CardContent>
-            <div className="px-6 pb-5">
-              <Link href="/inventory">
-                <Button
-                  variant="outline"
-                  className="w-full bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  data-testid="button-view-inventory"
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Full Inventory
-                </Button>
-              </Link>
+          {/* Recent Additions */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {recentAdditions.map((item) => (
+                <Link key={item.id} href={`/inventory/${item.id}`}>
+                  <Card className="min-w-[160px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors">
+                    <CardContent className="p-3">
+                      <p className="font-medium text-slate-900 text-sm truncate">{item.brand}</p>
+                      <p className="text-xs text-slate-500 truncate">{item.model}</p>
+                      <Badge variant="secondary" className="mt-2 text-[10px]">
+                        {item.status.replace("_", " ")}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
-          </Card>
+          </div>
         </div>
       </div>
-      {/* Recent Additions */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-900">Recent Additions</h2>
-        <div className="flex gap-4 overflow-x-auto pb-2">
-          {recentAdditions.map((item) => (
-            <Link key={item.id} href={`/inventory/${item.id}`}>
-              <Card
-                className="min-w-[200px] max-w-[200px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors flex-shrink-0"
-                data-testid={`recent-item-${item.id}`}
-              >
-                <div className="aspect-square bg-slate-50 rounded-t-lg flex items-center justify-center">
-                  <Watch className="h-12 w-12 text-slate-300" />
-                </div>
-                <CardContent className="p-3">
-                  <p className="font-medium text-slate-900 text-sm">{item.brand}</p>
-                  <p className="text-xs text-slate-500 truncate">{item.model}</p>
-                  <Badge
-                    variant="secondary"
-                    className={`mt-2 text-xs ${
-                      item.status === "in_stock"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                        : item.status === "servicing"
-                        ? "bg-amber-50 text-amber-700 border-amber-100"
-                        : item.status === "incoming"
-                        ? "bg-blue-50 text-blue-700 border-blue-100"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {item.status === "in_stock"
-                      ? "Listed"
-                      : item.status === "servicing"
-                      ? "In Service"
-                      : item.status === "incoming"
-                      ? "Incoming"
-                      : "Sold"}
-                  </Badge>
-                </CardContent>
-              </Card>
+
+      {/* Sidebar - Column 3 */}
+      <div className="w-full lg:w-80 shrink-0 space-y-6">
+        {/* Quick Actions Card */}
+        <Card className="bg-white border-slate-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button 
+              className="w-full h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
+              variant="outline"
+              onClick={() => setIsAddWatchOpen(true)}
+            >
+              <Plus className="h-4 w-4 mr-3 text-emerald-600" /> Add Watch
+            </Button>
+            <Button 
+              className="w-full h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
+              variant="outline"
+              onClick={() => setIsAddExpenseOpen(true)}
+            >
+              <Receipt className="h-4 w-4 mr-3 text-red-600" /> Add Expense
+            </Button>
+            <Button 
+              className="w-full h-12 bg-white border-slate-200 text-slate-900 hover-elevate justify-start px-3 text-base font-semibold shadow-sm"
+              variant="outline"
+              onClick={() => setIsAddClientOpen(true)}
+            >
+              <UserPlus className="h-4 w-4 mr-3 text-blue-600" /> Add Client
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Quick Estimate Widget */}
+        <QuickEstimate />
+
+        {/* Inventory Status */}
+        <Card className="bg-white border-slate-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Link href="/inventory?status=incoming">
+              <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                <span className="text-sm text-slate-500">Incoming</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
+              </div>
             </Link>
-          ))}
-          {recentAdditions.length === 0 && (
-            <div className="flex-1 text-center py-12 text-slate-400">
-              No watches in inventory yet.
-            </div>
-          )}
-        </div>
+            <Link href="/inventory?status=servicing">
+              <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                <span className="text-sm text-slate-500">In Service</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.inService}</span>
+              </div>
+            </Link>
+            <Link href="/inventory?status=in_stock">
+              <div className="flex items-center justify-between py-2 border-b border-slate-100 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                <span className="text-sm text-slate-500">Listed</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.listed}</span>
+              </div>
+            </Link>
+            <Link href="/inventory?status=sold">
+              <div className="flex items-center justify-between py-2 hover:bg-slate-50 cursor-pointer px-2 rounded-md">
+                <span className="text-sm text-slate-500">Sold</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{statusCounts.sold}</span>
+              </div>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
-    </div>
-  </div>
 
-  {/* Sidebar Widget */}
-  <div className="w-full lg:w-80 shrink-0">
-    <QuickEstimate />
-  </div>
-</div>
-);
+      {/* Add Watch Dialog */}
+      <Dialog open={isAddWatchOpen} onOpenChange={setIsAddWatchOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200">
+          <DialogHeader><DialogTitle>Add New Watch</DialogTitle></DialogHeader>
+          <form onSubmit={watchForm.handleSubmit(onWatchSubmit)} className="space-y-6 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Brand *</Label>
+                <Select value={watchForm.watch("brand")} onValueChange={(val) => watchForm.setValue("brand", val)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Brand" /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {WATCH_BRANDS.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Model *</Label>
+                <Input {...watchForm.register("model")} className="bg-white border-slate-200" />
+              </div>
+              <div className="space-y-2">
+                <Label>Reference *</Label>
+                <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" />
+              </div>
+              <div className="space-y-2">
+                <Label>COGS *</Label>
+                <Input {...watchForm.register("purchasePrice")} className="bg-white border-slate-200" type="number" />
+              </div>
+              <div className="space-y-2">
+                <Label>Status *</Label>
+                <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    <SelectItem value="incoming">Incoming</SelectItem>
+                    <SelectItem value="in_stock">Listed</SelectItem>
+                    <SelectItem value="servicing">In Service</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
+              <Button type="button" variant="outline" onClick={() => setIsAddWatchOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 text-white">Add Watch</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Expense Dialog */}
+      <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
+        <DialogContent className="max-w-md bg-white border-slate-200">
+          <DialogHeader><DialogTitle>Add New Expense</DialogTitle></DialogHeader>
+          <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" />
+            </div>
+            <div className="space-y-2">
+              <Label>Amount (€)</Label>
+              <Input {...expenseForm.register("amount")} type="number" className="bg-white border-slate-200" />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 text-white">Add Expense</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Client Dialog */}
+      <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
+        <DialogContent className="max-w-md bg-white border-slate-200">
+          <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
+          <form onSubmit={clientForm.handleSubmit(onClientSubmit)} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input {...clientForm.register("name")} className="bg-white border-slate-200" />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => setIsAddClientOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 text-white">Add Client</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
