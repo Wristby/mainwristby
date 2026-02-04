@@ -376,7 +376,8 @@ export default function Inventory() {
     const headers = [
       "ID", "Brand", "Model", "Reference", "Serial #", "Internal Serial", 
       "Status", "Condition", "Purchase Date", "Purchase Price (EUR)", 
-      "Purchased From", "Box", "Papers", "Hold Time (Days)"
+      "Purchased From", "Box", "Papers", "Hold Time (Days)",
+      "Sold Date", "Sold Price (EUR)"
     ];
     
     const rows = filteredInventory.map((item: any) => {
@@ -394,7 +395,9 @@ export default function Inventory() {
         `"${(item.purchasedFrom || "").replace(/"/g, '""')}"`,
         item.box ? "Yes" : "No",
         item.papers ? "Yes" : "No",
-        getHoldTime(item).toString()
+        getHoldTime(item).toString(),
+        item.dateSold ? format(new Date(item.dateSold), "yyyy-MM-dd") : "",
+        item.salePrice ? (item.salePrice / 100).toString() : "0"
       ];
     });
     
