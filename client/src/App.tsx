@@ -34,13 +34,27 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
-      <Route path="/inventory" component={() => <ProtectedRoute component={Inventory} />} />
-      <Route path="/inventory/:id" component={() => <ProtectedRoute component={InventoryDetail} />} />
-      <Route path="/clients" component={() => <ProtectedRoute component={Clients} />} />
-      <Route path="/clients/:id" component={() => <ProtectedRoute component={ClientDetail} />} />
-      <Route path="/financials" component={() => <ProtectedRoute component={Financials} />} />
-      <Route path="/analytics" component={() => <ProtectedRoute component={Analytics} />} />
+      <Route path="/">
+        <ProtectedRoute component={Dashboard} />
+      </Route>
+      <Route path="/inventory">
+        <ProtectedRoute component={Inventory} />
+      </Route>
+      <Route path="/inventory/:id">
+        <ProtectedRoute component={InventoryDetail} />
+      </Route>
+      <Route path="/clients">
+        <ProtectedRoute component={Clients} />
+      </Route>
+      <Route path="/clients/:id">
+        <ProtectedRoute component={ClientDetail} />
+      </Route>
+      <Route path="/financials">
+        <ProtectedRoute component={Financials} />
+      </Route>
+      <Route path="/analytics">
+        <ProtectedRoute component={Analytics} />
+      </Route>
       <Route path="/login" component={Landing} />
       <Route component={NotFound} />
     </Switch>
