@@ -61,6 +61,7 @@ export function QuickEstimate() {
         <div className="space-y-3">
           <div className="bg-slate-50 p-3 rounded-lg space-y-2 border border-slate-100">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost Basis</p>
+            
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Buy Price</span>
               <div className="relative w-24">
@@ -72,6 +73,7 @@ export function QuickEstimate() {
                 />
               </div>
             </div>
+
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Service Cost</span>
               <div className="relative w-24">
@@ -83,55 +85,53 @@ export function QuickEstimate() {
                 />
               </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-500 uppercase">Trial Sale Price</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-              <Input 
-                placeholder="Enter sale price"
-                value={salePrice}
-                onChange={(e) => setSalePrice(e.target.value)}
-                className="pl-7 bg-white border-slate-200 focus:ring-emerald-500 text-slate-900"
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">Shipping Cost</span>
+              <div className="relative w-24">
+                <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
+                <Input 
+                  value={shipping}
+                  onChange={(e) => setShipping(e.target.value)}
+                  className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-1 border-t border-slate-200/50 mt-1">
+              <span className="text-sm font-medium text-slate-700">Sale Price</span>
+              <div className="relative w-24">
+                <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
+                <Input 
+                  value={salePrice}
+                  onChange={(e) => setSalePrice(e.target.value)}
+                  className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900 font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/50 mt-1">
+              <Checkbox 
+                id="wr" 
+                checked={watchRegister} 
+                onCheckedChange={(checked) => setWatchRegister(!!checked)}
+                className="h-4 w-4 border-slate-300 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
               />
+              <Label htmlFor="wr" className="text-xs text-slate-600 cursor-pointer">Watch Register Fee (€6)</Label>
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-500 uppercase">Platform</Label>
+            <Label className="text-xs font-semibold text-slate-500 uppercase">Platform Fee</Label>
             <Select value={platform} onValueChange={setPlatform}>
               <SelectTrigger className="bg-white border-slate-200 text-slate-900">
-                <SelectValue />
+                <SelectValue placeholder="Select platform" />
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 text-slate-900">
-                <SelectItem value="none">Choose an option...</SelectItem>
+                <SelectItem value="none">None (Direct Sale)</SelectItem>
                 <SelectItem value="chrono24">Chrono24 (6.5%)</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold text-slate-500 uppercase">Shipping Estimate</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-              <Input 
-                placeholder="Optional"
-                value={shipping}
-                onChange={(e) => setShipping(e.target.value)}
-                className="pl-7 bg-white border-slate-200 text-slate-900"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 pt-1">
-            <Checkbox 
-              id="wr" 
-              checked={watchRegister} 
-              onCheckedChange={(checked) => setWatchRegister(!!checked)}
-              className="border-slate-300 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-            />
-            <Label htmlFor="wr" className="text-sm text-slate-600 cursor-pointer">Watch Register Fee (€6)</Label>
           </div>
         </div>
 
