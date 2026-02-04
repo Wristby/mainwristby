@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon, Download } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -251,6 +251,73 @@ export default function Inventory() {
     });
   };
 
+  const exportToCSV = () => {
+    if (!filteredInventory) return;
+    
+    const headers = [
+      "ID", "Brand", "Model", "Reference", "Serial #", "Movement Serial", 
+      "Condition", "Status", "Box", "Papers", "Purchase Date", "COGS (€)", 
+      "Import Fee (€)", "Service Fee (€)", "Polish Fee (€)", "Target Sell (€)", 
+      "Sold Date", "Sold Price (€)", "Margin (%)", "Notes"
+    ];
+
+    const rows = filteredInventory.map(item => {
+      const purchasePrice = item.purchasePrice / 100;
+      const soldPrice = (item.salePrice || 0) / 100;
+      const totalCost = (
+        item.purchasePrice + 
+        (item.importFee || 0) + 
+        (item.serviceFee || 0) + 
+        (item.polishFee || 0) + 
+        (item.platformFees || 0) + 
+        (item.shippingFee || 0) + 
+        (item.insuranceFee || 0) +
+        (item.watchRegister ? 600 : 0)
+      ) / 100;
+      
+      const profit = soldPrice - totalCost;
+      const margin = soldPrice > 0 ? (profit / soldPrice) * 100 : 0;
+
+      return [
+        item.id,
+        item.brand,
+        item.model,
+        item.referenceNumber,
+        item.serialNumber || "",
+        item.internalSerial || "",
+        item.condition,
+        item.status,
+        item.box ? "Yes" : "No",
+        item.papers ? "Yes" : "No",
+        item.purchaseDate ? format(new Date(item.purchaseDate), "yyyy-MM-dd") : "",
+        purchasePrice,
+        (item.importFee || 0) / 100,
+        (item.serviceFee || 0) / 100,
+        (item.polishFee || 0) / 100,
+        item.targetSellPrice / 100,
+        item.soldDate ? format(new Date(item.soldDate), "yyyy-MM-dd") : "",
+        soldPrice,
+        margin.toFixed(2),
+        item.notes || ""
+      ];
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `inventory_export_${format(new Date(), "yyyy-MM-dd")}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const brands = useMemo(() => {
     if (!inventory) return [];
     const uniqueBrands = Array.from(new Set(inventory.map(item => item.brand)));
@@ -417,18 +484,28 @@ export default function Inventory() {
             </div>
           </div>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Watch
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
-            <DialogHeader>
-              <DialogTitle>Add New Watch</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            className="border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
+            onClick={exportToCSV}
+            data-testid="button-export-csv"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export to CSV
+          </Button>
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Watch
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
+              <DialogHeader>
+                <DialogTitle>Add New Watch</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
