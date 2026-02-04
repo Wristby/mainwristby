@@ -92,6 +92,9 @@ const createInventoryFormSchema = z.object({
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
   soldPlatform: z.string().optional().nullable(),
+  dateSentToService: z.string().optional().nullable(),
+  dateReturnedFromService: z.string().optional().nullable(),
+  serviceNotes: z.string().optional().nullable(),
 });
 
 type CreateInventoryFormValues = z.infer<typeof createInventoryFormSchema>;
@@ -172,6 +175,9 @@ export default function Dashboard() {
       shippingPartner: "",
       trackingNumber: "",
       soldPlatform: "",
+      dateSentToService: null,
+      dateReturnedFromService: null,
+      serviceNotes: "",
     }
   });
 
@@ -192,6 +198,8 @@ export default function Dashboard() {
       name: "",
       email: "",
       phone: "",
+      socialHandle: "",
+      country: "",
       type: "client",
       notes: "",
       isVip: false,
@@ -199,11 +207,14 @@ export default function Dashboard() {
   });
 
   const [showSaleDetails, setShowSaleDetails] = useState(false);
+  const [showServiceDetails, setShowServiceDetails] = useState(false);
   const { data: clients } = useQuery<Array<{ id: number; name: string; type: string }>>({ queryKey: ["/api/clients"] });
 
   // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
   const watchedSalePrice = watchForm.watch("salePrice");
   const watchedSoldPlatform = watchForm.watch("soldPlatform");
+
+  const watchedStatus = watchForm.watch("status");
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && (watchedSalePrice || 0) > 0) {
@@ -211,6 +222,12 @@ export default function Dashboard() {
       watchForm.setValue("platformFees", fee);
     }
   }, [watchedSalePrice, watchedSoldPlatform, watchForm]);
+
+  useEffect(() => {
+    if (watchedStatus === "servicing") {
+      setShowServiceDetails(true);
+    }
+  }, [watchedStatus]);
 
   const onWatchSubmit = (data: CreateInventoryFormValues) => {
     let finalStatus = data.status;
@@ -238,6 +255,9 @@ export default function Dashboard() {
       dateListed: data.dateListed || null,
       dateSold: data.dateSold || null,
       soldDate: data.dateSold || null,
+      dateSentToService: data.dateSentToService || null,
+      dateReturnedFromService: data.dateReturnedFromService || null,
+      serviceNotes: data.serviceNotes || null,
     };
 
     createWatchMutation.mutate(submissionData as any, {
@@ -755,112 +775,470 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Add Watch Dialog */}
+      {/* Add Watch Dialog - Full Form */}
       <Dialog open={isAddWatchOpen} onOpenChange={setIsAddWatchOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
           <DialogHeader><DialogTitle>Add New Watch</DialogTitle></DialogHeader>
           <form onSubmit={watchForm.handleSubmit(onWatchSubmit)} className="space-y-6 mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Brand *</Label>
-                <Select value={watchForm.watch("brand")} onValueChange={(val) => watchForm.setValue("brand", val)}>
-                  <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Brand" /></SelectTrigger>
-                  <SelectContent className="bg-white border-slate-200 text-slate-900">
-                    {WATCH_BRANDS.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Model *</Label>
-                <Input {...watchForm.register("model")} className="bg-white border-slate-200" />
-              </div>
-              <div className="space-y-2">
-                <Label>Reference *</Label>
-                <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" />
-              </div>
-              <div className="space-y-2">
-                <Label>Status *</Label>
-                <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
-                  <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-white border-slate-200 text-slate-900">
-                    <SelectItem value="incoming">Incoming</SelectItem>
-                    <SelectItem value="received">Received</SelectItem>
-                    <SelectItem value="in_stock">Listed</SelectItem>
-                    <SelectItem value="servicing">In Service</SelectItem>
-                    <SelectItem value="sold">Sold</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Date Received</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900",
-                        !watchForm.watch("dateReceived") && "text-slate-500"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {watchForm.watch("dateReceived") ? format(new Date(watchForm.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={watchForm.watch("dateReceived") ? new Date(watchForm.watch("dateReceived")!) : undefined}
-                      onSelect={(date) => {
-                        watchForm.setValue("dateReceived", date?.toISOString() || null);
-                        if (date) watchForm.setValue("status", "received");
-                      }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Brand *</Label>
+                  <Select value={watchForm.watch("brand")} onValueChange={(val) => watchForm.setValue("brand", val)}>
+                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Brand" /></SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900">
+                      {WATCH_BRANDS.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Model *</Label>
+                  <Input {...watchForm.register("model")} className="bg-white border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Reference Number *</Label>
+                  <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Serial #</Label>
+                  <Input {...watchForm.register("serialNumber")} className="bg-white border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Movement Serial Number</Label>
+                  <Input {...watchForm.register("internalSerial")} className="bg-white border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Year</Label>
+                  <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("year")} className="bg-white border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Condition</Label>
+                  <Select value={watchForm.watch("condition")} onValueChange={(val) => watchForm.setValue("condition", val as any)}>
+                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Condition" /></SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900">
+                      <SelectItem value="New">New</SelectItem>
+                      <SelectItem value="Mint">Mint</SelectItem>
+                      <SelectItem value="Used">Used</SelectItem>
+                      <SelectItem value="Damaged">Damaged</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-4 pt-6">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="dash-box" checked={watchForm.watch("box")} onCheckedChange={(checked) => watchForm.setValue("box", !!checked)} />
+                    <Label htmlFor="dash-box" className="cursor-pointer">Box</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="dash-papers" checked={watchForm.watch("papers")} onCheckedChange={(checked) => watchForm.setValue("papers", !!checked)} />
+                    <Label htmlFor="dash-papers" className="cursor-pointer">Papers</Label>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Google Drive Link</Label>
+                  <Input {...watchForm.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
+                </div>
               </div>
             </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Purchase From *</Label>
+                  <Select value={watchForm.watch("purchasedFrom") || ""} onValueChange={(val) => watchForm.setValue("purchasedFrom", val)}>
+                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Source" /></SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900">
+                      {PURCHASE_FROM_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Paid With *</Label>
+                  <Select value={watchForm.watch("paidWith") || ""} onValueChange={(val) => watchForm.setValue("paidWith", val)}>
+                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Payment" /></SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900">
+                      {PAID_WITH_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Seller / Dealer</Label>
+                  <Select value={watchForm.watch("clientId")?.toString() || "none"} onValueChange={(val) => watchForm.setValue("clientId", val === "none" ? null : parseInt(val))}>
+                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900">
+                      <SelectItem value="none">None</SelectItem>
+                      {clients?.filter((c: any) => c.type === 'dealer').map((client: any) => (
+                        <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Purchase Price (COGS) *</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                    <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("purchasePrice")} className="pl-7 bg-white border-slate-200" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Import Fee</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                    <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("importFee")} className="pl-7 bg-white border-slate-200" />
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 pt-8">
+                  <Checkbox id="dash-watchRegister" checked={watchForm.watch("watchRegister")} onCheckedChange={(checked) => watchForm.setValue("watchRegister", !!checked)} />
+                  <Label htmlFor="dash-watchRegister" className="cursor-pointer">Watch Register (€6)</Label>
+                </div>
+                <div className="space-y-2">
+                  <Label>Purchase Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !watchForm.watch("purchaseDate") && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {watchForm.watch("purchaseDate") ? format(new Date(watchForm.watch("purchaseDate")!), "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                      <Calendar mode="single" selected={watchForm.watch("purchaseDate") ? new Date(watchForm.watch("purchaseDate")!) : undefined} onSelect={(date) => { watchForm.setValue("purchaseDate", date ? date.toISOString() : null); if (date) watchForm.setValue("status", "incoming"); }} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Current Status *</Label>
+                  <Select value={watchForm.watch("status")} onValueChange={(val) => watchForm.setValue("status", val as any)}>
+                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Status" /></SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900">
+                      <SelectItem value="incoming">Incoming</SelectItem>
+                      <SelectItem value="received">Received</SelectItem>
+                      <SelectItem value="servicing">In Service</SelectItem>
+                      <SelectItem value="in_stock">Listed</SelectItem>
+                      <SelectItem value="sold">Sold</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date Received</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900", !watchForm.watch("dateReceived") && "text-slate-500")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {watchForm.watch("dateReceived") ? format(new Date(watchForm.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                      <Calendar mode="single" selected={watchForm.watch("dateReceived") ? new Date(watchForm.watch("dateReceived")!) : undefined} onSelect={(date) => { watchForm.setValue("dateReceived", date ? date.toISOString() : null); if (date) watchForm.setValue("status", "received"); }} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date Listed</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !watchForm.watch("dateListed") && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {watchForm.watch("dateListed") ? format(new Date(watchForm.watch("dateListed")!), "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                      <Calendar mode="single" selected={watchForm.watch("dateListed") ? new Date(watchForm.watch("dateListed")!) : undefined} onSelect={(date) => { watchForm.setValue("dateListed", date ? date.toISOString() : null); if (date) watchForm.setValue("status", "in_stock"); }} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="dash-showSale" className="text-sm font-medium text-slate-500">Show Sale Fields</Label>
+                  <Switch id="dash-showSale" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
+                </div>
+              </div>
+              {showSaleDetails && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-2">
+                    <Label>Sold Price</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("salePrice")} className="pl-7 bg-white border-slate-200" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Platform Fees</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("platformFees")} className="pl-7 bg-white border-slate-200" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Sold On</Label>
+                    <Select value={watchForm.watch("soldPlatform") || ""} onValueChange={(val) => watchForm.setValue("soldPlatform", val)}>
+                      <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Platform" /></SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        {SOLD_ON_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Shipping Fee</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("shippingFee")} className="pl-7 bg-white border-slate-200" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Insurance Fee</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("insuranceFee")} className="pl-7 bg-white border-slate-200" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Buyer Name</Label>
+                    <Input {...watchForm.register("soldTo")} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Sold</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !watchForm.watch("dateSold") && "text-muted-foreground")}>
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {watchForm.watch("dateSold") ? format(new Date(watchForm.watch("dateSold")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <Calendar mode="single" selected={watchForm.watch("dateSold") ? new Date(watchForm.watch("dateSold")!) : undefined} onSelect={(date) => { watchForm.setValue("dateSold", date ? date.toISOString() : null); if (date) watchForm.setValue("status", "sold"); }} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service & Maintenance</h3>
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="dash-showService" className="text-sm font-medium text-slate-500">Show Service Fields</Label>
+                  <Switch id="dash-showService" checked={showServiceDetails} onCheckedChange={setShowServiceDetails} />
+                </div>
+              </div>
+              {showServiceDetails && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Date Sent to Service</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !watchForm.watch("dateSentToService") && "text-muted-foreground")}>
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {watchForm.watch("dateSentToService") ? format(new Date(watchForm.watch("dateSentToService")!), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                          <Calendar mode="single" selected={watchForm.watch("dateSentToService") ? new Date(watchForm.watch("dateSentToService")!) : undefined} onSelect={(date) => { watchForm.setValue("dateSentToService", date ? date.toISOString() : null); if (date) watchForm.setValue("status", "servicing"); }} initialFocus />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Returned</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !watchForm.watch("dateReturnedFromService") && "text-muted-foreground")}>
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {watchForm.watch("dateReturnedFromService") ? format(new Date(watchForm.watch("dateReturnedFromService")!), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                          <Calendar mode="single" selected={watchForm.watch("dateReturnedFromService") ? new Date(watchForm.watch("dateReturnedFromService")!) : undefined} onSelect={(date) => watchForm.setValue("dateReturnedFromService", date ? date.toISOString() : null)} initialFocus />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Service Fee</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("serviceFee")} className="pl-7 bg-white border-slate-200" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Polish Fee</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("polishFee")} className="pl-7 bg-white border-slate-200" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Service Notes</Label>
+                    <Textarea {...watchForm.register("serviceNotes")} className="bg-white border-slate-200 min-h-[80px]" placeholder="Notes about service work performed..." />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Shipping Partner</Label>
+                  <Input {...watchForm.register("shippingPartner")} className="bg-white border-slate-200" placeholder="DHL, FedEx, UPS..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tracking Number</Label>
+                  <Input {...watchForm.register("trackingNumber")} className="bg-white border-slate-200" placeholder="Enter tracking number" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Target Sell Price</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                    <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("targetSellPrice")} className="pl-7 bg-white border-slate-200" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
+              <Textarea {...watchForm.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
+            </div>
+
             <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
               <Button type="button" variant="outline" onClick={() => setIsAddWatchOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-emerald-600 text-white">Add Watch</Button>
+              <Button type="submit" disabled={createWatchMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[120px]">
+                {createWatchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                Add Watch
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Add Expense Dialog */}
+      {/* Add Expense Dialog - Full Form */}
       <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
-        <DialogContent className="max-w-md bg-white border-slate-200">
+        <DialogContent className="max-w-lg bg-white border-slate-200 text-slate-900">
           <DialogHeader><DialogTitle>Add New Expense</DialogTitle></DialogHeader>
           <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
             <div className="space-y-2">
-              <Label>Description</Label>
-              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" />
+              <Label>Description *</Label>
+              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="Enter expense description" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Amount (€) *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                  <Input {...expenseForm.register("amount")} type="number" className="pl-7 bg-white border-slate-200" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select value={expenseForm.watch("category") as string} onValueChange={(val) => expenseForm.setValue("category", val as any)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Category" /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    {EXPENSE_CATEGORIES.map(cat => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
-              <Label>Amount (€)</Label>
-              <Input {...expenseForm.register("amount")} type="number" className="bg-white border-slate-200" />
+              <Label>Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !expenseForm.watch("date") && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {expenseForm.watch("date") ? format(new Date(expenseForm.watch("date") as Date), "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                  <Calendar mode="single" selected={expenseForm.watch("date") ? new Date(expenseForm.watch("date") as Date) : undefined} onSelect={(date) => expenseForm.setValue("date", date || new Date())} initialFocus />
+                </PopoverContent>
+              </Popover>
             </div>
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox id="dash-isRecurring" checked={expenseForm.watch("isRecurring")} onCheckedChange={(checked) => expenseForm.setValue("isRecurring", !!checked)} />
+              <Label htmlFor="dash-isRecurring" className="cursor-pointer">Recurring Expense</Label>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
               <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-emerald-600 text-white">Add Expense</Button>
+              <Button type="submit" disabled={createExpenseMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                {createExpenseMutation.isPending ? "Adding..." : "Add Expense"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Add Client Dialog */}
+      {/* Add Client Dialog - Full Form */}
       <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
-        <DialogContent className="max-w-md bg-white border-slate-200">
+        <DialogContent className="bg-white border-slate-200 text-slate-900">
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
           <form onSubmit={clientForm.handleSubmit(onClientSubmit)} className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input {...clientForm.register("name")} className="bg-white border-slate-200" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Name *</Label>
+                <Input {...clientForm.register("name")} className="bg-white border-slate-200" placeholder="John Doe" />
+              </div>
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select value={clientForm.watch("type") as string} onValueChange={(val) => clientForm.setValue("type", val as any)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    <SelectItem value="client">Client</SelectItem>
+                    <SelectItem value="dealer">Dealer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input {...clientForm.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input {...clientForm.register("phone")} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Social Media Handle</Label>
+              <Input {...clientForm.register("socialHandle")} className="bg-white border-slate-200" placeholder="@username" />
+            </div>
+            <div className="space-y-2">
+              <Label>Country</Label>
+              <Select value={clientForm.watch("country") as string || ""} onValueChange={(val) => clientForm.setValue("country", val)}>
+                <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Country" /></SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-[200px]">
+                  <SelectItem value="">None</SelectItem>
+                  {["Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kosovo", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"].map(country => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea {...clientForm.register("notes")} className="bg-white border-slate-200" placeholder="Special requirements or preferences..." />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox id="dash-isVip" checked={clientForm.watch("isVip")} onCheckedChange={(checked) => clientForm.setValue("isVip", !!checked)} />
+              <Label htmlFor="dash-isVip" className="cursor-pointer">VIP Client</Label>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
               <Button type="button" variant="outline" onClick={() => setIsAddClientOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-emerald-600 text-white">Add Client</Button>
+              <Button type="submit" disabled={createClientMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+                {createClientMutation.isPending ? "Adding..." : "Add Client"}
+              </Button>
             </div>
           </form>
         </DialogContent>
