@@ -374,7 +374,7 @@ export default function Inventory() {
     }
     
     const headers = [
-      "ID", "Brand", "Model", "Reference", "Serial #", "Internal Serial", 
+      "ID", "Brand", "Model", "Reference", "Serial #", "Movement Serial", 
       "Status", "Condition", "Purchase Date", "Purchase Price (EUR)", 
       "Purchased From", "Box", "Papers", "Hold Time (Days)",
       "Sold Date", "Sold Price (EUR)", "Margin %"
