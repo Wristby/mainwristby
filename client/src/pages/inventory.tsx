@@ -377,10 +377,16 @@ export default function Inventory() {
       "ID", "Brand", "Model", "Reference", "Serial #", "Internal Serial", 
       "Status", "Condition", "Purchase Date", "Purchase Price (EUR)", 
       "Purchased From", "Box", "Papers", "Hold Time (Days)",
-      "Sold Date", "Sold Price (EUR)"
+      "Sold Date", "Sold Price (EUR)", "Margin %"
     ];
     
     const rows = filteredInventory.map((item: any) => {
+      const totalCost = (item.purchasePrice || 0) + (item.importFee || 0) + (item.serviceFee || 0) + (item.polishFee || 0) + (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? 600 : 0);
+      const netSale = (item.salePrice || 0) - (item.platformFees || 0);
+      const marginPercent = totalCost > 0 && item.status === "sold" 
+        ? (((netSale - totalCost) / totalCost) * 100).toFixed(2) + "%"
+        : "N/A";
+
       return [
         item.id.toString(),
         `"${item.brand.replace(/"/g, '""')}"`,
@@ -397,7 +403,8 @@ export default function Inventory() {
         item.papers ? "Yes" : "No",
         getHoldTime(item).toString(),
         item.dateSold ? format(new Date(item.dateSold), "yyyy-MM-dd") : "",
-        item.salePrice ? (item.salePrice / 100).toString() : "0"
+        item.salePrice ? (item.salePrice / 100).toString() : "0",
+        marginPercent
       ];
     });
     
