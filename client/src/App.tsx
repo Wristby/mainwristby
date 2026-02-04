@@ -37,6 +37,9 @@ function Router() {
       <Route path="/">
         <ProtectedRoute component={Dashboard} />
       </Route>
+      <Route path="/dashboard">
+        <ProtectedRoute component={Dashboard} />
+      </Route>
       <Route path="/inventory">
         <ProtectedRoute component={Inventory} />
       </Route>
