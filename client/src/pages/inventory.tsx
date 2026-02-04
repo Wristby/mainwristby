@@ -87,7 +87,7 @@ const createFormSchema = z.object({
   platformFees: z.coerce.number().optional().default(0),
   shippingFee: z.coerce.number().optional().default(0),
   insuranceFee: z.coerce.number().optional().default(0),
-  
+  dateReceived: z.string().optional().nullable(),
   purchaseDate: z.string().optional().nullable(),
   dateListed: z.string().optional().nullable(),
   dateSold: z.string().optional().nullable(),
@@ -170,7 +170,7 @@ export default function Inventory() {
       platformFees: 0,
       shippingFee: 0,
       insuranceFee: 0,
-      targetSellPrice: 0,
+      dateReceived: null,
       purchaseDate: null,
       dateListed: null,
       dateSold: null,
@@ -217,7 +217,7 @@ export default function Inventory() {
       platformFees: Math.round(data.platformFees * 100),
       shippingFee: Math.round(data.shippingFee * 100),
       insuranceFee: Math.round(data.insuranceFee * 100),
-      targetSellPrice: Math.round(data.targetSellPrice * 100),
+      dateReceived: data.dateReceived ? new Date(data.dateReceived) : null,
       purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
       dateSold: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
@@ -598,6 +598,31 @@ export default function Inventory() {
                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
+                    <Label>Date Received</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900",
+                            !form.watch("dateReceived") && "text-slate-500"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.watch("dateReceived") ? format(new Date(form.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <CalendarComponent
+                          mode="single"
+                          selected={form.watch("dateReceived") ? new Date(form.watch("dateReceived")!) : undefined}
+                          onSelect={(date) => form.setValue("dateReceived", date ? date.toISOString() : null)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-2">
                     <Label>Current Status *</Label>
                     <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
                       <SelectTrigger className="bg-white border-slate-200">
@@ -611,19 +636,6 @@ export default function Inventory() {
                         <SelectItem value="sold">Sold</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Target Sell Price</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...form.register("targetSellPrice")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Date Listed</Label>

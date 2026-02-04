@@ -76,8 +76,7 @@ const editFormSchema = z.object({
   platformFees: z.coerce.number().optional().default(0),
   shippingFee: z.coerce.number().optional().default(0),
   insuranceFee: z.coerce.number().optional().default(0),
-  
-  targetSellPrice: z.coerce.number().optional().default(0),
+  dateReceived: z.string().optional().nullable(),
   purchaseDate: z.string().optional().nullable(),
   dateListed: z.string().optional().nullable(),
   dateSold: z.string().optional().nullable(),
@@ -126,7 +125,10 @@ export default function InventoryDetail() {
       platformFees: 0,
       shippingFee: 0,
       insuranceFee: 0,
-      targetSellPrice: 0,
+      dateReceived: "",
+      purchaseDate: "",
+      dateListed: "",
+      dateSold: "",
       status: "in_stock",
       condition: "Used",
       box: false,
@@ -172,7 +174,7 @@ export default function InventoryDetail() {
         platformFees: ((item as any).platformFees || 0) / 100,
         shippingFee: ((item as any).shippingFee || 0) / 100,
         insuranceFee: ((item as any).insuranceFee || 0) / 100,
-        targetSellPrice: (item.targetSellPrice || 0) / 100,
+        dateReceived: (item as any).dateReceived ? new Date((item as any).dateReceived).toISOString().split('T')[0] : "",
         purchaseDate: item.purchaseDate ? new Date(item.purchaseDate).toISOString().split('T')[0] : "",
         dateListed: item.dateListed ? new Date(item.dateListed).toISOString().split('T')[0] : "",
         dateSold: item.soldDate ? new Date(item.soldDate).toISOString().split('T')[0] : "",
@@ -232,7 +234,7 @@ export default function InventoryDetail() {
       platformFees: Math.round(data.platformFees * 100),
       shippingFee: Math.round(data.shippingFee * 100),
       insuranceFee: Math.round(data.insuranceFee * 100),
-      targetSellPrice: Math.round(data.targetSellPrice * 100),
+      dateReceived: (data as any).dateReceived ? new Date((data as any).dateReceived) : null,
       purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
       soldDate: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
@@ -435,6 +437,14 @@ export default function InventoryDetail() {
                     </div>
                     <div className="space-y-2">
                       <Label>Date Received</Label>
+                      <Input 
+                        type="date" 
+                        {...form.register("dateReceived" as any)} 
+                        className="bg-white border-slate-200" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Purchased</Label>
                       <Input 
                         type="date" 
                         {...form.register("purchaseDate")} 

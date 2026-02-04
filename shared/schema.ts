@@ -57,6 +57,7 @@ export const inventory = pgTable("inventory", {
   soldPrice: integer("sold_price"),
   
   // Dates
+  dateReceived: timestamp("date_received"),
   purchaseDate: timestamp("purchase_date"),
   dateListed: timestamp("date_listed"),
   soldDate: timestamp("sold_date"),

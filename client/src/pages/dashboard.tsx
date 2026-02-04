@@ -76,6 +76,7 @@ const createInventoryFormSchema = z.object({
   platformFees: z.coerce.number().optional().default(0),
   shippingFee: z.coerce.number().optional().default(0),
   insuranceFee: z.coerce.number().optional().default(0),
+  dateReceived: z.string().optional().nullable(),
   purchaseDate: z.string().optional().nullable(),
   dateListed: z.string().optional().nullable(),
   dateSold: z.string().optional().nullable(),
@@ -158,7 +159,7 @@ export default function Dashboard() {
       platformFees: 0,
       shippingFee: 0,
       insuranceFee: 0,
-      targetSellPrice: 0,
+      dateReceived: null,
       purchaseDate: null,
       dateListed: null,
       dateSold: null,
@@ -232,7 +233,7 @@ export default function Dashboard() {
       platformFees: Math.round((data.platformFees || 0) * 100),
       shippingFee: Math.round((data.shippingFee || 0) * 100),
       insuranceFee: Math.round((data.insuranceFee || 0) * 100),
-      targetSellPrice: Math.round((data.targetSellPrice || 0) * 100),
+      dateReceived: data.dateReceived ? new Date(data.dateReceived) : null,
       purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
       dateSold: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
@@ -778,8 +779,29 @@ export default function Dashboard() {
                 <Input {...watchForm.register("referenceNumber")} className="bg-white border-slate-200" />
               </div>
               <div className="space-y-2">
-                <Label>COGS *</Label>
-                <Input {...watchForm.register("purchasePrice")} className="bg-white border-slate-200" type="number" />
+                <Label>Date Received</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900",
+                        !watchForm.watch("dateReceived") && "text-slate-500"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {watchForm.watch("dateReceived") ? format(new Date(watchForm.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={watchForm.watch("dateReceived") ? new Date(watchForm.watch("dateReceived")!) : undefined}
+                      onSelect={(date) => watchForm.setValue("dateReceived", date?.toISOString() || null)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
                 <Label>Status *</Label>
