@@ -21,7 +21,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, ArrowLeft, Trash2, Pencil, Calendar, Box, FileText, Check, ExternalLink } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Calendar, Box, FileText, Check, ExternalLink, Wrench } from "lucide-react";
+import { differenceInDays, format } from "date-fns";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Separator } from "@/components/ui/separator";
@@ -90,6 +92,9 @@ const editFormSchema = z.object({
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
   soldPlatform: z.string().optional().nullable(),
+  dateSentToService: z.string().optional().nullable(),
+  dateReturnedFromService: z.string().optional().nullable(),
+  serviceNotes: z.string().optional().nullable(),
 });
 
 type EditFormValues = z.infer<typeof editFormSchema>;
@@ -138,6 +143,9 @@ export default function InventoryDetail() {
       shippingPartner: "",
       trackingNumber: "",
       soldPlatform: "",
+      dateSentToService: "",
+      dateReturnedFromService: "",
+      serviceNotes: "",
     },
   });
 
@@ -188,6 +196,9 @@ export default function InventoryDetail() {
         shippingPartner: item.shippingPartner || "",
         trackingNumber: item.trackingNumber || "",
         soldPlatform: item.soldPlatform || "",
+        dateSentToService: (item as any).dateSentToService ? new Date((item as any).dateSentToService).toISOString().split('T')[0] : "",
+        dateReturnedFromService: (item as any).dateReturnedFromService ? new Date((item as any).dateReturnedFromService).toISOString().split('T')[0] : "",
+        serviceNotes: (item as any).serviceNotes || "",
       });
     }
   }, [item, form.reset]);
@@ -238,6 +249,9 @@ export default function InventoryDetail() {
       purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
       soldDate: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
+      dateSentToService: data.dateSentToService ? new Date(data.dateSentToService) : null,
+      dateReturnedFromService: data.dateReturnedFromService ? new Date(data.dateReturnedFromService) : null,
+      serviceNotes: data.serviceNotes || null,
     };
     updateMutation.mutate(
       { id, ...submissionData as any },
@@ -532,6 +546,48 @@ export default function InventoryDetail() {
                       <Label>Insurance Fee (€)</Label>
                       <Input type="number" {...form.register("insuranceFee")} className="bg-white border-slate-200" />
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Service & Maintenance</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Date Sent to Service</Label>
+                      <Input 
+                        type="date" 
+                        {...form.register("dateSentToService")} 
+                        className="bg-white border-slate-200"
+                        onChange={(e) => {
+                          form.setValue("dateSentToService", e.target.value);
+                          if (e.target.value) form.setValue("status", "servicing");
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Returned</Label>
+                      <Input 
+                        type="date" 
+                        {...form.register("dateReturnedFromService")} 
+                        className="bg-white border-slate-200" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Service Fee (€)</Label>
+                      <Input type="number" {...form.register("serviceFee")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Polish Fee (€)</Label>
+                      <Input type="number" {...form.register("polishFee")} className="bg-white border-slate-200" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Service Notes</Label>
+                    <Textarea 
+                      {...form.register("serviceNotes")} 
+                      className="bg-white border-slate-200 min-h-[80px]" 
+                      placeholder="Notes about service work performed..."
+                    />
                   </div>
                 </div>
 
@@ -871,6 +927,74 @@ export default function InventoryDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Service History Card */}
+          {(item.dateSentToService || item.serviceNotes) && (
+            <Card className="bg-white border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-slate-900 text-lg flex items-center gap-2">
+                  <Wrench className="w-5 h-5 text-blue-600" />
+                  Service History
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {item.dateSentToService && (
+                  <div className="space-y-2">
+                    <span className="text-xs text-slate-500 uppercase">Date Sent</span>
+                    <div className="text-sm text-slate-700 flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      {format(new Date(item.dateSentToService), "PPP")}
+                    </div>
+                  </div>
+                )}
+                {item.dateReturnedFromService && (
+                  <>
+                    <Separator className="bg-slate-200" />
+                    <div className="space-y-2">
+                      <span className="text-xs text-slate-500 uppercase">Date Returned</span>
+                      <div className="text-sm text-slate-700 flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-slate-400" />
+                        {format(new Date(item.dateReturnedFromService), "PPP")}
+                      </div>
+                    </div>
+                  </>
+                )}
+                {item.dateSentToService && item.dateReturnedFromService && (
+                  <>
+                    <Separator className="bg-slate-200" />
+                    <div className="space-y-2">
+                      <span className="text-xs text-slate-500 uppercase">Days at Service</span>
+                      <div className="text-lg font-bold text-blue-600">
+                        {differenceInDays(new Date(item.dateReturnedFromService), new Date(item.dateSentToService))} days
+                      </div>
+                    </div>
+                  </>
+                )}
+                {item.dateSentToService && !item.dateReturnedFromService && (
+                  <>
+                    <Separator className="bg-slate-200" />
+                    <div className="space-y-2">
+                      <span className="text-xs text-slate-500 uppercase">Days at Service</span>
+                      <div className="text-lg font-bold text-amber-600">
+                        {differenceInDays(new Date(), new Date(item.dateSentToService))} days (ongoing)
+                      </div>
+                    </div>
+                  </>
+                )}
+                {item.serviceNotes && (
+                  <>
+                    <Separator className="bg-slate-200" />
+                    <div className="space-y-2">
+                      <span className="text-xs text-slate-500 uppercase">Service Notes</span>
+                      <div className="text-sm text-slate-700 whitespace-pre-wrap">
+                        {item.serviceNotes}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

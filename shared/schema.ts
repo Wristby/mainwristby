@@ -44,6 +44,9 @@ export const inventory = pgTable("inventory", {
   // Service & Preparation Costs (stored in cents)
   serviceFee: integer("service_fee").default(0),
   polishFee: integer("polish_fee").default(0),
+  dateSentToService: timestamp("date_sent_to_service"),
+  dateReturnedFromService: timestamp("date_returned_from_service"),
+  serviceNotes: text("service_notes"),
   
   // Sale Details (stored in cents)
   salePrice: integer("sale_price").default(0),

@@ -105,6 +105,9 @@ const createFormSchema = z.object({
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
   soldPlatform: z.string().optional().nullable(),
+  dateSentToService: z.string().optional().nullable(),
+  dateReturnedFromService: z.string().optional().nullable(),
+  serviceNotes: z.string().optional().nullable(),
 });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
@@ -145,6 +148,7 @@ export default function Inventory() {
   const { data: clients } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
+  const [showServiceDetails, setShowServiceDetails] = useState(false);
   const { toast } = useToast();
   const createMutation = useCreateInventory();
 
@@ -183,11 +187,15 @@ export default function Inventory() {
       shippingPartner: "",
       trackingNumber: "",
       soldPlatform: "",
+      dateSentToService: null,
+      dateReturnedFromService: null,
+      serviceNotes: "",
     },
   });
 
   const watchedSalePrice = form.watch("salePrice");
   const watchedSoldPlatform = form.watch("soldPlatform");
+  const watchedStatus = form.watch("status");
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
@@ -195,6 +203,12 @@ export default function Inventory() {
       form.setValue("platformFees", fee);
     }
   }, [watchedSalePrice, watchedSoldPlatform, form]);
+
+  useEffect(() => {
+    if (watchedStatus === "servicing") {
+      setShowServiceDetails(true);
+    }
+  }, [watchedStatus]);
 
   const onSubmit = (data: CreateFormValues) => {
     let finalStatus = data.status;
@@ -222,6 +236,9 @@ export default function Inventory() {
       dateListed: data.dateListed ? new Date(data.dateListed) : null,
       dateSold: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
       soldDate: data.dateSold ? new Date(data.dateSold) : (finalStatus === 'sold' ? new Date() : null),
+      dateSentToService: data.dateSentToService ? new Date(data.dateSentToService) : null,
+      dateReturnedFromService: data.dateReturnedFromService ? new Date(data.dateReturnedFromService) : null,
+      serviceNotes: data.serviceNotes || null,
     };
     createMutation.mutate(submissionData as any, {
       onSuccess: () => {
@@ -787,35 +804,109 @@ export default function Inventory() {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Service & Maintenance</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Service Fee</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...form.register("serviceFee")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Polish Fee</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        {...form.register("polishFee")} 
-                        className="pl-7 bg-white border-slate-200" 
-                      />
-                    </div>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service & Maintenance</h3>
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="showService" className="text-sm font-medium text-slate-500">Show Service Fields</Label>
+                    <Switch id="showService" checked={showServiceDetails} onCheckedChange={setShowServiceDetails} />
                   </div>
                 </div>
+                
+                {showServiceDetails && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Date Sent to Service</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-white border-slate-200",
+                                !form.watch("dateSentToService") && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {form.watch("dateSentToService") ? format(new Date(form.watch("dateSentToService")!), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                            <CalendarComponent
+                              mode="single"
+                              selected={form.watch("dateSentToService") ? new Date(form.watch("dateSentToService")!) : undefined}
+                              onSelect={(date) => {
+                                form.setValue("dateSentToService", date ? date.toISOString() : null);
+                                if (date) form.setValue("status", "servicing");
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Date Returned</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-white border-slate-200",
+                                !form.watch("dateReturnedFromService") && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {form.watch("dateReturnedFromService") ? format(new Date(form.watch("dateReturnedFromService")!), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                            <CalendarComponent
+                              mode="single"
+                              selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined}
+                              onSelect={(date) => form.setValue("dateReturnedFromService", date ? date.toISOString() : null)}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Service Fee</Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                          <Input 
+                            type="text" 
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            {...form.register("serviceFee")} 
+                            className="pl-7 bg-white border-slate-200" 
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Polish Fee</Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                          <Input 
+                            type="text" 
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            {...form.register("polishFee")} 
+                            className="pl-7 bg-white border-slate-200" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Service Notes</Label>
+                      <Textarea 
+                        {...form.register("serviceNotes")} 
+                        className="bg-white border-slate-200 min-h-[80px]" 
+                        placeholder="Notes about the service work performed..."
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
