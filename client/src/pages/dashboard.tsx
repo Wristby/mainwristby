@@ -20,7 +20,8 @@ import {
   Target,
   Pencil,
   Check,
-  X
+  X,
+  Scale
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
@@ -127,6 +128,8 @@ export default function Dashboard() {
   });
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalInputValue, setGoalInputValue] = useState("");
+  const [offerPrice, setOfferPrice] = useState<string>("");
+  const [demandPrice, setDemandPrice] = useState<string>("");
   const { toast } = useToast();
 
   const createWatchMutation = useCreateInventory();
@@ -670,6 +673,56 @@ export default function Dashboard() {
                     </Link>
                   ))
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Meet in the Middle Calculator */}
+            <Card className="bg-white border-slate-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-900">
+                  <Scale className="w-5 h-5 text-blue-600" />
+                  Meet in the Middle
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-slate-500 uppercase">Their Offer</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        placeholder="0"
+                        value={offerPrice}
+                        onChange={(e) => setOfferPrice(e.target.value)}
+                        className="pl-7 bg-white border-slate-200 text-slate-900"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-slate-500 uppercase">Your Demand</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        placeholder="0"
+                        value={demandPrice}
+                        onChange={(e) => setDemandPrice(e.target.value)}
+                        className="pl-7 bg-white border-slate-200 text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
+                  <p className="text-xs text-blue-600 font-semibold uppercase mb-1">Middle Point</p>
+                  <p className="text-3xl font-bold text-blue-700 tabular-nums">
+                    €{(() => {
+                      const offer = parseFloat(offerPrice || "0");
+                      const demand = parseFloat(demandPrice || "0");
+                      if (offer === 0 && demand === 0) return "0";
+                      const middle = (offer + demand) / 2;
+                      return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(middle);
+                    })()}
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
