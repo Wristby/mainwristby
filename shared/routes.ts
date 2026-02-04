@@ -14,6 +14,9 @@ const inventoryInputSchema = insertInventorySchema.extend({
   dateListed: dateStringToDate,
   soldDate: dateStringToDate,
   dateSold: dateStringToDate,
+  dateReceived: dateStringToDate,
+  dateSentToService: dateStringToDate,
+  dateReturnedFromService: dateStringToDate,
 });
 
 export const errorSchemas = {
