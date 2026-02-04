@@ -95,6 +95,7 @@ export const inventory = pgTable("inventory", {
 });
 
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true });
+export const insertWatchSchema = insertInventorySchema;
 export type InventoryItem = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 
