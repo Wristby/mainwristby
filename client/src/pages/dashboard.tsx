@@ -112,6 +112,7 @@ const EXPENSE_CATEGORIES = [
   { value: "service", label: "Service" },
   { value: "shipping", label: "Shipping" },
   { value: "parts", label: "Parts" },
+  { value: "platform_fees", label: "Platform Fees" },
   { value: "other", label: "Other" },
 ];
 

@@ -75,6 +75,7 @@ const EXPENSE_CATEGORIES = [
   { value: "service", label: "Service" },
   { value: "shipping", label: "Shipping" },
   { value: "parts", label: "Parts" },
+  { value: "platform_fees", label: "Platform Fees" },
   { value: "other", label: "Other" },
 ];
 
@@ -318,6 +319,15 @@ export default function Financials() {
   const getCategoryLabel = (category: string) => {
     return EXPENSE_CATEGORIES.find(c => c.value === category)?.label || category;
   };
+
+  // Calculate total for selected category filter
+  const categoryTotal = useMemo(() => {
+    if (categoryFilter === "all" || !expenses) return null;
+    const categoryExpenses = expenses.filter(e => e.category === categoryFilter);
+    const total = categoryExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const count = categoryExpenses.length;
+    return { total, count, label: getCategoryLabel(categoryFilter) };
+  }, [categoryFilter, expenses]);
 
   const exportToCSV = () => {
     if (!filteredExpenses || filteredExpenses.length === 0) {
@@ -757,9 +767,13 @@ export default function Financials() {
                 </SelectContent>
               </Select>
               
-              <Button variant="outline" size="sm" className="border-slate-200 text-slate-600">
-                <Filter className="w-4 h-4 mr-1" /> Filter
-              </Button>
+              {categoryTotal && (
+                <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-200 px-3 py-1.5" data-testid="badge-category-total">
+                  <span className="font-medium">{categoryTotal.label}:</span>
+                  <span className="ml-1.5 font-bold text-slate-900">{formatCurrency(categoryTotal.total)}</span>
+                  <span className="ml-1.5 text-slate-400">({categoryTotal.count})</span>
+                </Badge>
+              )}
             </div>
           </div>
 

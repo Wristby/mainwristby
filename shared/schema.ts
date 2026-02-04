@@ -92,7 +92,7 @@ export const expenses = pgTable("expenses", {
   description: text("description").notNull(),
   amount: integer("amount").notNull(), // cents
   date: timestamp("date").defaultNow().notNull(),
-  category: text("category", { enum: ["marketing", "rent_storage", "subscriptions", "tools", "insurance", "service", "shipping", "parts", "other"] }).default("other").notNull(),
+  category: text("category", { enum: ["marketing", "rent_storage", "subscriptions", "tools", "insurance", "service", "shipping", "parts", "platform_fees", "other"] }).default("other").notNull(),
   isRecurring: boolean("is_recurring").default(false).notNull(),
 });
 

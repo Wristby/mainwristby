@@ -12,7 +12,7 @@ import { eq, desc, sql, and } from "drizzle-orm";
 const FEE_TYPES = [
   { field: 'serviceFee', category: 'service' as const, label: 'Service Fee', isBoolean: false },
   { field: 'polishFee', category: 'service' as const, label: 'Polish Fee', isBoolean: false },
-  { field: 'platformFees', category: 'other' as const, label: 'Platform Fees', isBoolean: false },
+  { field: 'platformFees', category: 'platform_fees' as const, label: 'Platform Fees', isBoolean: false },
   { field: 'shippingFee', category: 'shipping' as const, label: 'Shipping Fee', isBoolean: false },
   { field: 'insuranceFee', category: 'insurance' as const, label: 'Insurance Fee', isBoolean: false },
   { field: 'importFee', category: 'other' as const, label: 'Import Fee', isBoolean: false },
