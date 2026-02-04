@@ -28,7 +28,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon, Download } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -367,6 +367,92 @@ export default function Inventory() {
     return result;
   }, [inventory, search, statusFilter, brandFilter, hasBoxFilter, hasPapersFilter, sortField, sortOrder]);
 
+  const exportToCSV = () => {
+    if (!filteredInventory || filteredInventory.length === 0) {
+      toast({ title: "No data", description: "No watches to export", variant: "destructive" });
+      return;
+    }
+    
+    const headers = [
+      "ID", "Brand", "Model", "Reference Number", "Serial Number", "Movement Serial", 
+      "Year", "Condition", "Box", "Papers", "Status", "Purchased From", "Paid With",
+      "Purchase Price (EUR)", "Import Fee (EUR)", "Watch Register", "Service Fee (EUR)", 
+      "Polish Fee (EUR)", "Target Sell Price (EUR)", "Sale Price (EUR)", "Sold Date",
+      "Platform Fees (EUR)", "Shipping Fee (EUR)", "Insurance Fee (EUR)", "Margin %",
+      "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed",
+      "Shipping Partner", "Tracking Number", "Notes"
+    ];
+    
+    const rows = filteredInventory.map((item: any) => {
+      const purchasePrice = item.purchasePrice / 100;
+      const salePrice = item.salePrice ? item.salePrice / 100 : 0;
+      const importFee = item.importFee ? item.importFee / 100 : 0;
+      const serviceFee = item.serviceFee ? item.serviceFee / 100 : 0;
+      const polishFee = item.polishFee ? item.polishFee / 100 : 0;
+      const platformFees = item.platformFees ? item.platformFees / 100 : 0;
+      const shippingFee = item.shippingFee ? item.shippingFee / 100 : 0;
+      const insuranceFee = item.insuranceFee ? item.insuranceFee / 100 : 0;
+      const targetSellPrice = item.targetSellPrice ? item.targetSellPrice / 100 : 0;
+      const watchRegisterCost = item.watchRegister ? 6 : 0;
+      
+      const totalCosts = purchasePrice + importFee + serviceFee + polishFee + watchRegisterCost + platformFees + shippingFee + insuranceFee;
+      const margin = salePrice > 0 && totalCosts > 0 ? ((salePrice - totalCosts) / totalCosts * 100).toFixed(1) : "";
+      
+      return [
+        item.id,
+        `"${item.brand}"`,
+        `"${item.model.replace(/"/g, '""')}"`,
+        `"${item.referenceNumber}"`,
+        `"${item.serialNumber || ""}"`,
+        `"${item.internalSerial || ""}"`,
+        item.year || "",
+        item.condition || "",
+        item.box ? "Yes" : "No",
+        item.papers ? "Yes" : "No",
+        item.status,
+        `"${item.purchasedFrom || ""}"`,
+        `"${item.paidWith || ""}"`,
+        purchasePrice,
+        importFee,
+        item.watchRegister ? "Yes" : "No",
+        serviceFee,
+        polishFee,
+        targetSellPrice,
+        salePrice,
+        item.soldDate || item.dateSold ? format(new Date(item.soldDate || item.dateSold), "yyyy-MM-dd") : "",
+        platformFees,
+        shippingFee,
+        insuranceFee,
+        margin,
+        `"${item.soldTo || ""}"`,
+        `"${item.soldPlatform || ""}"`,
+        item.purchaseDate ? format(new Date(item.purchaseDate), "yyyy-MM-dd") : "",
+        item.dateReceived ? format(new Date(item.dateReceived), "yyyy-MM-dd") : "",
+        item.dateListed ? format(new Date(item.dateListed), "yyyy-MM-dd") : "",
+        `"${item.shippingPartner || ""}"`,
+        `"${item.trackingNumber || ""}"`,
+        `"${(item.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`
+      ];
+    });
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `inventory_${format(new Date(), "yyyy-MM-dd")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast({ title: "Success", description: `Exported ${filteredInventory.length} watches to CSV` });
+  };
+
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'in_stock': return 'Listed';
@@ -417,13 +503,23 @@ export default function Inventory() {
             </div>
           </div>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Watch
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={exportToCSV}
+            data-testid="button-export-csv"
+            className="border-slate-300 text-slate-700 hover:bg-slate-100"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Watch
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
             <DialogHeader>
               <DialogTitle>Add New Watch</DialogTitle>
@@ -922,7 +1018,8 @@ export default function Inventory() {
               </div>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {/* Metrics Row */}
