@@ -835,7 +835,7 @@ export default function Dashboard() {
           <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label>Description</Label>
-              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" />
+              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="" />
             </div>
             <div className="space-y-2">
               <Label>Amount (€)</Label>
