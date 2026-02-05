@@ -837,8 +837,8 @@ export default function InventoryDetail() {
                 </div>
               </div>
 
-              {/* 3 Pillars Layout */}
-              <div className={`grid gap-6 ${item.status === 'sold' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
+              {/* Financial Pillars - 2 Row Layout */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Pillar A: Investment (Procurement) */}
                 <div className="p-5 bg-slate-50/50 rounded-xl border border-slate-100">
                   <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">The Investment</h4>
@@ -885,7 +885,7 @@ export default function InventoryDetail() {
                   </div>
                 </div>
 
-                {/* Pillar C: Transaction (Exit) - Only shows when sold */}
+                {/* Pillar C: Transaction (Exit) - Shown on second row if sold */}
                 {item.status === 'sold' && (
                   <div className="p-5 bg-emerald-50/30 rounded-xl border border-emerald-100/50">
                     <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-4">The Transaction</h4>
