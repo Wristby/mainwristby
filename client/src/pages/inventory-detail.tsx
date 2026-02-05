@@ -725,13 +725,12 @@ export default function InventoryDetail() {
           </Button>
         </div>
       </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Info Columns */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Specifications</CardTitle>
+              <CardTitle className="text-lg text-slate-900">Watch Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-2 gap-6">
