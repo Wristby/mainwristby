@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { Client, InventoryItem } from "@shared/schema";
+import { Client, InventoryItem, insertClientSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Phone, Mail, Globe, User, Star, ArrowLeft, Watch, History, TrendingUp, ExternalLink } from "lucide-react";
+import { Loader2, Phone, Mail, Globe, User, Star, ArrowLeft, Watch, History, TrendingUp, ExternalLink, Pencil, Check } from "lucide-react";
 import { Link } from "wouter";
 import {
   Table,
@@ -14,7 +14,38 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useUpdateClient } from "@/hooks/use-clients";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
@@ -28,6 +59,9 @@ const formatCurrency = (val: number) => {
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const updateClientMutation = useUpdateClient();
 
   const { data: clients, isLoading: isLoadingClients } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
@@ -38,6 +72,35 @@ export default function ClientDetail() {
   });
 
   const client = clients?.find((c) => c.id === parseInt(id));
+
+  const form = useForm({
+    resolver: zodResolver(insertClientSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      phone: "",
+      socialHandle: "",
+      country: "",
+      type: "client" as "client" | "dealer",
+      notes: "",
+      isVip: false,
+    },
+  });
+
+  useEffect(() => {
+    if (client) {
+      form.reset({
+        name: client.name,
+        email: client.email || "",
+        phone: client.phone || "",
+        socialHandle: client.socialHandle || "",
+        country: client.country || "",
+        type: client.type as "client" | "dealer",
+        notes: client.notes || "",
+        isVip: client.isVip,
+      });
+    }
+  }, [client, form]);
 
   if (isLoadingClients || isLoadingInventory) {
     return (
@@ -58,6 +121,19 @@ export default function ClientDetail() {
       </div>
     );
   }
+
+  const onEditSubmit = (data: any) => {
+    updateClientMutation.mutate({ id: client.id, ...data }, {
+      onSuccess: () => {
+        setIsEditOpen(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+        toast({ title: "Success", description: "Client updated successfully" });
+      },
+      onError: (error: any) => {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    });
+  };
 
   // Filter inventory related to this client
   const clientPurchases = inventory?.filter((item) => item.clientId === client.id) || [];
@@ -85,6 +161,156 @@ export default function ClientDetail() {
               <span className="text-sm">Client since {client.createdAt ? format(new Date(client.createdAt), "MMMM yyyy") : 'Unknown'}</span>
             </div>
           </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="border-slate-200 text-slate-600 hover-elevate shadow-sm">
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px] bg-white border-slate-200 text-slate-900">
+              <DialogHeader>
+                <DialogTitle>Edit Client</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onEditSubmit)} className="space-y-4 pt-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} className="bg-white border-slate-200" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-white border-slate-200" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-white border-slate-200" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="socialHandle"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Social Handle</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-white border-slate-200" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="country"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Country</FormLabel>
+                          <FormControl>
+                            <Input {...field} className="bg-white border-slate-200" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Type</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-white border-slate-200">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="bg-white border-slate-200">
+                            <SelectItem value="client">Client</SelectItem>
+                            <SelectItem value="dealer">Dealer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes</FormLabel>
+                        <FormControl>
+                          <Textarea {...field} className="bg-white border-slate-200" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="isVip"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 border-slate-200">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>
+                            VIP Status
+                          </FormLabel>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="bg-emerald-600 hover-elevate text-white" disabled={updateClientMutation.isPending}>
+                      {updateClientMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Check className="w-4 h-4 mr-2" />}
+                      Save Changes
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
