@@ -380,7 +380,7 @@ export default function Inventory() {
       "Polish Fee (EUR)", "Target Sell Price (EUR)", "Sale Price (EUR)", "Sold Date",
       "Platform Fees (EUR)", "Shipping Fee (EUR)", "Insurance Fee (EUR)", "Margin %",
       "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed",
-      "Shipping Partner", "Tracking Number", "Notes"
+      "Shipping Partner", "Tracking Number", "Google Drive Link", "Notes"
     ];
     
     const rows = filteredInventory.map((item: any) => {
@@ -431,6 +431,7 @@ export default function Inventory() {
         item.dateListed ? format(new Date(item.dateListed), "yyyy-MM-dd") : "",
         `"${item.shippingPartner || ""}"`,
         `"${item.trackingNumber || ""}"`,
+        `"${item.gdriveLink || ""}"`,
         `"${(item.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`
       ];
     });
