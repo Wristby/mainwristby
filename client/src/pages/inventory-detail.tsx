@@ -837,22 +837,38 @@ export default function InventoryDetail() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Cost Breakdown</h4>
+              {/* 3 Pillars Layout */}
+              <div className={`grid gap-6 ${item.status === 'sold' ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
+                {/* Pillar A: Investment (Procurement) */}
+                <div className="p-5 bg-slate-50/50 rounded-xl border border-slate-100">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">The Investment</h4>
+                  <p className="text-xs text-slate-400 mb-4">Procurement costs to acquire the watch</p>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">COGS</span>
+                      <span className="text-slate-500">Purchase Price</span>
                       <span className="font-medium">{formatCurrency(item.purchasePrice)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Import Fee</span>
+                      <span className="text-slate-500">Import/Customs Fee</span>
                       <span className="font-medium">{formatCurrency((item as any).importFee || 0)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Watch Register</span>
                       <span className="font-medium">{formatCurrency((item as any).watchRegister ? 600 : 0)}</span>
                     </div>
+                    <Separator className="my-3" />
+                    <div className="flex justify-between text-sm font-bold">
+                      <span className="text-slate-700">Total Sourcing</span>
+                      <span className="text-slate-900">{formatCurrency(item.purchasePrice + ((item as any).importFee || 0) + ((item as any).watchRegister ? 600 : 0))}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pillar B: Value-Add (Maintenance) */}
+                <div className="p-5 bg-amber-50/30 rounded-xl border border-amber-100/50">
+                  <h4 className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-4">Value-Add</h4>
+                  <p className="text-xs text-slate-400 mb-4">Costs to make the watch retail-ready</p>
+                  <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Service Fee</span>
                       <span className="font-medium">{formatCurrency((item as any).serviceFee || 0)}</span>
@@ -861,46 +877,64 @@ export default function InventoryDetail() {
                       <span className="text-slate-500">Polish Fee</span>
                       <span className="font-medium">{formatCurrency((item as any).polishFee || 0)}</span>
                     </div>
-                    <Separator className="my-2" />
+                    <Separator className="my-3" />
                     <div className="flex justify-between text-sm font-bold">
-                      <span>Total Costs</span>
-                      <span>{formatCurrency(totalCosts)}</span>
+                      <span className="text-amber-700">Total Value-Add</span>
+                      <span className="text-amber-900">{formatCurrency(((item as any).serviceFee || 0) + ((item as any).polishFee || 0))}</span>
                     </div>
                   </div>
                 </div>
 
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Fee Breakdown</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Platform Fees</span>
-                      <span className="font-medium">{formatCurrency((item as any).platformFees || 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Shipping Fee</span>
-                      <span className="font-medium">{formatCurrency((item as any).shippingFee || 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Insurance Fee</span>
-                      <span className="font-medium">{formatCurrency((item as any).insuranceFee || 0)}</span>
-                    </div>
-                    <Separator className="my-2" />
-                    <div className="flex justify-between text-sm font-bold">
-                      <span>Total Fees</span>
-                      <span>{formatCurrency(totalFees)}</span>
+                {/* Pillar C: Transaction (Exit) - Only shows when sold */}
+                {item.status === 'sold' && (
+                  <div className="p-5 bg-emerald-50/30 rounded-xl border border-emerald-100/50">
+                    <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-4">The Transaction</h4>
+                    <p className="text-xs text-slate-400 mb-4">Exit details and final outcome</p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Sale Price</span>
+                        <span className="font-medium text-emerald-600">{formatCurrency(salePrice)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Platform Fees</span>
+                        <span className="font-medium text-red-500">-{formatCurrency((item as any).platformFees || 0)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Shipping Fee</span>
+                        <span className="font-medium text-red-500">-{formatCurrency((item as any).shippingFee || 0)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Insurance Fee</span>
+                        <span className="font-medium text-red-500">-{formatCurrency((item as any).insuranceFee || 0)}</span>
+                      </div>
+                      <Separator className="my-3" />
+                      <div className="flex justify-between text-sm font-bold">
+                        <span className="text-emerald-700">Net Profit</span>
+                        <span className={profit >= 0 ? "text-emerald-600" : "text-red-600"}>{formatCurrency(profit)}</span>
+                      </div>
+                      <Separator className="my-3" />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Sold To</span>
+                        <span className="font-medium">{(item as any).soldTo || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Shipper</span>
+                        <span className="font-medium">{item.shippingPartner || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Tracking #</span>
+                        <span className="font-medium">{item.trackingNumber || 'N/A'}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-8 pt-4 border-t border-slate-50">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Sale & Shipping</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Sold To</span>
-                      <span className="font-medium">{(item as any).soldTo || 'Not sold'}</span>
-                    </div>
+              {/* Shipping Details - shows when info exists and item is not sold (sold items show in Transaction pillar) */}
+              {item.status !== 'sold' && (item.shippingPartner || item.trackingNumber) && (
+                <div className="pt-4 border-t border-slate-100">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Shipping Details</h4>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Shipper</span>
                       <span className="font-medium">{item.shippingPartner || 'N/A'}</span>
@@ -911,15 +945,22 @@ export default function InventoryDetail() {
                     </div>
                   </div>
                 </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Additional Expenses</h4>
-                  <div className="space-y-2">
-                    {/* Only showing hardcoded example from screenshot for now, but should ideally come from expenses relation */}
-                    <div className="flex justify-between text-xs gap-4">
-                      <span className="text-slate-500 line-clamp-2">Watch Register Fee - {item.brand} {item.model} - Ref#{item.referenceNumber}</span>
-                      <span className="font-medium shrink-0">6 €</span>
-                    </div>
-                  </div>
+              )}
+
+              {/* Additional Expenses Section */}
+              <div className="pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Additional Expenses</h4>
+                <div className="space-y-2">
+                  {(item as any).expenses && (item as any).expenses.length > 0 ? (
+                    (item as any).expenses.map((expense: any) => (
+                      <div key={expense.id} className="flex justify-between text-sm gap-4">
+                        <span className="text-slate-500 line-clamp-2">{expense.description}</span>
+                        <span className="font-medium shrink-0">{formatCurrency(expense.amount)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-400">No additional expenses recorded</p>
+                  )}
                 </div>
               </div>
             </CardContent>
