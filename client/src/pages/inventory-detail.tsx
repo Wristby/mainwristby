@@ -803,7 +803,7 @@ export default function InventoryDetail() {
               <CardTitle className="text-lg text-slate-900">Financials</CardTitle>
             </CardHeader>
             <CardContent className="space-y-8">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">COGS</p>
                   <p className="text-xl font-bold text-slate-900">{formatCurrency(item.purchasePrice)}</p>
@@ -823,7 +823,6 @@ export default function InventoryDetail() {
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Hold Time</p>
                   <p className="text-xl font-bold text-slate-900 tabular-nums">{holdTime} days</p>
-                  <p className="text-[10px] text-slate-400 uppercase">Since purchase</p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Total Fees</p>
