@@ -456,7 +456,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-emerald-50/90">Capital Deployed</p>
                 <p className="text-3xl font-bold text-white mt-1 tabular-nums">
-                  {formatCurrency(stats?.totalInventoryValue || 0)}
+                  {formatCurrency(activeInventory.reduce((sum, item) => sum + item.purchasePrice, 0))}
                 </p>
               </div>
               <div className="p-2 bg-white/20 rounded-full">

@@ -493,7 +493,7 @@ export default function Analytics() {
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide">Current COGS of Inventory</p>
                   <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums">
-                    {formatCurrency(currentCOGS)}
+                    {formatCurrency(inventory?.filter(i => i.status !== 'sold').reduce((sum, item) => sum + item.purchasePrice, 0) || 0)}
                   </p>
                   <p className="text-xs text-slate-400 mt-1">{activeItems.length} active watches</p>
                 </div>
