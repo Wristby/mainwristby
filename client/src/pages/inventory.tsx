@@ -379,8 +379,8 @@ export default function Inventory() {
       "Purchase Price (EUR)", "Import Fee (EUR)", "Watch Register", "Service Fee (EUR)", 
       "Polish Fee (EUR)", "Target Sell Price (EUR)", "Sale Price (EUR)", "Sold Date",
       "Platform Fees (EUR)", "Shipping Fee (EUR)", "Insurance Fee (EUR)", "Margin %",
-      "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed",
-      "Shipping Partner", "Tracking Number", "Google Drive Link", "Notes"
+      "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed", "Hold Time (Days)",
+      "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes"
     ];
     
     const rows = filteredInventory.map((item: any) => {
@@ -396,7 +396,9 @@ export default function Inventory() {
       const watchRegisterCost = item.watchRegister ? 6 : 0;
       
       const totalCosts = purchasePrice + importFee + serviceFee + polishFee + watchRegisterCost + platformFees + shippingFee + insuranceFee;
+      const profit = salePrice > 0 ? salePrice - totalCosts : 0;
       const margin = salePrice > 0 && totalCosts > 0 ? ((salePrice - totalCosts) / totalCosts * 100).toFixed(1) : "";
+      const holdTime = getHoldTime(item);
       
       return [
         item.id,
@@ -429,9 +431,11 @@ export default function Inventory() {
         item.purchaseDate ? format(new Date(item.purchaseDate), "yyyy-MM-dd") : "",
         item.dateReceived ? format(new Date(item.dateReceived), "yyyy-MM-dd") : "",
         item.dateListed ? format(new Date(item.dateListed), "yyyy-MM-dd") : "",
+        holdTime,
         `"${item.shippingPartner || ""}"`,
         `"${item.trackingNumber || ""}"`,
         `"${item.gdriveLink || ""}"`,
+        profit,
         `"${(item.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`
       ];
     });
