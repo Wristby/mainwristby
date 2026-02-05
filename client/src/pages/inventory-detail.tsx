@@ -164,6 +164,8 @@ export default function InventoryDetail() {
   });
 
   const watchedStatus = form.watch("status");
+  const watchedSalePrice = form.watch("salePrice");
+  const watchedSoldPlatform = form.watch("soldPlatform");
 
   useEffect(() => {
     if (watchedStatus === "sold") {
