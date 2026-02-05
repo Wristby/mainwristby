@@ -27,7 +27,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useState, useMemo } from "react";
-import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear } from "date-fns";
+import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter } from "date-fns";
 import type { InventoryItem } from "@shared/schema";
 
 const MONTHS = [
@@ -46,12 +46,119 @@ const MONTHS = [
   { value: "11", label: "December" },
 ];
 
+type PeriodPreset = "all" | "this_month" | "last_month" | "ytd" | "q1" | "q2" | "q3" | "q4" | "custom";
+
+interface DateRange {
+  start: Date | null;
+  end: Date | null;
+  label: string;
+  daysInPeriod: number;
+}
+
+function getQuarterRef(quarter: number, year: number): Date {
+  return new Date(year, (quarter - 1) * 3, 1);
+}
+
+function getPresetDateRange(preset: PeriodPreset, year: number, customMonth?: string, customYear?: string): DateRange {
+  const now = new Date();
+  switch (preset) {
+    case "this_month": {
+      const s = startOfMonth(now);
+      const e = endOfMonth(now);
+      const monthName = MONTHS.find(m => m.value === getMonth(now).toString())?.label || "";
+      return { start: s, end: e, label: `${monthName} ${getYear(now)}`, daysInPeriod: getDaysInMonth(now) };
+    }
+    case "last_month": {
+      const last = subMonths(now, 1);
+      const s = startOfMonth(last);
+      const e = endOfMonth(last);
+      const monthName = MONTHS.find(m => m.value === getMonth(last).toString())?.label || "";
+      return { start: s, end: e, label: `${monthName} ${getYear(last)}`, daysInPeriod: getDaysInMonth(last) };
+    }
+    case "ytd": {
+      const s = startOfYear(now);
+      return { start: s, end: now, label: `YTD ${getYear(now)}`, daysInPeriod: Math.max(1, differenceInDays(now, s) + 1) };
+    }
+    case "q1":
+    case "q2":
+    case "q3":
+    case "q4": {
+      const qNum = parseInt(preset.charAt(1));
+      const ref = getQuarterRef(qNum, year);
+      const s = startOfQuarter(ref);
+      const e = endOfQuarter(ref);
+      const days = differenceInDays(e, s) + 1;
+      return { start: s, end: e, label: `Q${qNum} ${year}`, daysInPeriod: days };
+    }
+    case "custom": {
+      if (customMonth && customMonth !== "all" && customYear && customYear !== "all") {
+        const m = parseInt(customMonth);
+        const y = parseInt(customYear);
+        const s = new Date(y, m, 1);
+        const e = endOfMonth(s);
+        const monthName = MONTHS.find(mo => mo.value === customMonth)?.label || "";
+        return { start: s, end: e, label: `${monthName} ${y}`, daysInPeriod: getDaysInMonth(s) };
+      } else if (customMonth && customMonth !== "all") {
+        return { start: null, end: null, label: `${MONTHS.find(mo => mo.value === customMonth)?.label || ""} (All Years)`, daysInPeriod: 0 };
+      } else if (customYear && customYear !== "all") {
+        const y = parseInt(customYear);
+        const s = startOfYear(new Date(y, 0, 1));
+        const e = endOfYear(new Date(y, 0, 1));
+        return { start: s, end: e, label: customYear, daysInPeriod: differenceInDays(e, s) + 1 };
+      }
+      return { start: null, end: null, label: "All Time", daysInPeriod: 0 };
+    }
+    default:
+      return { start: null, end: null, label: "All Time", daysInPeriod: 0 };
+  }
+}
+
+function filterByDateRange(items: InventoryItem[], range: DateRange, customMonth?: string, customYear?: string, preset?: PeriodPreset): InventoryItem[] {
+  return items.filter((item) => {
+    const date = item.status === 'sold' && (item.soldDate || item.dateSold)
+      ? new Date(item.soldDate || item.dateSold!)
+      : item.purchaseDate
+        ? new Date(item.purchaseDate)
+        : null;
+
+    if (!date) return true;
+
+    if (range.start && range.end) {
+      return date >= range.start && date <= range.end;
+    }
+
+    if (preset === "custom") {
+      const matchesMonth = !customMonth || customMonth === "all" || getMonth(date).toString() === customMonth;
+      const matchesYear = !customYear || customYear === "all" || getYear(date).toString() === customYear;
+      return matchesMonth && matchesYear;
+    }
+
+    return true;
+  });
+}
+
+const PERIOD_OPTIONS: { value: PeriodPreset; label: string; group: string }[] = [
+  { value: "all", label: "All Time", group: "general" },
+  { value: "this_month", label: "This Month", group: "general" },
+  { value: "last_month", label: "Last Month", group: "general" },
+  { value: "ytd", label: "Year to Date", group: "general" },
+  { value: "q1", label: "Q1 (Jan - Mar)", group: "quarter" },
+  { value: "q2", label: "Q2 (Apr - Jun)", group: "quarter" },
+  { value: "q3", label: "Q3 (Jul - Sep)", group: "quarter" },
+  { value: "q4", label: "Q4 (Oct - Dec)", group: "quarter" },
+  { value: "custom", label: "Custom Range", group: "custom" },
+];
+
 export default function Analytics() {
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("all");
+  const [comparePeriodPreset, setComparePeriodPreset] = useState<PeriodPreset>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [compareMode, setCompareMode] = useState(false);
   const [compareMonthFilter, setCompareMonthFilter] = useState<string>("all");
   const [compareYearFilter, setCompareYearFilter] = useState<string>("all");
+  const [quarterYear, setQuarterYear] = useState<string>(getYear(new Date()).toString());
+  const [compareQuarterYear, setCompareQuarterYear] = useState<string>(getYear(new Date()).toString());
 
   const { data: inventory, isLoading: inventoryLoading } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
@@ -68,28 +175,19 @@ export default function Analytics() {
     return uniqueYears.sort((a, b) => b - a);
   }, [inventory]);
 
+  const primaryDateRange = useMemo(() => {
+    return getPresetDateRange(periodPreset, parseInt(quarterYear), monthFilter, yearFilter);
+  }, [periodPreset, quarterYear, monthFilter, yearFilter]);
+
+  const compareDateRange = useMemo(() => {
+    return getPresetDateRange(comparePeriodPreset, parseInt(compareQuarterYear), compareMonthFilter, compareYearFilter);
+  }, [comparePeriodPreset, compareQuarterYear, compareMonthFilter, compareYearFilter]);
+
   const filteredInventory = useMemo(() => {
     if (!inventory) return [];
-    return inventory.filter((item) => {
-      // ONLY filter sold items by the selected period for metrics like revenue/profit
-      // Active items shouldn't necessarily be filtered by date if we want a snapshot,
-      // but if the user is filtering by "January 2024", they usually want to see 
-      // performance FOR that period.
-      
-      const date = item.status === 'sold' && (item.soldDate || item.dateSold)
-        ? new Date(item.soldDate || item.dateSold!) 
-        : item.purchaseDate 
-          ? new Date(item.purchaseDate) 
-          : null;
-      
-      if (!date) return true;
-
-      const matchesMonth = monthFilter === "all" || getMonth(date).toString() === monthFilter;
-      const matchesYear = yearFilter === "all" || getYear(date).toString() === yearFilter;
-      
-      return matchesMonth && matchesYear;
-    });
-  }, [inventory, monthFilter, yearFilter]);
+    if (periodPreset === "all") return inventory;
+    return filterByDateRange(inventory, primaryDateRange, monthFilter, yearFilter, periodPreset);
+  }, [inventory, periodPreset, primaryDateRange, monthFilter, yearFilter]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat("de-DE", {
@@ -143,26 +241,12 @@ export default function Analytics() {
     return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed };
   }, [filteredInventory]);
 
-  // Comparison period filtered inventory
   const compareFilteredInventory = useMemo(() => {
     if (!inventory || !compareMode) return [];
-    return inventory.filter((item) => {
-      const date = item.status === 'sold' && (item.soldDate || item.dateSold)
-        ? new Date(item.soldDate || item.dateSold!) 
-        : item.purchaseDate 
-          ? new Date(item.purchaseDate) 
-          : null;
-      
-      if (!date) return true;
+    if (comparePeriodPreset === "all") return inventory;
+    return filterByDateRange(inventory, compareDateRange, compareMonthFilter, compareYearFilter, comparePeriodPreset);
+  }, [inventory, compareMode, comparePeriodPreset, compareDateRange, compareMonthFilter, compareYearFilter]);
 
-      const matchesMonth = compareMonthFilter === "all" || getMonth(date).toString() === compareMonthFilter;
-      const matchesYear = compareYearFilter === "all" || getYear(date).toString() === compareYearFilter;
-      
-      return matchesMonth && matchesYear;
-    });
-  }, [inventory, compareMode, compareMonthFilter, compareYearFilter]);
-
-  // Comparison metrics calculation
   const compareMetrics = useMemo(() => {
     if (!compareMode) return null;
     
@@ -177,38 +261,15 @@ export default function Analytics() {
     const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
-    // Profit per day for comparison period
-    let daysInPeriod = 0;
-    let periodLabel = "";
-    
-    if (compareMonthFilter !== "all" && compareYearFilter !== "all") {
-      const selectedMonth = parseInt(compareMonthFilter);
-      const selectedYear = parseInt(compareYearFilter);
-      daysInPeriod = getDaysInMonth(new Date(selectedYear, selectedMonth));
-      const monthName = MONTHS.find(m => m.value === compareMonthFilter)?.label || "";
-      periodLabel = `${monthName} ${selectedYear}`;
-    } else if (compareMonthFilter !== "all" && compareYearFilter === "all") {
-      const selectedMonth = parseInt(compareMonthFilter);
-      daysInPeriod = getDaysInMonth(new Date(getYear(today), selectedMonth));
-      const monthName = MONTHS.find(m => m.value === compareMonthFilter)?.label || "";
-      periodLabel = `${monthName} (All Years)`;
-    } else if (compareMonthFilter === "all" && compareYearFilter !== "all") {
-      const selectedYear = parseInt(compareYearFilter);
-      const start = startOfYear(new Date(selectedYear, 0, 1));
-      const end = endOfYear(new Date(selectedYear, 0, 1));
-      daysInPeriod = differenceInDays(end, start) + 1;
-      periodLabel = compareYearFilter;
-    } else {
-      if (soldItems.length > 0) {
-        const dates = soldItems
-          .map(i => new Date(i.soldDate || i.dateSold!).getTime())
-          .sort((a, b) => a - b);
-        const earliest = new Date(dates[0]);
-        daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
-      } else {
-        daysInPeriod = 365;
-      }
-      periodLabel = "All Time";
+    let daysInPeriod = compareDateRange.daysInPeriod;
+    if (daysInPeriod === 0 && soldItems.length > 0) {
+      const dates = soldItems
+        .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+        .sort((a, b) => a - b);
+      const earliest = new Date(dates[0]);
+      daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
+    } else if (daysInPeriod === 0) {
+      daysInPeriod = 1;
     }
     
     const profitPerDay = daysInPeriod > 0 ? totalNetIncome / daysInPeriod : 0;
@@ -224,45 +285,23 @@ export default function Analytics() {
       capitalDeployed,
       profitPerDay,
       daysInPeriod,
-      periodLabel,
+      periodLabel: compareDateRange.label,
       watchesSold: soldItems.length
     };
-  }, [compareMode, compareFilteredInventory, compareMonthFilter, compareYearFilter]);
+  }, [compareMode, compareFilteredInventory, compareDateRange, comparePeriodPreset]);
 
-  // Profit Per Day Calculation (matching Financials page)
   const profitPerDayData = useMemo(() => {
     const { soldItems, today, totalNetIncome } = calculatedMetrics;
-    let daysInPeriod = 0;
-    let periodLabel = "";
     
-    if (monthFilter !== "all" && yearFilter !== "all") {
-      const selectedMonth = parseInt(monthFilter);
-      const selectedYear = parseInt(yearFilter);
-      daysInPeriod = getDaysInMonth(new Date(selectedYear, selectedMonth));
-      const monthName = MONTHS.find(m => m.value === monthFilter)?.label || "";
-      periodLabel = `${monthName} ${selectedYear}`;
-    } else if (monthFilter !== "all" && yearFilter === "all") {
-      const selectedMonth = parseInt(monthFilter);
-      daysInPeriod = getDaysInMonth(new Date(getYear(today), selectedMonth));
-      const monthName = MONTHS.find(m => m.value === monthFilter)?.label || "";
-      periodLabel = `${monthName} (All Years)`;
-    } else if (monthFilter === "all" && yearFilter !== "all") {
-      const selectedYear = parseInt(yearFilter);
-      const start = startOfYear(new Date(selectedYear, 0, 1));
-      const end = endOfYear(new Date(selectedYear, 0, 1));
-      daysInPeriod = differenceInDays(end, start) + 1;
-      periodLabel = yearFilter;
-    } else {
-      if (soldItems.length > 0) {
-        const dates = soldItems
-          .map(i => new Date(i.soldDate || i.dateSold!).getTime())
-          .sort((a, b) => a - b);
-        const earliest = new Date(dates[0]);
-        daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
-      } else {
-        daysInPeriod = 365;
-      }
-      periodLabel = "All Time";
+    let daysInPeriod = primaryDateRange.daysInPeriod;
+    if (daysInPeriod === 0 && soldItems.length > 0) {
+      const dates = soldItems
+        .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+        .sort((a, b) => a - b);
+      const earliest = new Date(dates[0]);
+      daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
+    } else if (daysInPeriod === 0) {
+      daysInPeriod = 1;
     }
     
     const profitPerDay = daysInPeriod > 0 ? totalNetIncome / daysInPeriod : 0;
@@ -270,9 +309,9 @@ export default function Analytics() {
     return {
       profitPerDay,
       daysInPeriod,
-      periodLabel
+      periodLabel: primaryDateRange.label
     };
-  }, [monthFilter, yearFilter, calculatedMetrics]);
+  }, [periodPreset, primaryDateRange, calculatedMetrics]);
 
   if (isLoading) {
     return (
@@ -291,22 +330,10 @@ export default function Analytics() {
   // Destructure calculated metrics for use in render
   const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed } = calculatedMetrics;
 
-  // Get period label for primary filter
-  const getPeriodLabel = (month: string, year: string) => {
-    if (month !== "all" && year !== "all") {
-      const monthName = MONTHS.find(m => m.value === month)?.label || "";
-      return `${monthName} ${year}`;
-    } else if (month !== "all") {
-      const monthName = MONTHS.find(m => m.value === month)?.label || "";
-      return `${monthName} (All Years)`;
-    } else if (year !== "all") {
-      return year;
-    }
-    return "All Time";
-  };
+  const primaryPeriodLabel = primaryDateRange.label;
+  const comparePeriodLabel = compareDateRange.label;
 
-  const primaryPeriodLabel = getPeriodLabel(monthFilter, yearFilter);
-  const comparePeriodLabel = getPeriodLabel(compareMonthFilter, compareYearFilter);
+  const needsYearPicker = (preset: PeriodPreset) => ["q1", "q2", "q3", "q4"].includes(preset);
 
   const avgProfitPerWatch = soldItems.length > 0
     ? profits.reduce((sum, p) => sum + p.profit, 0) / soldItems.length
@@ -373,37 +400,94 @@ export default function Analytics() {
   const averageMovers = profits.filter((p) => p.daysOnMarket >= 15 && p.daysOnMarket <= 45);
   const slowMovers = profits.filter((p) => p.daysOnMarket > 45);
 
+  const renderPeriodSelector = (
+    preset: PeriodPreset,
+    setPreset: (v: PeriodPreset) => void,
+    qYear: string,
+    setQYear: (v: string) => void,
+    cMonth: string,
+    setCMonth: (v: string) => void,
+    cYear: string,
+    setCYear: (v: string) => void,
+    testIdPrefix: string,
+    label?: string
+  ) => (
+    <div className="flex gap-2 items-center flex-wrap">
+      {label && <span className="text-xs text-slate-500 font-medium whitespace-nowrap">{label}</span>}
+      <Select value={preset} onValueChange={(v) => setPreset(v as PeriodPreset)}>
+        <SelectTrigger className="w-[170px] bg-white border-slate-200" data-testid={`select-${testIdPrefix}-period`}>
+          <SelectValue placeholder="Select Period" />
+        </SelectTrigger>
+        <SelectContent className="bg-white border-slate-200 text-slate-900">
+          <SelectItem value="all" className="text-slate-700">All Time</SelectItem>
+          <SelectItem value="this_month" className="text-slate-700">This Month</SelectItem>
+          <SelectItem value="last_month" className="text-slate-700">Last Month</SelectItem>
+          <SelectItem value="ytd" className="text-slate-700">Year to Date</SelectItem>
+          <div className="px-2 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Quarters</div>
+          <SelectItem value="q1" className="text-slate-700">Q1 (Jan - Mar)</SelectItem>
+          <SelectItem value="q2" className="text-slate-700">Q2 (Apr - Jun)</SelectItem>
+          <SelectItem value="q3" className="text-slate-700">Q3 (Jul - Sep)</SelectItem>
+          <SelectItem value="q4" className="text-slate-700">Q4 (Oct - Dec)</SelectItem>
+          <div className="px-2 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Manual</div>
+          <SelectItem value="custom" className="text-slate-700">Custom Range</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {needsYearPicker(preset) && (
+        <Select value={qYear} onValueChange={setQYear}>
+          <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid={`select-${testIdPrefix}-quarter-year`}>
+            <SelectValue placeholder="Year" />
+          </SelectTrigger>
+          <SelectContent className="bg-white border-slate-200 text-slate-900">
+            {years.map(y => (
+              <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {preset === "custom" && (
+        <>
+          <Select value={cMonth} onValueChange={setCMonth}>
+            <SelectTrigger className="w-[130px] bg-white border-slate-200" data-testid={`select-${testIdPrefix}-month`}>
+              <SelectValue placeholder="Month" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-slate-200 text-slate-900">
+              {MONTHS.map(m => (
+                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={cYear} onValueChange={setCYear}>
+            <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid={`select-${testIdPrefix}-year`}>
+              <SelectValue placeholder="Year" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-slate-200 text-slate-900">
+              <SelectItem value="all">All Years</SelectItem>
+              {years.map(y => (
+                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Analytics</h1>
           <div className="flex gap-3 items-center flex-wrap">
-            <div className="flex gap-2 items-center">
-              {compareMode && <span className="text-xs text-slate-500 font-medium">Period 1:</span>}
-              <Select value={monthFilter} onValueChange={setMonthFilter}>
-                <SelectTrigger className="w-[130px] bg-white border-slate-200" data-testid="select-month">
-                  <SelectValue placeholder="Month" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 text-slate-900">
-                  {MONTHS.map(m => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <Select value={yearFilter} onValueChange={setYearFilter}>
-                <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid="select-year">
-                  <SelectValue placeholder="Year" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 text-slate-900">
-                  <SelectItem value="all">All Years</SelectItem>
-                  {years.map(y => (
-                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {renderPeriodSelector(
+              periodPreset, setPeriodPreset,
+              quarterYear, setQuarterYear,
+              monthFilter, setMonthFilter,
+              yearFilter, setYearFilter,
+              "primary",
+              compareMode ? "Period 1:" : undefined
+            )}
             
             <Button 
               variant={compareMode ? "default" : "outline"} 
@@ -419,30 +503,15 @@ export default function Analytics() {
         </div>
         
         {compareMode && (
-          <div className="flex gap-2 items-center justify-end animate-in fade-in slide-in-from-top-2 duration-300">
-            <span className="text-xs text-slate-500 font-medium">Period 2:</span>
-            <Select value={compareMonthFilter} onValueChange={setCompareMonthFilter}>
-              <SelectTrigger className="w-[130px] bg-white border-slate-200" data-testid="select-compare-month">
-                <SelectValue placeholder="Month" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                {MONTHS.map(m => (
-                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Select value={compareYearFilter} onValueChange={setCompareYearFilter}>
-              <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid="select-compare-year">
-                <SelectValue placeholder="Year" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 text-slate-900">
-                <SelectItem value="all">All Years</SelectItem>
-                {years.map(y => (
-                  <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex justify-end animate-in fade-in slide-in-from-top-2 duration-300">
+            {renderPeriodSelector(
+              comparePeriodPreset, setComparePeriodPreset,
+              compareQuarterYear, setCompareQuarterYear,
+              compareMonthFilter, setCompareMonthFilter,
+              compareYearFilter, setCompareYearFilter,
+              "compare",
+              "Period 2:"
+            )}
           </div>
         )}
       </div>
