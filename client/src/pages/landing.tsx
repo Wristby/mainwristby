@@ -6,8 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 
 export default function Landing() {
-  const { user, isLoading, login, isLoggingIn, loginError, register, isRegistering, registerError } = useAuth();
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const { user, isLoading, login, isLoggingIn, loginError } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,11 +23,7 @@ export default function Landing() {
     setError(null);
     
     try {
-      if (isRegisterMode) {
-        await register({ username, password });
-      } else {
-        await login({ username, password });
-      }
+      await login({ username, password });
     } catch (err: any) {
       setError(err.message);
     }
@@ -47,12 +42,8 @@ export default function Landing() {
 
         <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-3xl backdrop-blur-sm space-y-6">
           <div className="space-y-2">
-            <h2 className="text-xl font-bold text-white">
-              {isRegisterMode ? "Create Account" : "Welcome Back"}
-            </h2>
-            <p className="text-sm text-slate-500 leading-relaxed">
-              {isRegisterMode ? "Enter your details to register." : "Sign in to continue."}
-            </p>
+            <h2 className="text-xl font-bold text-white">Welcome Back</h2>
+            <p className="text-sm text-slate-500 leading-relaxed">Sign in to continue.</p>
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -83,35 +74,21 @@ export default function Landing() {
               />
             </div>
 
-            {(error || loginError || registerError) && (
-              <p className="text-red-400 text-sm">{error || loginError || registerError}</p>
+            {(error || loginError) && (
+              <p className="text-red-400 text-sm">{error || loginError}</p>
             )}
             
             <Button 
               type="submit"
               size="lg"
-              disabled={isLoggingIn || isRegistering}
+              disabled={isLoggingIn}
               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-600/10 transition-all active:scale-[0.98]"
               data-testid="button-submit"
             >
-              {(isLoggingIn || isRegistering) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {isRegisterMode ? "Create Account" : "Sign In"}
+              {isLoggingIn && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Sign In
             </Button>
           </form>
-
-          <div className="text-sm">
-            <button
-              type="button"
-              onClick={() => {
-                setIsRegisterMode(!isRegisterMode);
-                setError(null);
-              }}
-              className="text-emerald-400 hover:text-emerald-300 transition-colors"
-              data-testid="button-toggle-mode"
-            >
-              {isRegisterMode ? "Already have an account? Sign in" : "Need an account? Register"}
-            </button>
-          </div>
         </div>
 
         <p className="text-xs text-slate-600">© 2026 Wristby</p>
