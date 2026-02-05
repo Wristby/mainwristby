@@ -163,8 +163,16 @@ export default function InventoryDetail() {
     },
   });
 
-  const watchedSalePrice = form.watch("salePrice");
-  const watchedSoldPlatform = form.watch("soldPlatform");
+  const watchedStatus = form.watch("status");
+
+  useEffect(() => {
+    if (watchedStatus === "sold") {
+      setShowSaleDetails(true);
+    }
+    if (watchedStatus === "servicing") {
+      setShowServiceDetails(true);
+    }
+  }, [watchedStatus]);
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {

@@ -225,6 +225,9 @@ export default function Dashboard() {
   }, [watchedSalePrice, watchedSoldPlatform, watchForm]);
 
   useEffect(() => {
+    if (watchedStatus === "sold") {
+      setShowSaleDetails(true);
+    }
     if (watchedStatus === "servicing") {
       setShowServiceDetails(true);
     }
