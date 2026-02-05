@@ -1021,7 +1021,6 @@ export default function Inventory() {
           </Dialog>
         </div>
       </div>
-
       {/* Metrics Row */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-white border-slate-200 shadow-sm">
@@ -1044,7 +1043,7 @@ export default function Inventory() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">Service Value</p>
+                <p className="text-sm font-medium text-slate-500">Service Cost</p>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                   {formatCurrency(metrics.serviceValue)}
                 </p>
@@ -1072,7 +1071,6 @@ export default function Inventory() {
           </CardContent>
         </Card>
       </div>
-
       <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -1118,7 +1116,6 @@ export default function Inventory() {
           </Select>
         </div>
       </div>
-
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
         <Table>
           <TableHeader className="bg-slate-50/50">
