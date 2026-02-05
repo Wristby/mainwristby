@@ -762,6 +762,19 @@ export default function InventoryDetail() {
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Condition</p>
                   <p className="text-slate-900 font-medium mt-1">{item.condition}</p>
                 </div>
+                {item.gdriveLink && (
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Google Drive Link</p>
+                    <a 
+                      href={item.gdriveLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-emerald-600 hover:text-emerald-700 font-medium mt-1 inline-flex items-center gap-1 hover:underline"
+                    >
+                      View Photos <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Includes</p>
                   <div className="flex gap-2 mt-1">
