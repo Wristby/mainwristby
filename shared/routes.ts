@@ -19,6 +19,14 @@ const inventoryInputSchema = insertInventorySchema.extend({
   dateReturnedFromService: dateStringToDate,
 });
 
+// Extended expense schema that properly handles date strings from JSON
+const expenseInputSchema = insertExpenseSchema.extend({
+  date: z.union([
+    z.string().transform((val) => val ? new Date(val) : new Date()),
+    z.date(),
+  ]),
+});
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -125,7 +133,7 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/expenses',
-      input: insertExpenseSchema,
+      input: expenseInputSchema,
       responses: {
         201: z.custom<typeof expenses.$inferSelect>(),
         400: errorSchemas.validation,
@@ -134,7 +142,7 @@ export const api = {
     update: {
       method: 'PUT' as const,
       path: '/api/expenses/:id',
-      input: insertExpenseSchema.partial(),
+      input: expenseInputSchema.partial(),
       responses: {
         200: z.custom<typeof expenses.$inferSelect>(),
         404: errorSchemas.notFound,
