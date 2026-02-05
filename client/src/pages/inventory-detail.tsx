@@ -826,11 +826,6 @@ export default function InventoryDetail() {
                   <p className="text-[10px] text-slate-400 uppercase">Since purchase</p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">In Stock</p>
-                  <p className="text-xl font-bold text-slate-900 tabular-nums">{daysInStock} days</p>
-                  <p className="text-[10px] text-slate-400 uppercase">Since received</p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Total Fees</p>
                   <p className="text-xl font-bold text-red-500">{formatCurrency(totalFees)}</p>
                 </div>
