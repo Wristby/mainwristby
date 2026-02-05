@@ -13,8 +13,12 @@ import {
   TrendingDown,
   BarChart3,
   Watch,
-  Package
+  Package,
+  ArrowUpRight,
+  ArrowDownRight,
+  GitCompare
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { 
   Select, 
   SelectContent, 
@@ -45,6 +49,9 @@ const MONTHS = [
 export default function Analytics() {
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>("all");
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareMonthFilter, setCompareMonthFilter] = useState<string>("all");
+  const [compareYearFilter, setCompareYearFilter] = useState<string>("all");
 
   const { data: inventory, isLoading: inventoryLoading } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
@@ -130,8 +137,97 @@ export default function Analytics() {
       };
     });
 
-    return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits };
+    // Capital deployed (COGS of active inventory)
+    const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+
+    return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed };
   }, [filteredInventory]);
+
+  // Comparison period filtered inventory
+  const compareFilteredInventory = useMemo(() => {
+    if (!inventory || !compareMode) return [];
+    return inventory.filter((item) => {
+      const date = item.status === 'sold' && (item.soldDate || item.dateSold)
+        ? new Date(item.soldDate || item.dateSold!) 
+        : item.purchaseDate 
+          ? new Date(item.purchaseDate) 
+          : null;
+      
+      if (!date) return true;
+
+      const matchesMonth = compareMonthFilter === "all" || getMonth(date).toString() === compareMonthFilter;
+      const matchesYear = compareYearFilter === "all" || getYear(date).toString() === compareYearFilter;
+      
+      return matchesMonth && matchesYear;
+    });
+  }, [inventory, compareMode, compareMonthFilter, compareYearFilter]);
+
+  // Comparison metrics calculation
+  const compareMetrics = useMemo(() => {
+    if (!compareMode) return null;
+    
+    const soldItems = compareFilteredInventory.filter((i) => i.status === "sold" && (i.soldDate || i.dateSold));
+    const activeItems = compareFilteredInventory.filter((i) => i.status !== "sold");
+    const today = new Date();
+
+    const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
+    const totalCOGS = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const totalFees = soldItems.reduce((sum, item) => sum + getItemFees(item), 0);
+    const totalNetIncome = totalRevenue - totalCOGS - totalFees;
+    const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
+    const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+
+    // Profit per day for comparison period
+    let daysInPeriod = 0;
+    let periodLabel = "";
+    
+    if (compareMonthFilter !== "all" && compareYearFilter !== "all") {
+      const selectedMonth = parseInt(compareMonthFilter);
+      const selectedYear = parseInt(compareYearFilter);
+      daysInPeriod = getDaysInMonth(new Date(selectedYear, selectedMonth));
+      const monthName = MONTHS.find(m => m.value === compareMonthFilter)?.label || "";
+      periodLabel = `${monthName} ${selectedYear}`;
+    } else if (compareMonthFilter !== "all" && compareYearFilter === "all") {
+      const selectedMonth = parseInt(compareMonthFilter);
+      daysInPeriod = getDaysInMonth(new Date(getYear(today), selectedMonth));
+      const monthName = MONTHS.find(m => m.value === compareMonthFilter)?.label || "";
+      periodLabel = `${monthName} (All Years)`;
+    } else if (compareMonthFilter === "all" && compareYearFilter !== "all") {
+      const selectedYear = parseInt(compareYearFilter);
+      const start = startOfYear(new Date(selectedYear, 0, 1));
+      const end = endOfYear(new Date(selectedYear, 0, 1));
+      daysInPeriod = differenceInDays(end, start) + 1;
+      periodLabel = compareYearFilter;
+    } else {
+      if (soldItems.length > 0) {
+        const dates = soldItems
+          .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+          .sort((a, b) => a - b);
+        const earliest = new Date(dates[0]);
+        daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
+      } else {
+        daysInPeriod = 365;
+      }
+      periodLabel = "All Time";
+    }
+    
+    const profitPerDay = daysInPeriod > 0 ? totalNetIncome / daysInPeriod : 0;
+
+    return {
+      soldItems,
+      activeItems,
+      totalRevenue,
+      totalCOGS,
+      totalFees,
+      totalNetIncome,
+      averageMargin,
+      capitalDeployed,
+      profitPerDay,
+      daysInPeriod,
+      periodLabel,
+      watchesSold: soldItems.length
+    };
+  }, [compareMode, compareFilteredInventory, compareMonthFilter, compareYearFilter]);
 
   // Profit Per Day Calculation (matching Financials page)
   const profitPerDayData = useMemo(() => {
@@ -193,7 +289,24 @@ export default function Analytics() {
   }
 
   // Destructure calculated metrics for use in render
-  const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits } = calculatedMetrics;
+  const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed } = calculatedMetrics;
+
+  // Get period label for primary filter
+  const getPeriodLabel = (month: string, year: string) => {
+    if (month !== "all" && year !== "all") {
+      const monthName = MONTHS.find(m => m.value === month)?.label || "";
+      return `${monthName} ${year}`;
+    } else if (month !== "all") {
+      const monthName = MONTHS.find(m => m.value === month)?.label || "";
+      return `${monthName} (All Years)`;
+    } else if (year !== "all") {
+      return year;
+    }
+    return "All Time";
+  };
+
+  const primaryPeriodLabel = getPeriodLabel(monthFilter, yearFilter);
+  const comparePeriodLabel = getPeriodLabel(compareMonthFilter, compareYearFilter);
 
   const avgProfitPerWatch = soldItems.length > 0
     ? profits.reduce((sum, p) => sum + p.profit, 0) / soldItems.length
@@ -262,33 +375,158 @@ export default function Analytics() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Analytics</h1>
-        <div className="flex gap-3 items-center">
-          <Select value={monthFilter} onValueChange={setMonthFilter}>
-            <SelectTrigger className="w-[130px] bg-white border-slate-200" data-testid="select-month">
-              <SelectValue placeholder="Month" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-slate-200 text-slate-900">
-              {MONTHS.map(m => (
-                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          
-          <Select value={yearFilter} onValueChange={setYearFilter}>
-            <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid="select-year">
-              <SelectValue placeholder="Year" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-slate-200 text-slate-900">
-              <SelectItem value="all">All Years</SelectItem>
-              {years.map(y => (
-                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Analytics</h1>
+          <div className="flex gap-3 items-center flex-wrap">
+            <div className="flex gap-2 items-center">
+              {compareMode && <span className="text-xs text-slate-500 font-medium">Period 1:</span>}
+              <Select value={monthFilter} onValueChange={setMonthFilter}>
+                <SelectTrigger className="w-[130px] bg-white border-slate-200" data-testid="select-month">
+                  <SelectValue placeholder="Month" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900">
+                  {MONTHS.map(m => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select value={yearFilter} onValueChange={setYearFilter}>
+                <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid="select-year">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900">
+                  <SelectItem value="all">All Years</SelectItem>
+                  {years.map(y => (
+                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <Button 
+              variant={compareMode ? "default" : "outline"} 
+              size="sm"
+              onClick={() => setCompareMode(!compareMode)}
+              className={compareMode ? "bg-emerald-600" : "border-slate-200"}
+              data-testid="button-compare-toggle"
+            >
+              <GitCompare className="w-4 h-4 mr-2" />
+              Compare
+            </Button>
+          </div>
         </div>
+        
+        {compareMode && (
+          <div className="flex gap-2 items-center justify-end animate-in fade-in slide-in-from-top-2 duration-300">
+            <span className="text-xs text-slate-500 font-medium">Period 2:</span>
+            <Select value={compareMonthFilter} onValueChange={setCompareMonthFilter}>
+              <SelectTrigger className="w-[130px] bg-white border-slate-200" data-testid="select-compare-month">
+                <SelectValue placeholder="Month" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                {MONTHS.map(m => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Select value={compareYearFilter} onValueChange={setCompareYearFilter}>
+              <SelectTrigger className="w-[100px] bg-white border-slate-200" data-testid="select-compare-year">
+                <SelectValue placeholder="Year" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                <SelectItem value="all">All Years</SelectItem>
+                {years.map(y => (
+                  <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
+      
+      {/* Comparison View */}
+      {compareMode && compareMetrics && (
+        <Card className="bg-gradient-to-r from-slate-50 to-slate-100 border-slate-200" data-testid="card-comparison">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg text-slate-900 flex items-center gap-2">
+              <GitCompare className="w-5 h-5 text-emerald-600" />
+              Period Comparison
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-6">
+              {/* Comparison Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase">Metric</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-emerald-600 uppercase">{primaryPeriodLabel}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-blue-600 uppercase">{comparePeriodLabel}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500 uppercase">Difference</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <ComparisonRow 
+                      label="Total Revenue" 
+                      value1={totalRevenue} 
+                      value2={compareMetrics.totalRevenue} 
+                      format="currency" 
+                      formatCurrency={formatCurrency}
+                    />
+                    <ComparisonRow 
+                      label="Total Fees" 
+                      value1={totalFees} 
+                      value2={compareMetrics.totalFees} 
+                      format="currency" 
+                      formatCurrency={formatCurrency}
+                      invertColors
+                    />
+                    <ComparisonRow 
+                      label="Net Income" 
+                      value1={totalNetIncome} 
+                      value2={compareMetrics.totalNetIncome} 
+                      format="currency" 
+                      formatCurrency={formatCurrency}
+                    />
+                    <ComparisonRow 
+                      label="Margin %" 
+                      value1={averageMargin} 
+                      value2={compareMetrics.averageMargin} 
+                      format="percent" 
+                      formatCurrency={formatCurrency}
+                    />
+                    <ComparisonRow 
+                      label="Watches Sold" 
+                      value1={soldItems.length} 
+                      value2={compareMetrics.watchesSold} 
+                      format="number" 
+                      formatCurrency={formatCurrency}
+                    />
+                    <ComparisonRow 
+                      label="Profit Per Day" 
+                      value1={profitPerDayData.profitPerDay} 
+                      value2={compareMetrics.profitPerDay} 
+                      format="currency" 
+                      formatCurrency={formatCurrency}
+                    />
+                    <ComparisonRow 
+                      label="Capital Deployed" 
+                      value1={capitalDeployed} 
+                      value2={compareMetrics.capitalDeployed} 
+                      format="currency" 
+                      formatCurrency={formatCurrency}
+                    />
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Overall Performance */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-slate-600">Overall Performance</h2>
@@ -739,5 +977,74 @@ function MetricCard({
         <p className={`text-2xl font-bold tabular-nums ${valueColors[color]}`}>{value}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function ComparisonRow({ 
+  label, 
+  value1, 
+  value2, 
+  format, 
+  formatCurrency,
+  invertColors = false
+}: { 
+  label: string; 
+  value1: number; 
+  value2: number; 
+  format: "currency" | "percent" | "number";
+  formatCurrency: (val: number) => string;
+  invertColors?: boolean;
+}) {
+  const diff = value1 - value2;
+  const rawPercentChange = value2 !== 0 ? ((value1 - value2) / Math.abs(value2)) * 100 : (value1 > 0 ? 100 : 0);
+  // For inverted metrics (fees), a negative diff is actually an improvement
+  const displayPercentChange = invertColors ? -rawPercentChange : rawPercentChange;
+  
+  const formatValue = (val: number) => {
+    if (format === "currency") return formatCurrency(val);
+    if (format === "percent") return `${val.toFixed(2)}%`;
+    return val.toString();
+  };
+  
+  const formatDiff = (val: number) => {
+    const sign = val >= 0 ? "+" : "";
+    if (format === "currency") return `${sign}${formatCurrency(val)}`;
+    if (format === "percent") return `${sign}${val.toFixed(2)}%`;
+    return `${sign}${val}`;
+  };
+  
+  // For fees, lower is better (invertColors)
+  const isPositive = invertColors ? diff < 0 : diff > 0;
+  const isNegative = invertColors ? diff > 0 : diff < 0;
+  
+  return (
+    <tr className="border-b border-slate-100 last:border-0">
+      <td className="py-3 px-4 text-sm font-medium text-slate-700">{label}</td>
+      <td className="py-3 px-4 text-sm font-semibold text-right tabular-nums text-emerald-600">
+        {formatValue(value1)}
+      </td>
+      <td className="py-3 px-4 text-sm font-semibold text-right tabular-nums text-blue-600">
+        {formatValue(value2)}
+      </td>
+      <td className="py-3 px-4 text-right">
+        <div className="flex items-center justify-end gap-1">
+          {diff !== 0 && (
+            isPositive ? (
+              <ArrowUpRight className="w-4 h-4 text-emerald-500" />
+            ) : (
+              <ArrowDownRight className="w-4 h-4 text-red-500" />
+            )
+          )}
+          <span className={`text-sm font-medium tabular-nums ${
+            isPositive ? "text-emerald-600" : isNegative ? "text-red-600" : "text-slate-500"
+          }`}>
+            {formatDiff(diff)}
+          </span>
+        </div>
+        <p className={`text-xs tabular-nums ${displayPercentChange >= 0 ? "text-emerald-500" : "text-red-400"}`}>
+          {displayPercentChange >= 0 ? "+" : ""}{displayPercentChange.toFixed(1)}% {invertColors ? "saved" : ""}
+        </p>
+      </td>
+    </tr>
   );
 }
