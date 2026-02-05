@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench } from "lucide-react";
-import { differenceInDays, format } from "date-fns";
+import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
@@ -322,20 +322,25 @@ export default function InventoryDetail() {
   const salePrice = (item as any).salePrice || 0;
   const profit = salePrice > 0 ? salePrice - totalCosts : 0;
   const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
+  
+  const getEndDate = () => {
+    if (item.status === 'sold' && (item.soldDate || (item as any).dateSold)) {
+      const soldDateStr = item.soldDate || (item as any).dateSold;
+      return startOfDay(typeof soldDateStr === 'string' ? parseISO(soldDateStr) : new Date(soldDateStr));
+    }
+    return startOfDay(new Date());
+  };
+  
   const holdTime = item.purchaseDate 
     ? Math.max(0, differenceInDays(
-        item.status === 'sold' && (item.soldDate || (item as any).dateSold) 
-          ? new Date(item.soldDate || (item as any).dateSold) 
-          : new Date(), 
-        new Date(item.purchaseDate)
+        getEndDate(),
+        startOfDay(typeof item.purchaseDate === 'string' ? parseISO(item.purchaseDate) : new Date(item.purchaseDate))
       )) 
     : 0;
   const daysInStock = item.dateReceived
     ? Math.max(0, differenceInDays(
-        item.status === 'sold' && (item.soldDate || (item as any).dateSold) 
-          ? new Date(item.soldDate || (item as any).dateSold) 
-          : new Date(), 
-        new Date(item.dateReceived)
+        getEndDate(),
+        startOfDay(typeof item.dateReceived === 'string' ? parseISO(item.dateReceived) : new Date(item.dateReceived))
       ))
     : 0;
   const totalFees = ((item as any).platformFees || 0) + ((item as any).shippingFee || 0) + ((item as any).insuranceFee || 0);
