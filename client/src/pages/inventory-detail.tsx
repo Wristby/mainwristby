@@ -324,7 +324,9 @@ export default function InventoryDetail() {
   const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
   const holdTime = item.purchaseDate 
     ? Math.max(0, differenceInDays(
-        new Date(), 
+        item.status === 'sold' && (item.soldDate || (item as any).dateSold) 
+          ? new Date(item.soldDate || (item as any).dateSold) 
+          : new Date(), 
         new Date(item.purchaseDate)
       )) 
     : 0;
