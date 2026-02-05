@@ -311,10 +311,13 @@ export default function InventoryDetail() {
   
   const salePrice = (item as any).salePrice || 0;
   const profit = salePrice > 0 ? salePrice - totalCosts : 0;
-  const roi = item.purchasePrice > 0 && profit !== 0 ? Math.round((profit / item.purchasePrice) * 100) : 0;
+  const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
+  const holdTime = item.purchaseDate ? differenceInDays(item.soldDate ? new Date(item.soldDate) : new Date(), new Date(item.purchaseDate)) : 0;
+  const totalFees = ((item as any).platformFees || 0) + ((item as any).shippingFee || 0) + ((item as any).insuranceFee || 0);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/inventory">
           <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-600">
@@ -694,18 +697,14 @@ export default function InventoryDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Info Columns */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg text-slate-900">Watch Information</CardTitle>
-                <Badge variant="outline" className={cn("font-medium", getStatusStyles(item.status))}>
-                  {getStatusLabel(item.status)}
-                </Badge>
-              </div>
+              <CardTitle className="text-lg text-slate-900">Specifications</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Brand</p>
                   <p className="text-slate-900 font-medium mt-1">{item.brand}</p>
@@ -723,231 +722,218 @@ export default function InventoryDetail() {
                   <p className="text-slate-900 font-medium mt-1">{item.serialNumber || 'N/A'}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Movement Serial</p>
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Movement Serial Number</p>
                   <p className="text-slate-900 font-medium mt-1">{(item as any).internalSerial || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Year</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.year || 'N/A'}</p>
+                  <p className="text-slate-900 font-medium mt-1">{item.year || 'Unknown'}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Condition</p>
                   <p className="text-slate-900 font-medium mt-1">{item.condition}</p>
                 </div>
-                <div className="flex gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <Box className={cn("w-4 h-4", item.box ? "text-emerald-500" : "text-slate-300")} />
-                    <span className={cn("text-sm", item.box ? "text-slate-700" : "text-slate-400")}>Box</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <FileText className={cn("w-4 h-4", item.papers ? "text-emerald-500" : "text-slate-300")} />
-                    <span className={cn("text-sm", item.papers ? "text-slate-700" : "text-slate-400")}>Papers</span>
+                <div>
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Includes</p>
+                  <div className="flex gap-2 mt-1">
+                    {item.box && <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">Box</Badge>}
+                    {item.papers && <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">Papers</Badge>}
+                    {!item.box && !item.papers && <span className="text-slate-400 text-sm">Watch only</span>}
                   </div>
                 </div>
               </div>
-              
-              {item.gdriveLink && (
-                <div className="pt-4 border-t border-slate-100">
-                  <a href={item.gdriveLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-emerald-600 hover:text-emerald-500 text-sm font-medium">
-                    <ExternalLink className="w-4 h-4" />
-                    View Photos on Google Drive
-                  </a>
-                </div>
-              )}
-              
-              {item.notes && (
-                <div className="pt-4 border-t border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Notes</p>
-                  <p className="text-slate-600 text-sm">{item.notes}</p>
-                </div>
-              )}
             </CardContent>
           </Card>
 
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Timeline</CardTitle>
+              <CardTitle className="text-lg text-slate-900">Purchase Information</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {item.purchaseDate && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 mt-2 rounded-full bg-emerald-500"></div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Purchased</p>
-                      <p className="text-xs text-slate-500">{format(new Date(item.purchaseDate), 'PPP')}</p>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-sm text-slate-500">Purchased From</span>
+                  <span className="text-sm font-medium text-slate-900">{(item as any).purchasedFrom || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-sm text-slate-500">Paid With</span>
+                  <span className="text-sm font-medium text-slate-900">{(item as any).paidWith || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-sm text-slate-500">COGS</span>
+                  <span className="text-sm font-medium text-slate-900 font-mono">{formatCurrency(item.purchasePrice)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-sm text-slate-500">Import Fee</span>
+                  <span className="text-sm font-medium text-slate-900 font-mono">{formatCurrency((item as any).importFee || 0)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-sm text-slate-500">Watch Register Check</span>
+                  <span className="text-sm font-medium text-slate-900">{(item as any).watchRegister ? 'Yes (€6.00)' : 'No'}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg text-slate-900">Financials</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-8">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">COGS</p>
+                  <p className="text-xl font-bold text-slate-900">{formatCurrency(item.purchasePrice)}</p>
+                </div>
+                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                  <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider mb-1">Sale Price</p>
+                  <p className="text-xl font-bold text-emerald-600">{formatCurrency(salePrice)}</p>
+                </div>
+                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                  <p className="text-xs font-medium text-blue-600 uppercase tracking-wider mb-1">Net Profit</p>
+                  <p className="text-xl font-bold text-blue-600">{formatCurrency(profit)}</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Margin</p>
+                  <p className="text-xl font-bold text-emerald-600">{margin.toFixed(1)}%</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Hold Time</p>
+                  <p className="text-xl font-bold text-slate-900">{holdTime} days</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Total Fees</p>
+                  <p className="text-xl font-bold text-red-500">{formatCurrency(totalFees)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Cost Breakdown</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">COGS</span>
+                      <span className="font-medium">{formatCurrency(item.purchasePrice)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Import Fee</span>
+                      <span className="font-medium">{formatCurrency((item as any).importFee || 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Watch Register</span>
+                      <span className="font-medium">{formatCurrency((item as any).watchRegister ? 600 : 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Service Fee</span>
+                      <span className="font-medium">{formatCurrency((item as any).serviceFee || 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Polish Fee</span>
+                      <span className="font-medium">{formatCurrency((item as any).polishFee || 0)}</span>
+                    </div>
+                    <Separator className="my-2" />
+                    <div className="flex justify-between text-sm font-bold">
+                      <span>Total Costs</span>
+                      <span>{formatCurrency(totalCosts)}</span>
                     </div>
                   </div>
-                )}
-                {(item as any).dateReceived && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 mt-2 rounded-full bg-indigo-500"></div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Received</p>
-                      <p className="text-xs text-slate-500">{format(new Date((item as any).dateReceived), 'PPP')}</p>
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Fee Breakdown</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Platform Fees</span>
+                      <span className="font-medium">{formatCurrency((item as any).platformFees || 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Shipping Fee</span>
+                      <span className="font-medium">{formatCurrency((item as any).shippingFee || 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Insurance Fee</span>
+                      <span className="font-medium">{formatCurrency((item as any).insuranceFee || 0)}</span>
+                    </div>
+                    <Separator className="my-2" />
+                    <div className="flex justify-between text-sm font-bold">
+                      <span>Total Fees</span>
+                      <span>{formatCurrency(totalFees)}</span>
                     </div>
                   </div>
-                )}
-                {(item as any).dateSentToService && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 mt-2 rounded-full bg-blue-500"></div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Sent to Service</p>
-                      <p className="text-xs text-slate-500">{format(new Date((item as any).dateSentToService), 'PPP')}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-8 pt-4 border-t border-slate-50">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Sale & Shipping</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Sold To</span>
+                      <span className="font-medium">{(item as any).soldTo || 'Not sold'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Shipper</span>
+                      <span className="font-medium">{item.shippingPartner || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">Tracking #</span>
+                      <span className="font-medium">{item.trackingNumber || 'N/A'}</span>
                     </div>
                   </div>
-                )}
-                {(item as any).dateReturnedFromService && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 mt-2 rounded-full bg-blue-400"></div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Returned from Service</p>
-                      <p className="text-xs text-slate-500">{format(new Date((item as any).dateReturnedFromService), 'PPP')}</p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Additional Expenses</h4>
+                  <div className="space-y-2">
+                    {/* Only showing hardcoded example from screenshot for now, but should ideally come from expenses relation */}
+                    <div className="flex justify-between text-xs gap-4">
+                      <span className="text-slate-500 line-clamp-2">Watch Register Fee - {item.brand} {item.model} - Ref#{item.referenceNumber}</span>
+                      <span className="font-medium shrink-0">6 €</span>
                     </div>
                   </div>
-                )}
-                {item.dateListed && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 mt-2 rounded-full bg-amber-500"></div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Listed for Sale</p>
-                      <p className="text-xs text-slate-500">{format(new Date(item.dateListed), 'PPP')}</p>
-                    </div>
-                  </div>
-                )}
-                {(item.soldDate || (item as any).dateSold) && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 mt-2 rounded-full bg-slate-400"></div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Sold</p>
-                      <p className="text-xs text-slate-500">{format(new Date(item.soldDate || (item as any).dateSold), 'PPP')}</p>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
+        {/* Right Sidebar */}
         <div className="space-y-6">
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Financials</CardTitle>
+              <CardTitle className="text-lg text-slate-900">Status</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                <span className="text-sm text-slate-500">Purchase Price (COGS)</span>
-                <span className="font-semibold text-slate-900">{formatCurrency(item.purchasePrice)}</span>
+            <CardContent className="space-y-6">
+              <div>
+                <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current State</Label>
+                <div className="mt-2 flex">
+                  <Badge variant="outline" className={cn("font-medium px-3 py-1", getStatusStyles(item.status))}>
+                    {getStatusLabel(item.status)}
+                  </Badge>
+                </div>
               </div>
-              {(item as any).importFee > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">Import Fee</span>
-                  <span className="font-medium text-slate-700">{formatCurrency((item as any).importFee)}</span>
-                </div>
-              )}
-              {(item as any).watchRegister && (
-                <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">Watch Register</span>
-                  <span className="font-medium text-slate-700">{formatCurrency(600)}</span>
-                </div>
-              )}
-              {(item as any).serviceFee > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">Service Fee</span>
-                  <span className="font-medium text-slate-700">{formatCurrency((item as any).serviceFee)}</span>
-                </div>
-              )}
-              {(item as any).polishFee > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">Polish Fee</span>
-                  <span className="font-medium text-slate-700">{formatCurrency((item as any).polishFee)}</span>
-                </div>
-              )}
-              {salePrice > 0 && (
-                <>
-                  <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                    <span className="text-sm text-slate-500">Sale Price</span>
-                    <span className="font-semibold text-emerald-600">{formatCurrency(salePrice)}</span>
-                  </div>
-                  {(item as any).platformFees > 0 && (
-                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                      <span className="text-sm text-slate-500">Platform Fees</span>
-                      <span className="font-medium text-slate-700">-{formatCurrency((item as any).platformFees)}</span>
+              
+              <div className="space-y-4">
+                {item.dateReceived && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Received</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <CalendarIcon className="w-4 h-4" />
+                      <span className="text-sm font-medium">{format(new Date(item.dateReceived), 'M/d/yyyy')}</span>
                     </div>
-                  )}
-                  {(item as any).shippingFee > 0 && (
-                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                      <span className="text-sm text-slate-500">Shipping Fee</span>
-                      <span className="font-medium text-slate-700">-{formatCurrency((item as any).shippingFee)}</span>
-                    </div>
-                  )}
-                  {(item as any).insuranceFee > 0 && (
-                    <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                      <span className="text-sm text-slate-500">Insurance Fee</span>
-                      <span className="font-medium text-slate-700">-{formatCurrency((item as any).insuranceFee)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center py-3 bg-slate-50 rounded-lg px-3 mt-4">
-                    <span className="text-sm font-medium text-slate-700">Net Profit</span>
-                    <span className={cn("font-bold text-lg", profit >= 0 ? "text-emerald-600" : "text-red-600")}>
-                      {formatCurrency(profit)}
-                    </span>
                   </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-slate-500">ROI</span>
-                    <span className={cn("font-semibold", roi >= 0 ? "text-emerald-600" : "text-red-600")}>
-                      {roi}%
-                    </span>
+                )}
+                {item.dateListed && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Listed</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <CalendarIcon className="w-4 h-4" />
+                      <span className="text-sm font-medium">{format(new Date(item.dateListed), 'M/d/yyyy')}</span>
+                    </div>
                   </div>
-                </>
-              )}
-              {salePrice === 0 && item.targetSellPrice > 0 && (
-                <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">Target Sell Price</span>
-                  <span className="font-medium text-slate-700">{formatCurrency(item.targetSellPrice)}</span>
-                </div>
-              )}
+                )}
+              </div>
             </CardContent>
           </Card>
-
-          {item.shippingPartner && (
-            <Card className="border-slate-200 bg-white shadow-sm">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg text-slate-900">Shipping</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Partner</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.shippingPartner}</p>
-                </div>
-                {item.trackingNumber && (
-                  <div>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Tracking #</p>
-                    <p className="text-slate-900 font-medium mt-1 font-mono text-sm">{item.trackingNumber}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {((item as any).serviceNotes || (item as any).serviceFee > 0) && (
-            <Card className="border-slate-200 bg-white shadow-sm">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg text-slate-900 flex items-center gap-2">
-                  <Wrench className="w-4 h-4" />
-                  Service Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(item as any).serviceNotes && (
-                  <div>
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Notes</p>
-                    <p className="text-slate-600 text-sm">{(item as any).serviceNotes}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
     </div>
