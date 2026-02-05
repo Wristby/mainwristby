@@ -1197,13 +1197,45 @@ export default function Inventory() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {item.gdriveLink && (
+                        <TooltipProvider delayDuration={0}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(item.gdriveLink!, '_blank');
+                                }}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Open Photos (Google Drive)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                       <Link href={`/inventory/${item.id}`}>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50">
-                          <ExternalLink className="h-4 w-4" />
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Info className="h-4 w-4" />
                         </Button>
                       </Link>
                       <Link href={`/inventory/${item.id}?edit=true`}>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50">
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </Link>
