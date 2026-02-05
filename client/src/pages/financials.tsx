@@ -673,29 +673,6 @@ export default function Financials() {
         </Card>
       </div>
 
-      {/* Profit Per Day Card */}
-      <Card className="bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-500" data-testid="card-profit-per-day">
-        <CardContent className="py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-                <CalendarIcon className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-emerald-50/90">Profit Per Day</p>
-                <p className="text-3xl font-bold text-white tabular-nums">
-                  {formatCurrency(profitPerDayData.profitPerDay)}
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-emerald-50/80">{profitPerDayData.periodLabel}</p>
-              <p className="text-xs text-emerald-50/60">{profitPerDayData.daysInPeriod} days</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       <Card className="bg-white border-slate-200">
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">
