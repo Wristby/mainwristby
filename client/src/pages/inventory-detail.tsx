@@ -322,7 +322,14 @@ export default function InventoryDetail() {
   const salePrice = (item as any).salePrice || 0;
   const profit = salePrice > 0 ? salePrice - totalCosts : 0;
   const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
-  const holdTime = item.purchaseDate ? differenceInDays(item.soldDate ? new Date(item.soldDate) : new Date(), new Date(item.purchaseDate)) : 0;
+  const holdTime = item.purchaseDate 
+    ? Math.max(0, differenceInDays(
+        item.status === 'sold' && (item.soldDate || (item as any).dateSold) 
+          ? new Date(item.soldDate || (item as any).dateSold) 
+          : new Date(), 
+        new Date(item.purchaseDate)
+      )) 
+    : 0;
   const totalFees = ((item as any).platformFees || 0) + ((item as any).shippingFee || 0) + ((item as any).insuranceFee || 0);
 
   return (
