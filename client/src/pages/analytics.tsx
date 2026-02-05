@@ -178,8 +178,8 @@ export default function Analytics() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-48 bg-slate-200" />
-        <div className="grid gap-4 grid-cols-5">
-          {[...Array(5)].map((_, i) => (
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
             <Skeleton key={i} className="h-24 bg-slate-200 rounded-xl" />
           ))}
         </div>
@@ -288,7 +288,7 @@ export default function Analytics() {
       {/* Overall Performance */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-slate-600">Overall Performance</h2>
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
           <MetricCard
             label="TOTAL REVENUE"
             value={formatCurrency(totalRevenue)}
@@ -306,12 +306,6 @@ export default function Analytics() {
             value={`${averageMargin.toFixed(2)}%`}
             icon={Percent}
             color="slate"
-          />
-          <MetricCard
-            label="TOTAL COGS"
-            value={formatCurrency(totalCOGS)}
-            icon={ShoppingCart}
-            color="orange"
           />
           <MetricCard
             label="TOTAL NET INCOME"
