@@ -64,9 +64,13 @@ export default function Analytics() {
   const filteredInventory = useMemo(() => {
     if (!inventory) return [];
     return inventory.filter((item) => {
-      // For sold items, filter by sold date. For active items, filter by purchase date.
-      const date = item.status === 'sold' && item.soldDate 
-        ? new Date(item.soldDate) 
+      // ONLY filter sold items by the selected period for metrics like revenue/profit
+      // Active items shouldn't necessarily be filtered by date if we want a snapshot,
+      // but if the user is filtering by "January 2024", they usually want to see 
+      // performance FOR that period.
+      
+      const date = item.status === 'sold' && (item.soldDate || item.dateSold)
+        ? new Date(item.soldDate || item.dateSold!) 
         : item.purchaseDate 
           ? new Date(item.purchaseDate) 
           : null;
@@ -101,7 +105,7 @@ export default function Analytics() {
 
   // Calculate metrics (moved before loading check for hook consistency)
   const calculatedMetrics = useMemo(() => {
-    const soldItems = filteredInventory.filter((i) => i.status === "sold");
+    const soldItems = filteredInventory.filter((i) => i.status === "sold" && (i.soldDate || i.dateSold));
     const activeItems = filteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
