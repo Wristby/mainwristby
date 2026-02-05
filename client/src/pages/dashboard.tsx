@@ -101,6 +101,7 @@ type CreateInventoryFormValues = z.infer<typeof createInventoryFormSchema>;
 
 const createExpenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
+  date: z.coerce.date(),
 });
 
 type CreateExpenseFormValues = z.infer<typeof createExpenseFormSchema>;

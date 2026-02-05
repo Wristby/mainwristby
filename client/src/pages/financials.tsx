@@ -97,6 +97,7 @@ const MONTHS = [
 
 const createFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
+  date: z.coerce.date(),
 });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
