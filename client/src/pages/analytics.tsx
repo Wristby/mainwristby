@@ -315,7 +315,6 @@ export default function Analytics() {
           />
         </div>
       </div>
-
       {/* Profit Per Day Card */}
       <Card className="bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-500" data-testid="card-profit-per-day">
         <CardContent className="py-5">
@@ -340,7 +339,7 @@ export default function Analytics() {
       </Card>
       {/* Per-Watch Metrics */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-600">Per-Watch Metrics</h2>
+        <h2 className="text-lg font-semibold text-slate-600">Additional Metrics</h2>
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="bg-white border-slate-200">
             <CardContent className="pt-5">
