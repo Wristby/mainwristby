@@ -1219,16 +1219,6 @@ export default function Inventory() {
                           </Tooltip>
                         </TooltipProvider>
                       )}
-                      <Link href={`/inventory/${item.id}`}>
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
-                          className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Info className="h-4 w-4" />
-                        </Button>
-                      </Link>
                       <Link href={`/inventory/${item.id}?edit=true`}>
                         <Button 
                           size="icon" 
