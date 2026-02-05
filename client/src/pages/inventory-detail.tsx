@@ -932,16 +932,26 @@ export default function InventoryDetail() {
               <CardTitle className="text-lg text-slate-900">Status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div>
-                <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current State</Label>
-                <div className="mt-2 flex">
-                  <Badge variant="outline" className={cn("font-medium px-3 py-1", getStatusStyles(item.status))}>
-                    {getStatusLabel(item.status)}
-                  </Badge>
-                </div>
-              </div>
-              
               <div className="space-y-4">
+                <div>
+                  <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current State</Label>
+                  <div className="mt-2 flex">
+                    <Badge variant="outline" className={cn("font-medium px-3 py-1", getStatusStyles(item.status))}>
+                      {getStatusLabel(item.status)}
+                    </Badge>
+                  </div>
+                </div>
+
+                {item.purchaseDate && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Purchased</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <CalendarIcon className="w-4 h-4" />
+                      <span className="text-sm font-medium">{format(new Date(item.purchaseDate), 'M/d/yyyy')}</span>
+                    </div>
+                  </div>
+                )}
+                
                 {item.dateReceived && (
                   <div>
                     <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Received</Label>
