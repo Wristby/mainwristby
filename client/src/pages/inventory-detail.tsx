@@ -481,14 +481,51 @@ export default function InventoryDetail() {
                       <Label>Purchase Price (COGS) *</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input type="number" step="0.01" {...form.register("purchasePrice")} className="pl-7 bg-white border-slate-200" data-testid="edit-input-price" />
+                        <Input 
+                          type="text" 
+                          {...form.register("purchasePrice", {
+                            setValueAs: (v) => {
+                              if (v === "") return 0;
+                              const normalized = v.toString().replace(",", ".");
+                              return parseFloat(normalized);
+                            }
+                          })}
+                          onBlur={(e) => {
+                            const normalized = e.target.value.replace(",", ".");
+                            const val = parseFloat(normalized);
+                            if (!isNaN(val)) {
+                              form.setValue("purchasePrice", parseFloat(val.toFixed(2)));
+                            }
+                          }}
+                          className="pl-7 bg-white border-slate-200" 
+                          data-testid="edit-input-price" 
+                          placeholder="0,00"
+                        />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Import Fee</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input type="number" step="0.01" {...form.register("importFee")} className="pl-7 bg-white border-slate-200" />
+                        <Input 
+                          type="text" 
+                          {...form.register("importFee", {
+                            setValueAs: (v) => {
+                              if (v === "") return 0;
+                              const normalized = v.toString().replace(",", ".");
+                              return parseFloat(normalized);
+                            }
+                          })}
+                          onBlur={(e) => {
+                            const normalized = e.target.value.replace(",", ".");
+                            const val = parseFloat(normalized);
+                            if (!isNaN(val)) {
+                              form.setValue("importFee", parseFloat(val.toFixed(2)));
+                            }
+                          }}
+                          className="pl-7 bg-white border-slate-200" 
+                          placeholder="0,00"
+                        />
                       </div>
                     </div>
                     <div className="flex items-center space-x-2 pt-8">
@@ -573,7 +610,25 @@ export default function InventoryDetail() {
                         <Label>Sold Price</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="number" step="0.01" {...form.register("salePrice")} className="pl-7 bg-white border-slate-200" />
+                          <Input 
+                            type="text" 
+                            {...form.register("salePrice", {
+                              setValueAs: (v) => {
+                                if (v === "") return 0;
+                                const normalized = v.toString().replace(",", ".");
+                                return parseFloat(normalized);
+                              }
+                            })}
+                            onBlur={(e) => {
+                              const normalized = e.target.value.replace(",", ".");
+                              const val = parseFloat(normalized);
+                              if (!isNaN(val)) {
+                                form.setValue("salePrice", parseFloat(val.toFixed(2)));
+                              }
+                            }}
+                            className="pl-7 bg-white border-slate-200" 
+                            placeholder="0,00"
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -608,14 +663,50 @@ export default function InventoryDetail() {
                         <Label>Shipping Fee</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="number" step="0.01" {...form.register("shippingFee")} className="pl-7 bg-white border-slate-200" />
+                          <Input 
+                            type="text" 
+                            {...form.register("shippingFee", {
+                              setValueAs: (v) => {
+                                if (v === "") return 0;
+                                const normalized = v.toString().replace(",", ".");
+                                return parseFloat(normalized);
+                              }
+                            })}
+                            onBlur={(e) => {
+                              const normalized = e.target.value.replace(",", ".");
+                              const val = parseFloat(normalized);
+                              if (!isNaN(val)) {
+                                form.setValue("shippingFee", parseFloat(val.toFixed(2)));
+                              }
+                            }}
+                            className="pl-7 bg-white border-slate-200" 
+                            placeholder="0,00"
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
                         <Label>Insurance Fee</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="number" step="0.01" {...form.register("insuranceFee")} className="pl-7 bg-white border-slate-200" />
+                          <Input 
+                            type="text" 
+                            {...form.register("insuranceFee", {
+                              setValueAs: (v) => {
+                                if (v === "") return 0;
+                                const normalized = v.toString().replace(",", ".");
+                                return parseFloat(normalized);
+                              }
+                            })}
+                            onBlur={(e) => {
+                              const normalized = e.target.value.replace(",", ".");
+                              const val = parseFloat(normalized);
+                              if (!isNaN(val)) {
+                                form.setValue("insuranceFee", parseFloat(val.toFixed(2)));
+                              }
+                            }}
+                            className="pl-7 bg-white border-slate-200" 
+                            placeholder="0,00"
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -717,7 +808,25 @@ export default function InventoryDetail() {
                         <Label>Target Sell Price</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="number" step="0.01" {...form.register("targetSellPrice")} className="pl-7 bg-white border-slate-200" />
+                          <Input 
+                            type="text" 
+                            {...form.register("targetSellPrice", {
+                              setValueAs: (v) => {
+                                if (v === "") return 0;
+                                const normalized = v.toString().replace(",", ".");
+                                return parseFloat(normalized);
+                              }
+                            })}
+                            onBlur={(e) => {
+                              const normalized = e.target.value.replace(",", ".");
+                              const val = parseFloat(normalized);
+                              if (!isNaN(val)) {
+                                form.setValue("targetSellPrice", parseFloat(val.toFixed(2)));
+                              }
+                            }}
+                            className="pl-7 bg-white border-slate-200" 
+                            placeholder="0,00"
+                          />
                         </div>
                       </div>
                   </div>

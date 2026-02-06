@@ -664,11 +664,24 @@ export default function Inventory() {
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
-                        type="number" 
-                        step="0.01"
-                        {...form.register("purchasePrice")} 
+                        type="text" 
+                        {...form.register("purchasePrice", {
+                          setValueAs: (v) => {
+                            if (v === "") return 0;
+                            const normalized = v.toString().replace(",", ".");
+                            return parseFloat(normalized);
+                          }
+                        })}
+                        onBlur={(e) => {
+                          const normalized = e.target.value.replace(",", ".");
+                          const val = parseFloat(normalized);
+                          if (!isNaN(val)) {
+                            form.setValue("purchasePrice", parseFloat(val.toFixed(2)));
+                          }
+                        }}
                         className="pl-7 bg-white border-slate-200" 
                         data-testid="input-purchase-price" 
+                        placeholder="0,00"
                       />
                     </div>
                     {form.formState.errors.purchasePrice && <p className="text-red-500 text-xs">COGS is required</p>}
@@ -678,10 +691,23 @@ export default function Inventory() {
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
-                        type="number" 
-                        step="0.01"
-                        {...form.register("importFee")} 
+                        type="text" 
+                        {...form.register("importFee", {
+                          setValueAs: (v) => {
+                            if (v === "") return 0;
+                            const normalized = v.toString().replace(",", ".");
+                            return parseFloat(normalized);
+                          }
+                        })}
+                        onBlur={(e) => {
+                          const normalized = e.target.value.replace(",", ".");
+                          const val = parseFloat(normalized);
+                          if (!isNaN(val)) {
+                            form.setValue("importFee", parseFloat(val.toFixed(2)));
+                          }
+                        }}
                         className="pl-7 bg-white border-slate-200" 
+                        placeholder="0,00"
                       />
                     </div>
                   </div>
@@ -816,10 +842,23 @@ export default function Inventory() {
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
-                          type="number" 
-                          step="0.01"
-                          {...form.register("salePrice")} 
+                          type="text" 
+                          {...form.register("salePrice", {
+                            setValueAs: (v) => {
+                              if (v === "") return 0;
+                              const normalized = v.toString().replace(",", ".");
+                              return parseFloat(normalized);
+                            }
+                          })}
+                          onBlur={(e) => {
+                            const normalized = e.target.value.replace(",", ".");
+                            const val = parseFloat(normalized);
+                            if (!isNaN(val)) {
+                              form.setValue("salePrice", parseFloat(val.toFixed(2)));
+                            }
+                          }}
                           className="pl-7 bg-white border-slate-200" 
+                          placeholder="0,00"
                         />
                       </div>
                     </div>
@@ -860,10 +899,23 @@ export default function Inventory() {
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
-                          type="number" 
-                          step="0.01"
-                          {...form.register("shippingFee")} 
+                          type="text" 
+                          {...form.register("shippingFee", {
+                            setValueAs: (v) => {
+                              if (v === "") return 0;
+                              const normalized = v.toString().replace(",", ".");
+                              return parseFloat(normalized);
+                            }
+                          })}
+                          onBlur={(e) => {
+                            const normalized = e.target.value.replace(",", ".");
+                            const val = parseFloat(normalized);
+                            if (!isNaN(val)) {
+                              form.setValue("shippingFee", parseFloat(val.toFixed(2)));
+                            }
+                          }}
                           className="pl-7 bg-white border-slate-200" 
+                          placeholder="0,00"
                         />
                       </div>
                     </div>
@@ -872,10 +924,23 @@ export default function Inventory() {
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
-                          type="number" 
-                          step="0.01"
-                          {...form.register("insuranceFee")} 
+                          type="text" 
+                          {...form.register("insuranceFee", {
+                            setValueAs: (v) => {
+                              if (v === "") return 0;
+                              const normalized = v.toString().replace(",", ".");
+                              return parseFloat(normalized);
+                            }
+                          })}
+                          onBlur={(e) => {
+                            const normalized = e.target.value.replace(",", ".");
+                            const val = parseFloat(normalized);
+                            if (!isNaN(val)) {
+                              form.setValue("insuranceFee", parseFloat(val.toFixed(2)));
+                            }
+                          }}
                           className="pl-7 bg-white border-slate-200" 
+                          placeholder="0,00"
                         />
                       </div>
                     </div>
@@ -992,10 +1057,23 @@ export default function Inventory() {
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
-                            type="number" 
-                            step="0.01"
-                            {...form.register("serviceFee")} 
+                            type="text" 
+                            {...form.register("serviceFee", {
+                              setValueAs: (v) => {
+                                if (v === "") return 0;
+                                const normalized = v.toString().replace(",", ".");
+                                return parseFloat(normalized);
+                              }
+                            })}
+                            onBlur={(e) => {
+                              const normalized = e.target.value.replace(",", ".");
+                              const val = parseFloat(normalized);
+                              if (!isNaN(val)) {
+                                form.setValue("serviceFee", parseFloat(val.toFixed(2)));
+                              }
+                            }}
                             className="pl-7 bg-white border-slate-200" 
+                            placeholder="0,00"
                           />
                         </div>
                       </div>
@@ -1004,10 +1082,23 @@ export default function Inventory() {
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
-                            type="number" 
-                            step="0.01"
-                            {...form.register("polishFee")} 
+                            type="text" 
+                            {...form.register("polishFee", {
+                              setValueAs: (v) => {
+                                if (v === "") return 0;
+                                const normalized = v.toString().replace(",", ".");
+                                return parseFloat(normalized);
+                              }
+                            })}
+                            onBlur={(e) => {
+                              const normalized = e.target.value.replace(",", ".");
+                              const val = parseFloat(normalized);
+                              if (!isNaN(val)) {
+                                form.setValue("polishFee", parseFloat(val.toFixed(2)));
+                              }
+                            }}
                             className="pl-7 bg-white border-slate-200" 
+                            placeholder="0,00"
                           />
                         </div>
                       </div>

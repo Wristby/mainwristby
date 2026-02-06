@@ -1146,10 +1146,15 @@ export default function Dashboard() {
                   <Input 
                     type="text" 
                     {...expenseForm.register("amount", {
-                      setValueAs: (v) => v === "" ? 0 : parseFloat(v)
+                      setValueAs: (v) => {
+                        if (v === "") return 0;
+                        const normalized = v.toString().replace(",", ".");
+                        return parseFloat(normalized);
+                      }
                     })}
                     onBlur={(e) => {
-                      const val = parseFloat(e.target.value);
+                      const normalized = e.target.value.replace(",", ".");
+                      const val = parseFloat(normalized);
                       if (!isNaN(val)) {
                         expenseForm.setValue("amount", parseFloat(val.toFixed(2)));
                       }
