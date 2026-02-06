@@ -643,7 +643,7 @@ export default function Financials() {
                 <DollarSign className="w-4 h-4 text-orange-600" />
               </div>
             </div>
-            <p className="text-xs text-slate-500 uppercase tracking-wide">Total COGS</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">Capital Deployed</p>
             <p className="text-2xl font-bold text-orange-600 mt-1 tabular-nums">{formatCurrency(metrics.totalCogs)}</p>
           </CardContent>
         </Card>
