@@ -244,6 +244,13 @@ export default function InventoryDetail() {
     }
   };
 
+  const [isPurchaseDateOpen, setIsPurchaseDateOpen] = useState(false);
+  const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
+  const [isDateListedOpen, setIsDateListedOpen] = useState(false);
+  const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
+  const [isDateSentOpen, setIsDateSentOpen] = useState(false);
+  const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
+
   const onSubmitEdit = (data: EditFormValues) => {
     let finalStatus = data.status;
     if (data.dateSold) {
@@ -490,7 +497,7 @@ export default function InventoryDetail() {
                     </div>
                     <div className="space-y-2">
                       <Label>Purchase Date</Label>
-                      <Popover>
+                      <Popover open={isPurchaseDateOpen} onOpenChange={setIsPurchaseDateOpen}>
                         <PopoverTrigger asChild>
                           <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("purchaseDate") && "text-muted-foreground")}>
                             <CalendarIcon className="mr-2 h-4 w-4" />
@@ -498,7 +505,7 @@ export default function InventoryDetail() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <Calendar mode="single" selected={form.watch("purchaseDate") ? new Date(form.watch("purchaseDate")!) : undefined} onSelect={(date) => { form.setValue("purchaseDate", date ? date.toISOString() : null); if (date) form.setValue("status", "incoming"); }} initialFocus />
+                          <Calendar mode="single" selected={form.watch("purchaseDate") ? new Date(form.watch("purchaseDate")!) : undefined} onSelect={(date) => { form.setValue("purchaseDate", date ? date.toISOString() : null); if (date) form.setValue("status", "incoming"); setIsPurchaseDateOpen(false); }} initialFocus />
                         </PopoverContent>
                       </Popover>
                     </div>
@@ -523,7 +530,7 @@ export default function InventoryDetail() {
                     </div>
                     <div className="space-y-2">
                       <Label>Date Received</Label>
-                      <Popover>
+                      <Popover open={isDateReceivedOpen} onOpenChange={setIsDateReceivedOpen}>
                         <PopoverTrigger asChild>
                           <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900", !form.watch("dateReceived") && "text-slate-500")}>
                             <CalendarIcon className="mr-2 h-4 w-4" />
@@ -531,13 +538,13 @@ export default function InventoryDetail() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <Calendar mode="single" selected={form.watch("dateReceived") ? new Date(form.watch("dateReceived")!) : undefined} onSelect={(date) => { form.setValue("dateReceived", date ? date.toISOString() : null); if (date) form.setValue("status", "received"); }} initialFocus />
+                          <Calendar mode="single" selected={form.watch("dateReceived") ? new Date(form.watch("dateReceived")!) : undefined} onSelect={(date) => { form.setValue("dateReceived", date ? date.toISOString() : null); if (date) form.setValue("status", "received"); setIsDateReceivedOpen(false); }} initialFocus />
                         </PopoverContent>
                       </Popover>
                     </div>
                     <div className="space-y-2">
                       <Label>Date Listed</Label>
-                      <Popover>
+                      <Popover open={isDateListedOpen} onOpenChange={setIsDateListedOpen}>
                         <PopoverTrigger asChild>
                           <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateListed") && "text-muted-foreground")}>
                             <CalendarIcon className="mr-2 h-4 w-4" />
@@ -545,7 +552,7 @@ export default function InventoryDetail() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <Calendar mode="single" selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined} onSelect={(date) => { form.setValue("dateListed", date ? date.toISOString() : null); if (date) form.setValue("status", "in_stock"); }} initialFocus />
+                          <Calendar mode="single" selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined} onSelect={(date) => { form.setValue("dateListed", date ? date.toISOString() : null); if (date) form.setValue("status", "in_stock"); setIsDateListedOpen(false); }} initialFocus />
                         </PopoverContent>
                       </Popover>
                     </div>
@@ -605,7 +612,7 @@ export default function InventoryDetail() {
                       </div>
                       <div className="space-y-2">
                         <Label>Date Sold</Label>
-                        <Popover>
+                        <Popover open={isDateSoldOpen} onOpenChange={setIsDateSoldOpen}>
                           <PopoverTrigger asChild>
                             <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateSold") && "text-muted-foreground")}>
                               <CalendarIcon className="mr-2 h-4 w-4" />
@@ -613,7 +620,7 @@ export default function InventoryDetail() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                            <Calendar mode="single" selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined} onSelect={(date) => { form.setValue("dateSold", date ? date.toISOString() : null); if (date) form.setValue("status", "sold"); }} initialFocus />
+                            <Calendar mode="single" selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined} onSelect={(date) => { form.setValue("dateSold", date ? date.toISOString() : null); if (date) form.setValue("status", "sold"); setIsDateSoldOpen(false); }} initialFocus />
                           </PopoverContent>
                         </Popover>
                       </div>
@@ -634,7 +641,7 @@ export default function InventoryDetail() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Date Sent to Service</Label>
-                          <Popover>
+                          <Popover open={isDateSentOpen} onOpenChange={setIsDateSentOpen}>
                             <PopoverTrigger asChild>
                               <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateSentToService") && "text-muted-foreground")}>
                                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -642,13 +649,13 @@ export default function InventoryDetail() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                              <Calendar mode="single" selected={form.watch("dateSentToService") ? new Date(form.watch("dateSentToService")!) : undefined} onSelect={(date) => { form.setValue("dateSentToService", date ? date.toISOString() : null); if (date) form.setValue("status", "servicing"); }} initialFocus />
+                              <Calendar mode="single" selected={form.watch("dateSentToService") ? new Date(form.watch("dateSentToService")!) : undefined} onSelect={(date) => { form.setValue("dateSentToService", date ? date.toISOString() : null); if (date) form.setValue("status", "servicing"); setIsDateSentOpen(false); }} initialFocus />
                             </PopoverContent>
                           </Popover>
                         </div>
                         <div className="space-y-2">
                           <Label>Date Returned</Label>
-                          <Popover>
+                          <Popover open={isDateReturnedOpen} onOpenChange={setIsDateReturnedOpen}>
                             <PopoverTrigger asChild>
                               <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateReturnedFromService") && "text-muted-foreground")}>
                                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -656,7 +663,7 @@ export default function InventoryDetail() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                              <Calendar mode="single" selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined} onSelect={(date) => form.setValue("dateReturnedFromService", date ? date.toISOString() : null)} initialFocus />
+                              <Calendar mode="single" selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined} onSelect={(date) => { form.setValue("dateReturnedFromService", date ? date.toISOString() : null); setIsDateReturnedOpen(false); }} initialFocus />
                             </PopoverContent>
                           </Popover>
                         </div>

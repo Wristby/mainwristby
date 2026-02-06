@@ -210,6 +210,13 @@ export default function Inventory() {
     }
   }, [watchedStatus]);
 
+  const [isPurchaseDateOpen, setIsPurchaseDateOpen] = useState(false);
+  const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
+  const [isDateListedOpen, setIsDateListedOpen] = useState(false);
+  const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
+  const [isDateSentOpen, setIsDateSentOpen] = useState(false);
+  const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
+
   const onSubmit = (data: CreateFormValues) => {
     let finalStatus = data.status;
     if (data.dateSold) {
@@ -684,7 +691,7 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>Purchase Date</Label>
-                    <Popover>
+                    <Popover open={isPurchaseDateOpen} onOpenChange={setIsPurchaseDateOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant={"outline"}
@@ -704,6 +711,7 @@ export default function Inventory() {
                           onSelect={(date) => {
                             form.setValue("purchaseDate", date ? date.toISOString() : null);
                             if (date) form.setValue("status", "incoming");
+                            setIsPurchaseDateOpen(false);
                           }}
                           initialFocus
                         />
@@ -733,7 +741,7 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>Date Received</Label>
-                    <Popover>
+                    <Popover open={isDateReceivedOpen} onOpenChange={setIsDateReceivedOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant={"outline"}
@@ -753,6 +761,7 @@ export default function Inventory() {
                           onSelect={(date) => {
                             form.setValue("dateReceived", date ? date.toISOString() : null);
                             if (date) form.setValue("status", "received");
+                            setIsDateReceivedOpen(false);
                           }}
                           initialFocus
                         />
@@ -761,7 +770,7 @@ export default function Inventory() {
                   </div>
                   <div className="space-y-2">
                     <Label>Date Listed</Label>
-                    <Popover>
+                    <Popover open={isDateListedOpen} onOpenChange={setIsDateListedOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant={"outline"}
@@ -781,6 +790,7 @@ export default function Inventory() {
                           onSelect={(date) => {
                             form.setValue("dateListed", date ? date.toISOString() : null);
                             if (date) form.setValue("status", "in_stock");
+                            setIsDateListedOpen(false);
                           }}
                           initialFocus
                         />
@@ -868,7 +878,7 @@ export default function Inventory() {
                     </div>
                     <div className="space-y-2">
                       <Label>Date Sold</Label>
-                      <Popover>
+                      <Popover open={isDateSoldOpen} onOpenChange={setIsDateSoldOpen}>
                         <PopoverTrigger asChild>
                           <Button
                             variant={"outline"}
@@ -888,6 +898,7 @@ export default function Inventory() {
                             onSelect={(date) => {
                               form.setValue("dateSold", date ? date.toISOString() : null);
                               if (date) form.setValue("status", "sold");
+                              setIsDateSoldOpen(false);
                             }}
                             initialFocus
                           />
@@ -912,7 +923,7 @@ export default function Inventory() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Date Sent to Service</Label>
-                        <Popover>
+                        <Popover open={isDateSentOpen} onOpenChange={setIsDateSentOpen}>
                           <PopoverTrigger asChild>
                             <Button
                               variant={"outline"}
@@ -932,6 +943,7 @@ export default function Inventory() {
                               onSelect={(date) => {
                                 form.setValue("dateSentToService", date ? date.toISOString() : null);
                                 if (date) form.setValue("status", "servicing");
+                                setIsDateSentOpen(false);
                               }}
                               initialFocus
                             />
@@ -940,7 +952,7 @@ export default function Inventory() {
                       </div>
                       <div className="space-y-2">
                         <Label>Date Returned</Label>
-                        <Popover>
+                        <Popover open={isDateReturnedOpen} onOpenChange={setIsDateReturnedOpen}>
                           <PopoverTrigger asChild>
                             <Button
                               variant={"outline"}
@@ -957,7 +969,10 @@ export default function Inventory() {
                             <CalendarComponent
                               mode="single"
                               selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined}
-                              onSelect={(date) => form.setValue("dateReturnedFromService", date ? date.toISOString() : null)}
+                              onSelect={(date) => {
+                                form.setValue("dateReturnedFromService", date ? date.toISOString() : null);
+                                setIsDateReturnedOpen(false);
+                              }}
                               initialFocus
                             />
                           </PopoverContent>
