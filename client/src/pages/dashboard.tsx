@@ -200,6 +200,7 @@ export default function Dashboard() {
       email: "",
       phone: "",
       socialHandle: "",
+      website: "",
       country: "",
       type: "client",
       notes: "",
