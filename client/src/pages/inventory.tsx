@@ -824,18 +824,6 @@ export default function Inventory() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Platform Fees</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input 
-                          type="number" 
-                          step="0.01"
-                          {...form.register("platformFees")} 
-                          className="pl-7 bg-white border-slate-200" 
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
                       <Label>Sold On</Label>
                       <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
                         <SelectTrigger className="bg-white border-slate-200">
@@ -847,6 +835,18 @@ export default function Inventory() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Platform Fees</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input 
+                          type="number" 
+                          step="0.01"
+                          {...form.register("platformFees")} 
+                          className="pl-7 bg-white border-slate-200" 
+                        />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Shipping Fee</Label>
