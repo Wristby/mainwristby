@@ -80,6 +80,7 @@ export default function ClientDetail() {
       email: "",
       phone: "",
       socialHandle: "",
+      website: "",
       country: "",
       type: "client" as "client" | "dealer",
       notes: "",
@@ -94,6 +95,7 @@ export default function ClientDetail() {
         email: client.email || "",
         phone: client.phone || "",
         socialHandle: client.socialHandle || "",
+        website: client.website || "",
         country: client.country || "",
         type: client.type as "client" | "dealer",
         notes: client.notes || "",
@@ -233,18 +235,31 @@ export default function ClientDetail() {
                     />
                     <FormField
                       control={form.control}
-                      name="country"
+                      name="website"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Country</FormLabel>
+                          <FormLabel>Website</FormLabel>
                           <FormControl>
-                            <Input {...field} className="bg-white border-slate-200" />
+                            <Input {...field} className="bg-white border-slate-200" placeholder="https://example.com" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
+                  <FormField
+                    control={form.control}
+                    name="country"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Country</FormLabel>
+                        <FormControl>
+                          <Input {...field} className="bg-white border-slate-200" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <FormField
                     control={form.control}
                     name="type"
@@ -358,6 +373,25 @@ export default function ClientDetail() {
                 <p className="text-sm">{client.country || 'No location provided'}</p>
               </div>
             </div>
+            {client.website && (
+              <div className="flex items-center gap-3 text-slate-600">
+                <div className="p-2 bg-slate-100 rounded-lg">
+                  <Globe className="w-4 h-4 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 font-medium uppercase">Website</p>
+                  <a 
+                    href={client.website.startsWith('http') ? client.website : `https://${client.website}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    {client.website.replace(/^https?:\/\/(www\.)?/, '')}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+            )}
             <div className="pt-4 border-t border-slate-100">
               <p className="text-xs text-slate-400 font-medium uppercase mb-2">Internal Notes</p>
               <p className="text-sm text-slate-600 italic">

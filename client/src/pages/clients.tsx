@@ -272,6 +272,14 @@ export default function Clients() {
                             <Globe className="w-3 h-3" /> {client.country}
                           </div>
                         )}
+                        {client.website && (
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <Globe className="w-3 h-3 text-blue-400" /> 
+                            <a href={client.website.startsWith('http') ? client.website : `https://${client.website}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors" onClick={(e) => e.stopPropagation()}>
+                              {client.website.replace(/^https?:\/\/(www\.)?/, '')}
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right text-slate-400 text-xs">
