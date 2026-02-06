@@ -611,7 +611,7 @@ export default function Financials() {
           </Dialog>
         </div>
       </div>
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <Card className="bg-white border-slate-200">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-center gap-2 mb-1">
@@ -669,18 +669,6 @@ export default function Financials() {
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Net Profit</p>
             <p className="text-2xl font-bold text-purple-600 mt-1 tabular-nums">{formatCurrency(metrics.netProfit)}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-amber-600" />
-              </div>
-            </div>
-            <p className="text-xs text-slate-500 uppercase tracking-wide">Avg ROI %</p>
-            <p className="text-2xl font-bold text-amber-600 mt-1 tabular-nums">{metrics.avgRoi}%</p>
           </CardContent>
         </Card>
       </div>
