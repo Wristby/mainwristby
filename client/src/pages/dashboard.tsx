@@ -63,7 +63,7 @@ const createInventoryFormSchema = z.object({
   serialNumber: z.string().optional().nullable(),
   internalSerial: z.string().optional().nullable(),
   year: z.coerce.number().optional().nullable(),
-  purchasedFrom: z.string().min(1, "Purchased from is required"),
+  purchasedFrom: z.string().min(1, "Purchase channel is required"),
   paidWith: z.string().min(1, "Paid with is required"),
   clientId: z.coerce.number().optional().nullable(),
   purchasePrice: z.coerce.number().min(1, "COGS is required"),
@@ -108,7 +108,7 @@ type CreateExpenseFormValues = z.infer<typeof createExpenseFormSchema>;
 
 const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"];
 const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
-const PURCHASE_FROM_OPTIONS = ["Chrono24", "Eni Dealer", "Ayhan Dealer", "IPLAYWATCH Dealer"];
+const PURCHASE_CHANNEL_OPTIONS = ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"];
 const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
 const EXPENSE_CATEGORIES = [
   { value: "marketing", label: "Marketing" },
@@ -135,6 +135,11 @@ export default function Dashboard() {
   const [goalInputValue, setGoalInputValue] = useState("");
   const [offerPrice, setOfferPrice] = useState<string>("");
   const [demandPrice, setDemandPrice] = useState<string>("");
+  const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
+  const [quickAddName, setQuickAddName] = useState("");
+  const [quickAddType, setQuickAddType] = useState<string>("dealer");
+  const [quickAddPhone, setQuickAddPhone] = useState("");
+  const [quickAddCountry, setQuickAddCountry] = useState("");
   const { toast } = useToast();
 
   const createWatchMutation = useCreateInventory();
@@ -217,6 +222,17 @@ export default function Dashboard() {
   const watchedSoldPlatform = watchForm.watch("soldPlatform");
 
   const watchedStatus = watchForm.watch("status");
+  const watchedPurchaseChannel = watchForm.watch("purchasedFrom");
+  const showSellerField = watchedPurchaseChannel === "Dealer" || watchedPurchaseChannel === "Private Purchase" || watchedPurchaseChannel === "Other";
+  const isSellerRequired = watchedPurchaseChannel === "Dealer";
+  const filterDealersOnly = watchedPurchaseChannel === "Dealer";
+
+  useEffect(() => {
+    const channel = watchForm.watch("purchasedFrom");
+    if (channel && !["Dealer", "Private Purchase", "Other"].includes(channel)) {
+      watchForm.setValue("clientId", null);
+    }
+  }, [watchedPurchaseChannel]);
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && (watchedSalePrice || 0) > 0) {
@@ -850,11 +866,11 @@ export default function Dashboard() {
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Purchase From *</Label>
-                  <Select value={watchForm.watch("purchasedFrom") || ""} onValueChange={(val) => watchForm.setValue("purchasedFrom", val)}>
-                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Source" /></SelectTrigger>
+                  <Label>Purchase Channel *</Label>
+                  <Select value={watchForm.watch("purchasedFrom") || ""} onValueChange={(val) => watchForm.setValue("purchasedFrom", val)} data-testid="select-purchase-channel">
+                    <SelectTrigger className="bg-white border-slate-200" data-testid="select-purchase-channel"><SelectValue placeholder="Select Channel" /></SelectTrigger>
                     <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      {PURCHASE_FROM_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                      {PURCHASE_CHANNEL_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -867,18 +883,23 @@ export default function Dashboard() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Seller / Dealer</Label>
-                  <Select value={watchForm.watch("clientId")?.toString() || "none"} onValueChange={(val) => watchForm.setValue("clientId", val === "none" ? null : parseInt(val))}>
-                    <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="none">None</SelectItem>
-                      {clients?.filter((c: any) => c.type === 'dealer').map((client: any) => (
-                        <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {showSellerField && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      <Label>Seller / Dealer{isSellerRequired ? ' *' : ''}</Label>
+                      <Button size="icon" variant="ghost" onClick={() => { setQuickAddType(filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client"><Plus className="h-4 w-4" /></Button>
+                    </div>
+                    <Select value={watchForm.watch("clientId")?.toString() || "none"} onValueChange={(val) => watchForm.setValue("clientId", val === "none" ? null : parseInt(val))}>
+                      <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="none">None</SelectItem>
+                        {clients?.filter((c: any) => filterDealersOnly ? c.type === 'dealer' : true).map((client: any) => (
+                          <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Purchase Price (COGS) *</Label>
                   <div className="relative">
@@ -1126,6 +1147,68 @@ export default function Dashboard() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isQuickAddClientOpen} onOpenChange={setIsQuickAddClientOpen}>
+        <DialogContent className="max-w-sm bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
+          <DialogHeader><DialogTitle>Quick Add Client</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Name *</Label>
+              <Input value={quickAddName} onChange={(e) => setQuickAddName(e.target.value)} className="bg-white border-slate-200" placeholder="Client or dealer name" data-testid="input-quick-add-name" />
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={quickAddType} onValueChange={setQuickAddType}>
+                <SelectTrigger className="bg-white border-slate-200" data-testid="select-quick-add-type"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900">
+                  <SelectItem value="client">Client</SelectItem>
+                  <SelectItem value="dealer">Dealer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={quickAddPhone} onChange={(e) => setQuickAddPhone(e.target.value)} className="bg-white border-slate-200" placeholder="Phone number" data-testid="input-quick-add-phone" />
+            </div>
+            <div className="space-y-2">
+              <Label>Country</Label>
+              <Input value={quickAddCountry} onChange={(e) => setQuickAddCountry(e.target.value)} className="bg-white border-slate-200" placeholder="Country" data-testid="input-quick-add-country" />
+            </div>
+            <Button
+              className="w-full"
+              disabled={!quickAddName.trim() || createClientMutation.isPending}
+              data-testid="button-submit-quick-add"
+              onClick={() => {
+                createClientMutation.mutate({
+                  name: quickAddName,
+                  type: quickAddType,
+                  phone: quickAddPhone || undefined,
+                  country: quickAddCountry || undefined,
+                  email: "",
+                  socialHandle: "",
+                  website: "",
+                  notes: "",
+                  isVip: false,
+                }, {
+                  onSuccess: (newClient: any) => {
+                    watchForm.setValue("clientId", newClient.id);
+                    setIsQuickAddClientOpen(false);
+                    setQuickAddName("");
+                    setQuickAddType("dealer");
+                    setQuickAddPhone("");
+                    setQuickAddCountry("");
+                    toast({ title: "Success", description: `${quickAddType === 'dealer' ? 'Dealer' : 'Client'} "${quickAddName}" added` });
+                    queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+                  }
+                });
+              }}
+            >
+              {createClientMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+              Add {quickAddType === 'dealer' ? 'Dealer' : 'Client'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

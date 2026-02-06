@@ -1,5 +1,7 @@
 import { useInventoryItem, useUpdateInventory, useDeleteInventory } from "@/hooks/use-inventory";
-import { useClients } from "@/hooks/use-clients";
+import { useClients, useCreateClient } from "@/hooks/use-clients";
+import { insertClientSchema } from "@shared/schema";
+import { queryClient } from "@/lib/queryClient";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +30,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus } from "lucide-react";
 import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +53,7 @@ const WATCH_BRANDS = [
 
 const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"];
 const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
-const PURCHASE_FROM_OPTIONS = ["Chrono24", "Eni Dealer", "Ayhan Dealer", "IPLAYWATCH Dealer"];
+const PURCHASE_CHANNEL_OPTIONS = ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"];
 const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
 
 const formatCurrency = (val: number) => {
@@ -116,10 +118,16 @@ export default function InventoryDetail() {
   const { data: clients } = useClients();
   const updateMutation = useUpdateInventory();
   const deleteMutation = useDeleteInventory();
+  const quickAddClientMutation = useCreateClient();
   const { toast } = useToast();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
+  const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
+  const [quickAddName, setQuickAddName] = useState("");
+  const [quickAddType, setQuickAddType] = useState<string>("dealer");
+  const [quickAddPhone, setQuickAddPhone] = useState("");
+  const [quickAddCountry, setQuickAddCountry] = useState("");
 
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editFormSchema),
@@ -182,6 +190,17 @@ export default function InventoryDetail() {
       form.setValue("platformFees", Number(fee.toFixed(2)));
     }
   }, [watchedSalePrice, watchedSoldPlatform, form.setValue]);
+
+  const watchedPurchaseChannel = form.watch("purchasedFrom");
+  const showSellerField = watchedPurchaseChannel === "Dealer" || watchedPurchaseChannel === "Private Purchase" || watchedPurchaseChannel === "Other";
+  const isSellerRequired = watchedPurchaseChannel === "Dealer";
+  const filterDealersOnly = watchedPurchaseChannel === "Dealer";
+
+  useEffect(() => {
+    if (watchedPurchaseChannel && !["Dealer", "Private Purchase", "Other"].includes(watchedPurchaseChannel)) {
+      form.setValue("clientId", null);
+    }
+  }, [watchedPurchaseChannel]);
 
   useEffect(() => {
     if (item) {
@@ -448,11 +467,11 @@ export default function InventoryDetail() {
                   <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>Purchased From *</Label>
+                      <Label>Purchase Channel *</Label>
                       <Select value={form.watch("purchasedFrom") || ""} onValueChange={(val) => form.setValue("purchasedFrom", val)}>
-                        <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Source" /></SelectTrigger>
+                        <SelectTrigger className="bg-white border-slate-200" data-testid="select-purchase-channel"><SelectValue placeholder="Select Channel" /></SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {PURCHASE_FROM_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                          {PURCHASE_CHANNEL_OPTIONS.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -461,22 +480,27 @@ export default function InventoryDetail() {
                       <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
                         <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Payment" /></SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {PAID_WITH_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                          {PAID_WITH_OPTIONS.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Seller / Dealer</Label>
-                      <Select value={form.watch("clientId")?.toString() || "none"} onValueChange={(val) => form.setValue("clientId", val === "none" ? null : parseInt(val))}>
-                        <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          <SelectItem value="none">None</SelectItem>
-                          {clients?.filter((c: any) => c.type === 'dealer').map((client: any) => (
-                            <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {showSellerField && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1">
+                          <Label>Seller / Dealer{isSellerRequired ? ' *' : ''}</Label>
+                          <Button size="icon" variant="ghost" onClick={() => { setQuickAddType(filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client"><Plus className="h-4 w-4" /></Button>
+                        </div>
+                        <Select value={form.watch("clientId")?.toString() || "none"} onValueChange={(val) => form.setValue("clientId", val === "none" ? null : parseInt(val))}>
+                          <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
+                          <SelectContent className="bg-white border-slate-200 text-slate-900">
+                            <SelectItem value="none">None</SelectItem>
+                            {clients?.filter((c: any) => filterDealersOnly ? c.type === 'dealer' : true).map((client: any) => (
+                              <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label>Purchase Price (COGS) *</Label>
                       <div className="relative">
@@ -922,7 +946,7 @@ export default function InventoryDetail() {
             <CardContent>
               <div className="space-y-4">
                 <div className="flex justify-between py-2 border-b border-slate-50">
-                  <span className="text-sm text-slate-500">Purchased From</span>
+                  <span className="text-sm text-slate-500">Purchase Channel</span>
                   <span className="text-sm font-medium text-slate-900">{(item as any).purchasedFrom || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-50">
@@ -1157,6 +1181,75 @@ export default function InventoryDetail() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={isQuickAddClientOpen} onOpenChange={setIsQuickAddClientOpen}>
+        <DialogContent className="max-w-sm bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
+          <DialogHeader>
+            <DialogTitle>Quick Add {quickAddType === 'dealer' ? 'Dealer' : 'Client'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-2">
+              <Label>Name *</Label>
+              <Input value={quickAddName} onChange={(e) => setQuickAddName(e.target.value)} className="bg-white border-slate-200" placeholder="Enter name" data-testid="input-quick-add-name" />
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={quickAddType} onValueChange={setQuickAddType}>
+                <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900">
+                  <SelectItem value="client">Client</SelectItem>
+                  <SelectItem value="dealer">Dealer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={quickAddPhone} onChange={(e) => setQuickAddPhone(e.target.value)} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
+            </div>
+            <div className="space-y-2">
+              <Label>Country</Label>
+              <Input value={quickAddCountry} onChange={(e) => setQuickAddCountry(e.target.value)} className="bg-white border-slate-200" placeholder="Enter country" />
+            </div>
+            <div className="flex justify-end gap-3 pt-2 border-t border-slate-200">
+              <Button type="button" variant="outline" onClick={() => setIsQuickAddClientOpen(false)}>Cancel</Button>
+              <Button 
+                disabled={!quickAddName.trim() || quickAddClientMutation.isPending}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                onClick={() => {
+                  quickAddClientMutation.mutate({
+                    name: quickAddName,
+                    type: quickAddType,
+                    phone: quickAddPhone || undefined,
+                    country: quickAddCountry || undefined,
+                    email: "",
+                    socialHandle: "",
+                    website: "",
+                    notes: "",
+                    isVip: false,
+                  } as any, {
+                    onSuccess: (newClient: any) => {
+                      form.setValue("clientId", newClient.id);
+                      setIsQuickAddClientOpen(false);
+                      setQuickAddName("");
+                      setQuickAddType("dealer");
+                      setQuickAddPhone("");
+                      setQuickAddCountry("");
+                      toast({ title: "Success", description: `${quickAddType === 'dealer' ? 'Dealer' : 'Client'} "${quickAddName}" added` });
+                      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+                    },
+                    onError: (err: any) => {
+                      toast({ title: "Error", description: err.message, variant: "destructive" });
+                    }
+                  });
+                }}
+                data-testid="button-submit-quick-add"
+              >
+                {quickAddClientMutation.isPending ? "Adding..." : `Add ${quickAddType === 'dealer' ? 'Dealer' : 'Client'}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
