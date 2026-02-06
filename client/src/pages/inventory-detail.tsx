@@ -589,7 +589,19 @@ export default function InventoryDetail() {
                         <Label>Platform Fees</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="number" step="0.01" {...form.register("platformFees")} className="pl-7 bg-white border-slate-200" />
+                          <Input 
+                            type="text" 
+                            {...form.register("platformFees", {
+                              setValueAs: (v) => v === "" ? 0 : parseFloat(v)
+                            })}
+                            onBlur={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val)) {
+                                form.setValue("platformFees", parseFloat(val.toFixed(2)));
+                              }
+                            }}
+                            className="pl-7 bg-white border-slate-200" 
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
