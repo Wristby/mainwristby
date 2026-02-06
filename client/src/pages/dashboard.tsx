@@ -885,10 +885,10 @@ export default function Dashboard() {
                 </div>
                 {showSellerField && (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-1">
-                      <Label>Seller / Dealer{isSellerRequired ? ' *' : ''}</Label>
+                    <Label className="flex items-center gap-1">
+                      Seller / Dealer{isSellerRequired ? ' *' : ''}
                       <Button size="icon" variant="ghost" onClick={() => { setQuickAddType(filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client"><Plus className="h-4 w-4" /></Button>
-                    </div>
+                    </Label>
                     <Select value={watchForm.watch("clientId")?.toString() || "none"} onValueChange={(val) => watchForm.setValue("clientId", val === "none" ? null : parseInt(val))}>
                       <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
                       <SelectContent className="bg-white border-slate-200 text-slate-900">
