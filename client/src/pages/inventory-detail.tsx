@@ -448,7 +448,7 @@ export default function InventoryDetail() {
                   <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>Purchase From *</Label>
+                      <Label>Purchased From *</Label>
                       <Select value={form.watch("purchasedFrom") || ""} onValueChange={(val) => form.setValue("purchasedFrom", val)}>
                         <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Source" /></SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
