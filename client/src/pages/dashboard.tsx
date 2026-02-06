@@ -1220,6 +1220,10 @@ export default function Dashboard() {
               <Input {...clientForm.register("socialHandle")} className="bg-white border-slate-200" placeholder="@username" />
             </div>
             <div className="space-y-2">
+              <Label>Website</Label>
+              <Input {...clientForm.register("website")} className="bg-white border-slate-200" placeholder="https://example.com" />
+            </div>
+            <div className="space-y-2">
               <Label>Country</Label>
               <Select value={clientForm.watch("country") as string || "none"} onValueChange={(val) => clientForm.setValue("country", val === "none" ? "" : val)}>
                 <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Country" /></SelectTrigger>
