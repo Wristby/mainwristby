@@ -1143,7 +1143,19 @@ export default function Dashboard() {
                 <Label>Amount (€) *</Label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                  <Input {...expenseForm.register("amount")} type="number" className="pl-7 bg-white border-slate-200" />
+                  <Input 
+                    type="text" 
+                    {...expenseForm.register("amount", {
+                      setValueAs: (v) => v === "" ? 0 : parseFloat(v)
+                    })}
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        expenseForm.setValue("amount", parseFloat(val.toFixed(2)));
+                      }
+                    }}
+                    className="pl-7 bg-white border-slate-200" 
+                  />
                 </div>
               </div>
               <div className="space-y-2">

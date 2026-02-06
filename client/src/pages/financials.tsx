@@ -526,11 +526,17 @@ export default function Financials() {
                   <Label>Amount</Label>
                   <Input 
                     type="text" 
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    {...form.register("amount")} 
+                    {...form.register("amount", {
+                      setValueAs: (v) => v === "" ? 0 : parseFloat(v)
+                    })}
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val)) {
+                        form.setValue("amount", parseFloat(val.toFixed(2)));
+                      }
+                    }}
                     className="bg-white border-slate-200" 
-                    placeholder="10" 
+                    placeholder="10.00" 
                     data-testid="input-amount" 
                   />
                 </div>
