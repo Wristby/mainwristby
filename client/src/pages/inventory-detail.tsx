@@ -231,6 +231,13 @@ export default function InventoryDetail() {
     }
   }, [item, form.reset]);
 
+  const [isPurchaseDateOpen, setIsPurchaseDateOpen] = useState(false);
+  const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
+  const [isDateListedOpen, setIsDateListedOpen] = useState(false);
+  const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
+  const [isDateSentOpen, setIsDateSentOpen] = useState(false);
+  const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
+
   if (isLoading) return <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
   if (!item) return <div className="text-slate-600">Item not found</div>;
 
@@ -243,13 +250,6 @@ export default function InventoryDetail() {
       });
     }
   };
-
-  const [isPurchaseDateOpen, setIsPurchaseDateOpen] = useState(false);
-  const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
-  const [isDateListedOpen, setIsDateListedOpen] = useState(false);
-  const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
-  const [isDateSentOpen, setIsDateSentOpen] = useState(false);
-  const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
 
   const onSubmitEdit = (data: EditFormValues) => {
     let finalStatus = data.status;

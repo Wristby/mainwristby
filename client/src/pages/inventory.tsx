@@ -204,12 +204,6 @@ export default function Inventory() {
     }
   }, [watchedSalePrice, watchedSoldPlatform, form]);
 
-  useEffect(() => {
-    if (watchedStatus === "servicing") {
-      setShowServiceDetails(true);
-    }
-  }, [watchedStatus]);
-
   const [isPurchaseDateOpen, setIsPurchaseDateOpen] = useState(false);
   const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
   const [isDateListedOpen, setIsDateListedOpen] = useState(false);
