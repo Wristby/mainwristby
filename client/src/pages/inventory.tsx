@@ -665,10 +665,10 @@ export default function Inventory() {
                   </div>
                   {showSellerField && (
                     <div className="space-y-2">
-                      <Label className="flex items-center gap-1">
-                        Seller / Dealer{isSellerRequired ? ' *' : ''}
-                        <Button size="icon" variant="ghost" onClick={() => { setQuickAddType(filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client"><Plus className="h-4 w-4" /></Button>
-                      </Label>
+                      <div className="flex items-center gap-1 min-h-[1.5rem]">
+                        <Label>Seller / Dealer{isSellerRequired ? ' *' : ''}</Label>
+                        <Button size="icon" variant="ghost" onClick={() => { setQuickAddType(filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client" className="h-6 w-6"><Plus className="h-3.5 w-3.5" /></Button>
+                      </div>
                       <Select value={form.watch("clientId")?.toString() || "none"} onValueChange={(val) => form.setValue("clientId", val === "none" ? null : parseInt(val))}>
                         <SelectTrigger className="bg-white border-slate-200">
                           <SelectValue placeholder="Select Dealer" />
