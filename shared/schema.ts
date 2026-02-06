@@ -13,6 +13,7 @@ export const clients = pgTable("clients", {
   email: text("email"),
   phone: text("phone"),
   socialHandle: text("social_handle"),
+  website: text("website"),
   country: text("country"),
   type: text("type", { enum: ["client", "dealer"] }).default("client").notNull(),
   notes: text("notes"),

@@ -69,6 +69,7 @@ export default function Clients() {
       email: "",
       phone: "",
       socialHandle: "",
+      website: "",
       country: "",
       type: "client",
       notes: "",
@@ -142,6 +143,10 @@ export default function Clients() {
               <div className="space-y-2">
                 <Label>Social Media Handle</Label>
                 <Input {...form.register("socialHandle")} className="bg-white border-slate-200" placeholder="@username" />
+              </div>
+              <div className="space-y-2">
+                <Label>Website</Label>
+                <Input {...form.register("website")} className="bg-white border-slate-200" placeholder="https://example.com" />
               </div>
               <div className="space-y-2">
                 <Label>Country</Label>
