@@ -225,9 +225,10 @@ export default function Financials() {
     };
 
     const soldItems = inventory.filter(i => i.status === 'sold');
+    const activeItems = inventory.filter(i => i.status !== 'sold');
     
     const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
-    const totalCogs = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const totalCogs = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
     
     const totalServicePolishFees = soldItems.reduce((sum, item) => 
       sum + (item.serviceFee || 0) + (item.polishFee || 0), 0);
