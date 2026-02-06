@@ -193,14 +193,14 @@ export default function Inventory() {
     },
   });
 
-  const watchedSalePrice = form.watch("salePrice");
+  const watchedSalePrice = Number(form.watch("salePrice"));
   const watchedSoldPlatform = form.watch("soldPlatform");
   const watchedStatus = form.watch("status");
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
-      const fee = Math.round(watchedSalePrice * 0.065);
-      form.setValue("platformFees", fee);
+      const fee = watchedSalePrice * 0.065;
+      form.setValue("platformFees", Number(fee.toFixed(2)));
     }
   }, [watchedSalePrice, watchedSoldPlatform, form]);
 
@@ -223,14 +223,15 @@ export default function Inventory() {
     const submissionData = {
       ...data,
       status: finalStatus,
-      purchasePrice: Math.round(data.purchasePrice * 100),
-      importFee: Math.round(data.importFee * 100),
-      serviceFee: Math.round(data.serviceFee * 100),
-      polishFee: Math.round(data.polishFee * 100),
-      salePrice: Math.round(data.salePrice * 100),
-      platformFees: Math.round(data.platformFees * 100),
-      shippingFee: Math.round(data.shippingFee * 100),
-      insuranceFee: Math.round(data.insuranceFee * 100),
+      purchasePrice: Math.round(Number(data.purchasePrice) * 100),
+      importFee: Math.round(Number(data.importFee) * 100),
+      serviceFee: Math.round(Number(data.serviceFee) * 100),
+      polishFee: Math.round(Number(data.polishFee) * 100),
+      salePrice: Math.round(Number(data.salePrice) * 100),
+      platformFees: Math.round(Number(data.platformFees) * 100),
+      shippingFee: Math.round(Number(data.shippingFee) * 100),
+      insuranceFee: Math.round(Number(data.insuranceFee) * 100),
+      targetSellPrice: Math.round(Number(data.targetSellPrice) * 100),
       dateReceived: data.dateReceived || null,
       purchaseDate: data.purchaseDate || null,
       dateListed: data.dateListed || null,
@@ -656,9 +657,8 @@ export default function Inventory() {
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
+                        type="number" 
+                        step="0.01"
                         {...form.register("purchasePrice")} 
                         className="pl-7 bg-white border-slate-200" 
                         data-testid="input-purchase-price" 
@@ -671,9 +671,8 @@ export default function Inventory() {
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
-                        type="text" 
-                        inputMode="numeric"
-                        pattern="[0-9]*"
+                        type="number" 
+                        step="0.01"
                         {...form.register("importFee")} 
                         className="pl-7 bg-white border-slate-200" 
                       />
@@ -807,9 +806,8 @@ export default function Inventory() {
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
+                          type="number" 
+                          step="0.01"
                           {...form.register("salePrice")} 
                           className="pl-7 bg-white border-slate-200" 
                         />
@@ -820,9 +818,8 @@ export default function Inventory() {
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
+                          type="number" 
+                          step="0.01"
                           {...form.register("platformFees")} 
                           className="pl-7 bg-white border-slate-200" 
                         />
@@ -846,9 +843,8 @@ export default function Inventory() {
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
+                          type="number" 
+                          step="0.01"
                           {...form.register("shippingFee")} 
                           className="pl-7 bg-white border-slate-200" 
                         />
@@ -859,9 +855,8 @@ export default function Inventory() {
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
-                          type="text" 
-                          inputMode="numeric"
-                          pattern="[0-9]*"
+                          type="number" 
+                          step="0.01"
                           {...form.register("insuranceFee")} 
                           className="pl-7 bg-white border-slate-200" 
                         />
@@ -975,9 +970,8 @@ export default function Inventory() {
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
-                            type="text" 
-                            inputMode="numeric"
-                            pattern="[0-9]*"
+                            type="number" 
+                            step="0.01"
                             {...form.register("serviceFee")} 
                             className="pl-7 bg-white border-slate-200" 
                           />
@@ -988,9 +982,8 @@ export default function Inventory() {
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
-                            type="text" 
-                            inputMode="numeric"
-                            pattern="[0-9]*"
+                            type="number" 
+                            step="0.01"
                             {...form.register("polishFee")} 
                             className="pl-7 bg-white border-slate-200" 
                           />

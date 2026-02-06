@@ -164,7 +164,7 @@ export default function InventoryDetail() {
   });
 
   const watchedStatus = form.watch("status");
-  const watchedSalePrice = form.watch("salePrice");
+  const watchedSalePrice = Number(form.watch("salePrice"));
   const watchedSoldPlatform = form.watch("soldPlatform");
 
   useEffect(() => {
@@ -178,8 +178,8 @@ export default function InventoryDetail() {
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
-      const fee = Math.round(watchedSalePrice * 0.065);
-      form.setValue("platformFees", fee);
+      const fee = watchedSalePrice * 0.065;
+      form.setValue("platformFees", Number(fee.toFixed(2)));
     }
   }, [watchedSalePrice, watchedSoldPlatform, form.setValue]);
 
@@ -257,15 +257,15 @@ export default function InventoryDetail() {
     const submissionData = {
       ...data,
       status: finalStatus,
-      purchasePrice: Math.round(data.purchasePrice * 100),
-      importFee: Math.round(data.importFee * 100),
-      serviceFee: Math.round(data.serviceFee * 100),
-      polishFee: Math.round(data.polishFee * 100),
-      salePrice: Math.round(data.salePrice * 100),
-      platformFees: Math.round(data.platformFees * 100),
-      shippingFee: Math.round(data.shippingFee * 100),
-      insuranceFee: Math.round(data.insuranceFee * 100),
-      targetSellPrice: Math.round(data.targetSellPrice * 100),
+      purchasePrice: Math.round(Number(data.purchasePrice) * 100),
+      importFee: Math.round(Number(data.importFee) * 100),
+      serviceFee: Math.round(Number(data.serviceFee) * 100),
+      polishFee: Math.round(Number(data.polishFee) * 100),
+      salePrice: Math.round(Number(data.salePrice) * 100),
+      platformFees: Math.round(Number(data.platformFees) * 100),
+      shippingFee: Math.round(Number(data.shippingFee) * 100),
+      insuranceFee: Math.round(Number(data.insuranceFee) * 100),
+      targetSellPrice: Math.round(Number(data.targetSellPrice) * 100),
       dateReceived: data.dateReceived || null,
       purchaseDate: data.purchaseDate || null,
       dateListed: data.dateListed || null,
@@ -474,14 +474,14 @@ export default function InventoryDetail() {
                       <Label>Purchase Price (COGS) *</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("purchasePrice")} className="pl-7 bg-white border-slate-200" data-testid="edit-input-price" />
+                        <Input type="number" step="0.01" {...form.register("purchasePrice")} className="pl-7 bg-white border-slate-200" data-testid="edit-input-price" />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Import Fee</Label>
                       <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("importFee")} className="pl-7 bg-white border-slate-200" />
+                        <Input type="number" step="0.01" {...form.register("importFee")} className="pl-7 bg-white border-slate-200" />
                       </div>
                     </div>
                     <div className="flex items-center space-x-2 pt-8">
@@ -566,14 +566,14 @@ export default function InventoryDetail() {
                         <Label>Sold Price</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("salePrice")} className="pl-7 bg-white border-slate-200" />
+                          <Input type="number" step="0.01" {...form.register("salePrice")} className="pl-7 bg-white border-slate-200" />
                         </div>
                       </div>
                       <div className="space-y-2">
                         <Label>Platform Fees</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("platformFees")} className="pl-7 bg-white border-slate-200" />
+                          <Input type="number" step="0.01" {...form.register("platformFees")} className="pl-7 bg-white border-slate-200" />
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -589,14 +589,14 @@ export default function InventoryDetail() {
                         <Label>Shipping Fee</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("shippingFee")} className="pl-7 bg-white border-slate-200" />
+                          <Input type="number" step="0.01" {...form.register("shippingFee")} className="pl-7 bg-white border-slate-200" />
                         </div>
                       </div>
                       <div className="space-y-2">
                         <Label>Insurance Fee</Label>
                         <div className="relative">
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("insuranceFee")} className="pl-7 bg-white border-slate-200" />
+                          <Input type="number" step="0.01" {...form.register("insuranceFee")} className="pl-7 bg-white border-slate-200" />
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -694,13 +694,13 @@ export default function InventoryDetail() {
                       <Label>Tracking Number</Label>
                       <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" placeholder="Enter tracking number" />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Target Sell Price</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("targetSellPrice")} className="pl-7 bg-white border-slate-200" />
+                      <div className="space-y-2">
+                        <Label>Target Sell Price</Label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                          <Input type="number" step="0.01" {...form.register("targetSellPrice")} className="pl-7 bg-white border-slate-200" />
+                        </div>
                       </div>
-                    </div>
                   </div>
                 </div>
 
