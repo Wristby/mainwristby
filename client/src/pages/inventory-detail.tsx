@@ -331,8 +331,8 @@ export default function InventoryDetail() {
   const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
   
   const getEndDate = () => {
-    if (item.status === 'sold' && (item.soldDate || (item as any).dateSold)) {
-      const soldDateStr = item.soldDate || (item as any).dateSold;
+    if (item.status === 'sold' && (item.soldDate || (item as any).dateSold || item.dateSold)) {
+      const soldDateStr = item.soldDate || (item as any).dateSold || item.dateSold;
       return startOfDay(typeof soldDateStr === 'string' ? parseISO(soldDateStr) : new Date(soldDateStr));
     }
     return startOfDay(new Date());
