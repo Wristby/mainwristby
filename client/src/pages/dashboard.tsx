@@ -540,13 +540,15 @@ export default function Dashboard() {
         </Card>
 
         <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5 h-full flex flex-col justify-between">
+          <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">
-                  Net Profit{" "}
-                  <span className="text-xs text-slate-400">({kpiView === "month" ? "This Month" : "YTD"})</span>
-                </p>
+                <div className="h-10">
+                  <p className="text-sm font-medium text-slate-500">
+                    Net Profit{" "}
+                    <span className="text-xs text-slate-400">({kpiView === "month" ? "This Month" : "YTD"})</span>
+                  </p>
+                </div>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                   {formatCurrency(displayedProfit)}
                 </p>
@@ -559,13 +561,15 @@ export default function Dashboard() {
         </Card>
 
         <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5 h-full flex flex-col justify-between">
+          <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">
-                  Average Margin{" "}
-                  <span className="text-xs text-slate-400">({kpiView === "month" ? "This Month" : "YTD"})</span>
-                </p>
+                <div className="h-10">
+                  <p className="text-sm font-medium text-slate-500">
+                    Average Margin{" "}
+                    <span className="text-xs text-slate-400">({kpiView === "month" ? "This Month" : "YTD"})</span>
+                  </p>
+                </div>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                   {displayedMargin.toFixed(1)}%
                 </p>
