@@ -6,10 +6,10 @@ import {
   Users, 
   LogOut, 
   Menu,
-  Watch,
   BarChart3,
   DollarSign
 } from "lucide-react";
+import logoPng from "@assets/WRISTBY-login-logo_1770424094780.png";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -30,9 +30,7 @@ export function Sidebar() {
   return (
     <div className="flex flex-col h-full bg-slate-50 border-r border-slate-200 text-slate-900 w-64">
       <div className="p-6 flex items-center gap-3">
-        <div className="bg-emerald-600 p-2 rounded-lg">
-          <Watch className="w-6 h-6 text-white" />
-        </div>
+        <img src={logoPng} alt="Wristby Logo" className="w-10 h-10 rounded-lg object-contain" />
         <div>
           <h1 className="font-bold text-lg tracking-tight">WRISTBY</h1>
           <p className="text-xs text-slate-500 font-medium">Watch Tracking</p>

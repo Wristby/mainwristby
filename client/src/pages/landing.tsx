@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Watch, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
+import logoPng from "@assets/WRISTBY-login-logo_1770424094780.png";
 
 export default function Landing() {
   const { user, isLoading, login, isLoggingIn, loginError } = useAuth();
@@ -33,9 +34,7 @@ export default function Landing() {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 selection:bg-emerald-500/30">
       <div className="w-full max-w-sm space-y-8 text-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="bg-emerald-600 p-4 rounded-2xl shadow-lg shadow-emerald-500/20">
-            <Watch className="w-10 h-10 text-white" />
-          </div>
+          <img src={logoPng} alt="Wristby Logo" className="w-20 h-20 object-contain" />
           <h1 className="text-4xl font-extrabold tracking-tighter text-white">WRISTBY</h1>
           <p className="text-slate-400 font-medium">Internal Inventory Management</p>
         </div>
