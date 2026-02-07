@@ -158,6 +158,7 @@ export default function Dashboard() {
   });
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalInputValue, setGoalInputValue] = useState("");
+  const [kpiView, setKpiView] = useState<"month" | "ytd">("month");
   const [offerPrice, setOfferPrice] = useState<string>("");
   const [demandPrice, setDemandPrice] = useState<string>("");
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
@@ -411,33 +412,60 @@ export default function Dashboard() {
 
   const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
 
-  // Calculate current month's net profit
-  const currentMonthProfit = useMemo(() => {
+  const calcProfit = (item: InventoryItem) => {
+    const revenue = item.salePrice || 0;
+    const totalCost = item.purchasePrice + 
+                      (item.importFee || 0) + 
+                      (item.serviceFee || 0) + 
+                      (item.polishFee || 0) + 
+                      (item.platformFees || 0) + 
+                      (item.shippingFee || 0) + 
+                      (item.insuranceFee || 0) +
+                      (item.watchRegister ? 600 : 0);
+    return revenue - totalCost;
+  };
+
+  const calcMargin = (item: InventoryItem) => {
+    const revenue = item.salePrice || 0;
+    const profit = calcProfit(item);
+    return revenue > 0 ? (profit / revenue) * 100 : 0;
+  };
+
+  const { currentMonthProfit, ytdProfit, monthMargin, ytdMargin } = useMemo(() => {
     const now = new Date();
-    // Use the start of the current month in the current year
-    const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    
-    const thisMonthSales = soldInventory.filter(item => {
-      const dateValue = item.soldDate || item.dateSold;
-      if (!dateValue) return false;
-      const soldDate = new Date(dateValue);
-      return soldDate >= startOfCurrentMonth && soldDate <= endOfCurrentMonth;
-    });
-    
-    return thisMonthSales.reduce((sum, item) => {
-      const revenue = item.salePrice || 0;
-      const totalCost = item.purchasePrice + 
-                        (item.importFee || 0) + 
-                        (item.serviceFee || 0) + 
-                        (item.polishFee || 0) + 
-                        (item.platformFees || 0) + 
-                        (item.shippingFee || 0) + 
-                        (item.insuranceFee || 0) +
-                        (item.watchRegister ? 600 : 0);
-      return sum + (revenue - totalCost);
-    }, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+    const filterByDateRange = (start: Date, end: Date) =>
+      soldInventory.filter(item => {
+        const dateValue = item.soldDate || item.dateSold;
+        if (!dateValue) return false;
+        const d = new Date(dateValue);
+        return d >= start && d <= end;
+      });
+
+    const monthSales = filterByDateRange(startOfMonth, endOfMonth);
+    const ytdSales = filterByDateRange(startOfYear, endOfMonth);
+
+    const sumProfit = (items: InventoryItem[]) =>
+      items.reduce((sum, item) => sum + calcProfit(item), 0);
+
+    const avgMargin = (items: InventoryItem[]) => {
+      if (items.length === 0) return 0;
+      return items.reduce((sum, item) => sum + calcMargin(item), 0) / items.length;
+    };
+
+    return {
+      currentMonthProfit: sumProfit(monthSales),
+      ytdProfit: sumProfit(ytdSales),
+      monthMargin: avgMargin(monthSales),
+      ytdMargin: avgMargin(ytdSales),
+    };
   }, [soldInventory]);
+
+  const displayedProfit = kpiView === "month" ? currentMonthProfit : ytdProfit;
+  const displayedMargin = kpiView === "month" ? monthMargin : ytdMargin;
 
   const goalProgress = monthlyGoal > 0 ? Math.min((currentMonthProfit / monthlyGoal) * 100, 100) : 0;
 
@@ -459,27 +487,6 @@ export default function Dashboard() {
   const handleGoalCancel = () => {
     setIsEditingGoal(false);
   };
-  
-  const averageMargin = useMemo(() => {
-    if (soldInventory.length === 0) return 0;
-    
-    const margins = soldInventory.map(item => {
-      const revenue = item.salePrice || 0;
-      const totalCost = item.purchasePrice + 
-                        (item.importFee || 0) + 
-                        (item.serviceFee || 0) + 
-                        (item.polishFee || 0) + 
-                        (item.platformFees || 0) + 
-                        (item.shippingFee || 0) + 
-                        (item.insuranceFee || 0) +
-                        (item.watchRegister ? 600 : 0);
-      
-      const profit = revenue - totalCost;
-      return revenue > 0 ? (profit / revenue) * 100 : 0;
-    });
-    
-    return margins.reduce((a, b) => a + b, 0) / margins.length;
-  }, [soldInventory]);
   const watchesAtPolisher = statusCounts.inService;
 
   if (isLoading) {
@@ -499,9 +506,20 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
-        <p className="text-slate-500 mt-1">{formattedDate}</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
+          <p className="text-slate-500 mt-1">{formattedDate}</p>
+        </div>
+        <div className="flex items-center gap-2" data-testid="kpi-view-toggle">
+          <span className={cn("text-sm font-medium", kpiView === "month" ? "text-slate-900" : "text-slate-400")}>This Month</span>
+          <Switch
+            checked={kpiView === "ytd"}
+            onCheckedChange={(checked) => setKpiView(checked ? "ytd" : "month")}
+            data-testid="toggle-kpi-view"
+          />
+          <span className={cn("text-sm font-medium", kpiView === "ytd" ? "text-slate-900" : "text-slate-400")}>YTD</span>
+        </div>
       </div>
       {/* KPI Cards Row - Top */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -525,9 +543,12 @@ export default function Dashboard() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">Net Profit</p>
+                <p className="text-sm font-medium text-slate-500">
+                  Net Profit{" "}
+                  <span className="text-xs text-slate-400">({kpiView === "month" ? "This Month" : "YTD"})</span>
+                </p>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(stats?.totalProfit || 0)}
+                  {formatCurrency(displayedProfit)}
                 </p>
               </div>
               <div className="p-2 bg-emerald-50 rounded-full">
@@ -541,9 +562,12 @@ export default function Dashboard() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">Average Margin</p>
+                <p className="text-sm font-medium text-slate-500">
+                  Average Margin{" "}
+                  <span className="text-xs text-slate-400">({kpiView === "month" ? "This Month" : "YTD"})</span>
+                </p>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {averageMargin.toFixed(1)}%
+                  {displayedMargin.toFixed(1)}%
                 </p>
               </div>
               <div className="p-2 bg-blue-50 rounded-full">
