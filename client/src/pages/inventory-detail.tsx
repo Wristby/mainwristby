@@ -457,7 +457,17 @@ export default function InventoryDetail() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Google Drive Link</Label>
+                      <div className="flex items-center justify-between">
+                        <Label>Google Drive Link</Label>
+                        <a 
+                          href="https://drive.google.com/drive/u/1/folders/19gIwCa7aNqQk1s00gmkCWWzFC_dfL4sG" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+                        >
+                          Open Folder <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
                       <Input {...form.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
                     </div>
                   </div>
