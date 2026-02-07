@@ -21,7 +21,8 @@ import {
   Pencil,
   Check,
   X,
-  Scale
+  Scale,
+  ExternalLink
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";

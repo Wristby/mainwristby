@@ -625,6 +625,7 @@ export default function Inventory() {
                       <Label htmlFor="papers" className="cursor-pointer">Papers</Label>
                     </div>
                   </div>
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Google Drive Link</Label>
                       <a 
