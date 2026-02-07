@@ -34,7 +34,7 @@ export default function Landing() {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 selection:bg-emerald-500/30">
       <div className="w-full max-w-sm space-y-8 text-center">
         <div className="flex flex-col items-center gap-4">
-          <img src={logoPng} alt="Wristby Logo" className="w-[84px] h-[84px] object-contain" />
+          <img src={logoPng} alt="Wristby Logo" className="w-[92px] h-[92px] object-contain" />
           <h1 className="text-4xl font-extrabold tracking-tighter text-white">WRISTBY</h1>
           <p className="text-slate-400 font-medium">Internal Inventory Management</p>
         </div>

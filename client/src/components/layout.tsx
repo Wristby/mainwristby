@@ -30,7 +30,7 @@ export function Sidebar() {
   return (
     <div className="flex flex-col h-full bg-slate-50 border-r border-slate-200 text-slate-900 w-64">
       <div className="p-6 flex items-center gap-3">
-        <img src={logoPng} alt="Wristby Logo" className="w-[42px] h-[42px] rounded-lg object-contain" />
+        <img src={logoPng} alt="Wristby Logo" className="w-[46px] h-[46px] rounded-lg object-contain" />
         <div>
           <h1 className="font-bold text-lg tracking-tight">WRISTBY</h1>
           <p className="text-xs text-slate-500 font-medium">Watch Tracking</p>
