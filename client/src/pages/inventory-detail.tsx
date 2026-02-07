@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Separator } from "@/components/ui/separator";
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,29 @@ const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "W
 const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
 const PURCHASE_CHANNEL_OPTIONS = ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"];
 const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
+
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
+  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
+  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
+  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
+  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon",
+  "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
+  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
+  "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kosovo",
+  "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania",
+  "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius",
+  "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia",
+  "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman",
+  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
+  "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent", "Samoa", "San Marino", "Sao Tome and Principe",
+  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
+  "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
+  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
+  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
+  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+];
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
@@ -124,10 +147,21 @@ export default function InventoryDetail() {
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
-  const [quickAddName, setQuickAddName] = useState("");
-  const [quickAddType, setQuickAddType] = useState<string>("dealer");
-  const [quickAddPhone, setQuickAddPhone] = useState("");
-  const [quickAddCountry, setQuickAddCountry] = useState("");
+
+  const quickClientForm = useForm({
+    resolver: zodResolver(insertClientSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      phone: "",
+      socialHandle: "",
+      website: "",
+      country: "",
+      type: "client",
+      notes: "",
+      isVip: false,
+    }
+  });
 
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editFormSchema),
@@ -489,7 +523,7 @@ export default function InventoryDetail() {
                       <div className="space-y-2">
                         <div className="flex items-center gap-1 min-h-[1.5rem]">
                           <Label>Seller / Dealer{isSellerRequired ? ' *' : ''}</Label>
-                          <Button size="icon" variant="ghost" onClick={() => { setQuickAddType(filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client" className="h-6 w-6"><Plus className="h-3.5 w-3.5" /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => { quickClientForm.setValue("type", filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client" className="h-6 w-6"><Plus className="h-3.5 w-3.5" /></Button>
                         </div>
                         <Select value={form.watch("clientId")?.toString() || "none"} onValueChange={(val) => form.setValue("clientId", val === "none" ? null : parseInt(val))}>
                           <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
@@ -1192,72 +1226,96 @@ export default function InventoryDetail() {
         </div>
       </div>
 
-      <Dialog open={isQuickAddClientOpen} onOpenChange={setIsQuickAddClientOpen}>
-        <DialogContent className="max-w-sm bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
-          <DialogHeader>
-            <DialogTitle>Quick Add {quickAddType === 'dealer' ? 'Dealer' : 'Client'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="space-y-2">
-              <Label>Name *</Label>
-              <Input value={quickAddName} onChange={(e) => setQuickAddName(e.target.value)} className="bg-white border-slate-200" placeholder="Enter name" data-testid="input-quick-add-name" />
+      <Dialog open={isQuickAddClientOpen} onOpenChange={(open) => { setIsQuickAddClientOpen(open); if (!open) quickClientForm.reset(); }}>
+        <DialogContent className="bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
+          <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
+          <form onSubmit={quickClientForm.handleSubmit((data) => {
+            quickAddClientMutation.mutate(data, {
+              onSuccess: (newClient: any) => {
+                form.setValue("clientId", newClient.id);
+                setIsQuickAddClientOpen(false);
+                quickClientForm.reset();
+                toast({ title: "Success", description: `${data.type === 'dealer' ? 'Dealer' : 'Client'} "${data.name}" added` });
+                queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+              },
+              onError: (err: any) => {
+                toast({ title: "Error", description: err.message, variant: "destructive" });
+              }
+            });
+          })} className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Name *</Label>
+                <Input {...quickClientForm.register("name")} className="bg-white border-slate-200" placeholder="John Doe" data-testid="input-quick-add-name" />
+                {quickClientForm.formState.errors.name && <p className="text-red-500 text-xs">{quickClientForm.formState.errors.name.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <select 
+                  {...quickClientForm.register("type")} 
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                >
+                  <option value="client">Client</option>
+                  <option value="dealer">Dealer</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input {...quickClientForm.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input {...quickClientForm.register("phone")} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
+              </div>
             </div>
             <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={quickAddType} onValueChange={setQuickAddType}>
-                <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 text-slate-900">
-                  <SelectItem value="client">Client</SelectItem>
-                  <SelectItem value="dealer">Dealer</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Social Media Handle</Label>
+              <Input {...quickClientForm.register("socialHandle")} className="bg-white border-slate-200" placeholder="@username" />
             </div>
             <div className="space-y-2">
-              <Label>Phone</Label>
-              <Input value={quickAddPhone} onChange={(e) => setQuickAddPhone(e.target.value)} className="bg-white border-slate-200" placeholder="+1 (555) 000-0000" />
+              <Label>Website</Label>
+              <Input {...quickClientForm.register("website")} className="bg-white border-slate-200" placeholder="https://example.com" />
             </div>
             <div className="space-y-2">
               <Label>Country</Label>
-              <Input value={quickAddCountry} onChange={(e) => setQuickAddCountry(e.target.value)} className="bg-white border-slate-200" placeholder="Enter country" />
-            </div>
-            <div className="flex justify-end gap-3 pt-2 border-t border-slate-200">
-              <Button type="button" variant="outline" onClick={() => setIsQuickAddClientOpen(false)}>Cancel</Button>
-              <Button 
-                disabled={!quickAddName.trim() || quickAddClientMutation.isPending}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white"
-                onClick={() => {
-                  quickAddClientMutation.mutate({
-                    name: quickAddName,
-                    type: quickAddType,
-                    phone: quickAddPhone || undefined,
-                    country: quickAddCountry || undefined,
-                    email: "",
-                    socialHandle: "",
-                    website: "",
-                    notes: "",
-                    isVip: false,
-                  } as any, {
-                    onSuccess: (newClient: any) => {
-                      form.setValue("clientId", newClient.id);
-                      setIsQuickAddClientOpen(false);
-                      setQuickAddName("");
-                      setQuickAddType("dealer");
-                      setQuickAddPhone("");
-                      setQuickAddCountry("");
-                      toast({ title: "Success", description: `${quickAddType === 'dealer' ? 'Dealer' : 'Client'} "${quickAddName}" added` });
-                      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
-                    },
-                    onError: (err: any) => {
-                      toast({ title: "Error", description: err.message, variant: "destructive" });
-                    }
-                  });
-                }}
-                data-testid="button-submit-quick-add"
+              <select 
+                {...quickClientForm.register("country")} 
+                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
               >
-                {quickAddClientMutation.isPending ? "Adding..." : `Add ${quickAddType === 'dealer' ? 'Dealer' : 'Client'}`}
+                <option value="">Select Country</option>
+                {COUNTRIES.map(country => (
+                  <option key={country} value={country}>{country}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea {...quickClientForm.register("notes")} className="bg-white border-slate-200" placeholder="Special requirements or preferences..." />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Controller
+                name="isVip"
+                control={quickClientForm.control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="quickAddIsVip"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="border-slate-300 data-[state=checked]:bg-emerald-600"
+                  />
+                )}
+              />
+              <Label htmlFor="quickAddIsVip" className="text-sm font-medium leading-none cursor-pointer">VIP Client</Label>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="outline" onClick={() => { setIsQuickAddClientOpen(false); quickClientForm.reset(); }} className="border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900">Cancel</Button>
+              <Button type="submit" disabled={quickAddClientMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-submit-quick-add">
+                {quickAddClientMutation.isPending ? "Adding..." : "Add Client"}
               </Button>
             </div>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
