@@ -540,7 +540,7 @@ export default function Dashboard() {
         </Card>
 
         <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
+          <CardContent className="pt-5 pb-5 h-full flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-500">
@@ -559,7 +559,7 @@ export default function Dashboard() {
         </Card>
 
         <Card className="bg-white border-slate-200">
-          <CardContent className="pt-5 pb-5">
+          <CardContent className="pt-5 pb-5 h-full flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-500">
