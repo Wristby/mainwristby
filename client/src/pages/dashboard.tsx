@@ -468,7 +468,6 @@ export default function Dashboard() {
         <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
         <p className="text-slate-500 mt-1">{formattedDate}</p>
       </div>
-
       {/* KPI Cards Row - Top */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
@@ -535,7 +534,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
-
       {/* Quick Actions Card - Below KPIs */}
       <Card className="bg-white border-slate-200">
         <CardHeader className="pb-4">
@@ -565,7 +563,6 @@ export default function Dashboard() {
           </Button>
         </CardContent>
       </Card>
-
       {/* Monthly Goal Progress Bar - Below Quick Actions */}
       <Card className="bg-white border-slate-200 shadow-sm">
         <CardContent className="py-4">
@@ -636,7 +633,7 @@ export default function Dashboard() {
             <div className="flex justify-between mt-1.5 text-xs text-slate-400">
               <span>{goalProgress.toFixed(0)}% of goal</span>
               {currentMonthProfit >= monthlyGoal ? (
-                <span className="text-emerald-600 font-medium">Goal reached!</span>
+                <span className="text-emerald-600 font-medium">Fuck Yeah!</span>
               ) : (
                 <span>{formatCurrency(monthlyGoal - currentMonthProfit)} to go</span>
               )}
@@ -644,7 +641,6 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
-
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
@@ -796,7 +792,6 @@ export default function Dashboard() {
           <QuickEstimate />
         </div>
       </div>
-
       {/* Add Watch Dialog - Full Form */}
       <Dialog open={isAddWatchOpen} onOpenChange={setIsAddWatchOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
@@ -1160,7 +1155,6 @@ export default function Dashboard() {
           </form>
         </DialogContent>
       </Dialog>
-
       <Dialog open={isQuickAddClientOpen} onOpenChange={setIsQuickAddClientOpen}>
         <DialogContent className="max-w-sm bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
           <DialogHeader><DialogTitle>Quick Add Client</DialogTitle></DialogHeader>
@@ -1222,7 +1216,6 @@ export default function Dashboard() {
           </div>
         </DialogContent>
       </Dialog>
-
       {/* Add Expense Dialog - Full Form */}
       <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
         <DialogContent className="max-w-lg bg-white border-slate-200 text-slate-900">
@@ -1294,7 +1287,6 @@ export default function Dashboard() {
           </form>
         </DialogContent>
       </Dialog>
-
       {/* Add Client Dialog - Full Form */}
       <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
         <DialogContent className="bg-white border-slate-200 text-slate-900">
