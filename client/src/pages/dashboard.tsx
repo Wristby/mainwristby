@@ -562,7 +562,9 @@ export default function Dashboard() {
                   {watchesAtPolisher}
                 </p>
               </div>
-              <img src={wristbyLogo} alt="Wristby" className="h-9 w-9 rounded-full brightness-0 invert opacity-80" />
+              <div className="p-2 bg-white/20 rounded-full">
+                <Watch className="h-5 w-5 text-white" />
+              </div>
             </div>
           </CardContent>
         </Card>
