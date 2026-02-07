@@ -659,20 +659,6 @@ export default function Inventory() {
                     </Select>
                     {form.formState.errors.purchasedFrom && <p className="text-red-500 text-xs">Purchase channel is required</p>}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Paid With *</Label>
-                    <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
-                      <SelectTrigger className="bg-white border-slate-200">
-                        <SelectValue placeholder="Select Payment" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 text-slate-900">
-                        {PAID_WITH_OPTIONS.map(opt => (
-                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">Payment method is required</p>}
-                  </div>
                   {showSellerField && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-1 min-h-[1.5rem]">
@@ -692,6 +678,20 @@ export default function Inventory() {
                       </Select>
                     </div>
                   )}
+                  <div className="space-y-2">
+                    <Label>Paid With *</Label>
+                    <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Payment" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        {PAID_WITH_OPTIONS.map(opt => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {form.formState.errors.paidWith && <p className="text-red-500 text-xs">Payment method is required</p>}
+                  </div>
                   <div className="space-y-2">
                     <Label>Purchase Price (COGS) *</Label>
                     <div className="relative">
