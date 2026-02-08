@@ -171,6 +171,7 @@ export default function Inventory() {
   const { data: inventory, isLoading } = useInventory();
   const { data: clients } = useClients();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [formKey, setFormKey] = useState(0);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
   const [showShippingDetails, setShowShippingDetails] = useState(false);
@@ -581,46 +582,11 @@ export default function Inventory() {
           </Button>
           <Dialog open={isCreateOpen} onOpenChange={(open) => {
             if (!open) {
-              form.reset({
-                brand: "",
-                model: "",
-                referenceNumber: "",
-                serialNumber: "",
-                internalSerial: "",
-                year: null,
-                purchasedFrom: "",
-                paidWith: "",
-                clientId: undefined,
-                purchasePrice: 0,
-                importFee: 0,
-                watchRegister: false,
-                serviceFee: 0,
-                polishFee: 0,
-                salePrice: 0,
-                soldTo: "",
-                platformFees: 0,
-                shippingFee: 0,
-                insuranceFee: 0,
-                dateReceived: null,
-                purchaseDate: null,
-                dateListed: null,
-                dateSold: null,
-                status: "incoming",
-                condition: "Used",
-                box: false,
-                papers: false,
-                gdriveLink: "",
-                notes: "",
-                shippingPartner: "",
-                trackingNumber: "",
-                soldPlatform: "",
-                dateSentToService: null,
-                dateReturnedFromService: null,
-                serviceNotes: "",
-              });
+              form.reset();
               setShowSaleDetails(false);
               setShowServiceDetails(false);
               setShowShippingDetails(false);
+              setFormKey(k => k + 1);
             }
             setIsCreateOpen(open);
           }}>
@@ -630,7 +596,7 @@ export default function Inventory() {
                 Add Watch
               </Button>
             </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
+          <DialogContent key={formKey} className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
             <DialogHeader>
               <DialogTitle>Add New Watch</DialogTitle>
             </DialogHeader>
