@@ -343,7 +343,7 @@ export default function Inventory() {
       
     const serviceValue = inventory
       .filter(i => i.status === 'servicing')
-      .reduce((sum, i) => sum + i.purchasePrice, 0);
+      .reduce((sum, i) => sum + ((i as any).serviceFee || 0) + ((i as any).polishFee || 0), 0);
       
     const incomingValue = inventory
       .filter(i => i.status === 'incoming' || i.status === 'received')
