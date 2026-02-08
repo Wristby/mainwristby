@@ -1182,10 +1182,33 @@ export default function Inventory() {
                 )}
               </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
-                <Textarea {...form.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
-              </div>
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Shipping Partner</Label>
+                          <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
+                            <SelectTrigger className="bg-white border-slate-200">
+                              <SelectValue placeholder="Select Partner" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-200 text-slate-900">
+                              <SelectItem value="UPS">UPS</SelectItem>
+                              <SelectItem value="FedEx">FedEx</SelectItem>
+                              <SelectItem value="DHL">DHL</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Tracking Number</Label>
+                          <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" placeholder="e.g. 1Z999..." />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
+                      <Textarea {...form.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
+                    </div>
 
               <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>

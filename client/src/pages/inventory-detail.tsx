@@ -863,40 +863,24 @@ export default function InventoryDetail() {
 
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Shipping Partner</Label>
-                      <Input {...form.register("shippingPartner")} className="bg-white border-slate-200" placeholder="DHL, FedEx, UPS..." />
+                      <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Partner" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="UPS">UPS</SelectItem>
+                          <SelectItem value="FedEx">FedEx</SelectItem>
+                          <SelectItem value="DHL">DHL</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Tracking Number</Label>
                       <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" placeholder="Enter tracking number" />
                     </div>
-                      <div className="space-y-2">
-                        <Label>Target Sell Price</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input 
-                            type="text" 
-                            {...form.register("targetSellPrice", {
-                              setValueAs: (v) => {
-                                if (v === "") return 0;
-                                const normalized = v.toString().replace(",", ".");
-                                return parseFloat(normalized);
-                              }
-                            })}
-                            onBlur={(e) => {
-                              const normalized = e.target.value.replace(",", ".");
-                              const val = parseFloat(normalized);
-                              if (!isNaN(val)) {
-                                form.setValue("targetSellPrice", parseFloat(val.toFixed(2)));
-                              }
-                            }}
-                            className="pl-7 bg-white border-slate-200" 
-                            placeholder="0,00"
-                          />
-                        </div>
-                      </div>
                   </div>
                 </div>
 
