@@ -1289,7 +1289,7 @@ export default function InventoryDetail() {
                   <div>
                     <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Shipped</Label>
                     <div className="flex items-center gap-2 mt-1 text-slate-600">
-                      <ExternalLink className="w-4 h-4" />
+                      <Box className="w-4 h-4" />
                       <span className="text-sm font-medium">{format(new Date((item as any).dateShipped), 'M/d/yyyy')}</span>
                     </div>
                   </div>
