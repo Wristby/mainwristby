@@ -79,6 +79,7 @@ export const inventory = pgTable("inventory", {
   // Shipping & Tracking
   shippingPartner: text("shipping_partner"),
   trackingNumber: text("tracking_number"),
+  dateShipped: timestamp("date_shipped"),
   soldPlatform: text("sold_platform"),
   
   // Relations

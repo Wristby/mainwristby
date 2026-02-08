@@ -128,6 +128,7 @@ const createFormSchema = z.object({
   
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
+  dateShipped: z.string().optional().nullable(),
   soldPlatform: z.string().optional().nullable(),
   dateSentToService: z.string().optional().nullable(),
   dateReturnedFromService: z.string().optional().nullable(),
@@ -229,6 +230,7 @@ export default function Inventory() {
       notes: "",
       shippingPartner: "",
       trackingNumber: "",
+      dateShipped: null,
       soldPlatform: "",
       dateSentToService: null,
       dateReturnedFromService: null,
@@ -267,6 +269,7 @@ export default function Inventory() {
   const [isPurchaseDateOpen, setIsPurchaseDateOpen] = useState(false);
   const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
   const [isDateListedOpen, setIsDateListedOpen] = useState(false);
+  const [isDateShippedOpen, setIsDateShippedOpen] = useState(false);
   const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
   const [isDateSentOpen, setIsDateSentOpen] = useState(false);
   const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
@@ -296,6 +299,7 @@ export default function Inventory() {
       dateReceived: data.dateReceived || null,
       purchaseDate: data.purchaseDate || null,
       dateListed: data.dateListed || null,
+      dateShipped: data.dateShipped || null,
       dateSold: data.dateSold || null,
       dateSentToService: data.dateSentToService || null,
       dateReturnedFromService: data.dateReturnedFromService || null,
@@ -1204,7 +1208,7 @@ export default function Inventory() {
                 </div>
                 
                 {showShippingDetails && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="space-y-2">
                       <Label>Shipping Partner</Label>
                       <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
@@ -1217,6 +1221,34 @@ export default function Inventory() {
                           <SelectItem value="DHL">DHL</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date Shipped</Label>
+                      <Popover open={isDateShippedOpen} onOpenChange={setIsDateShippedOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-white border-slate-200",
+                              !form.watch("dateShipped") && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {form.watch("dateShipped") ? format(new Date(form.watch("dateShipped")!), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                          <CalendarComponent
+                            mode="single"
+                            selected={form.watch("dateShipped") ? new Date(form.watch("dateShipped")!) : undefined}
+                            onSelect={(date) => {
+                              form.setValue("dateShipped", date ? date.toISOString() : null);
+                              setIsDateShippedOpen(false);
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     <div className="space-y-2">
                       <Label>Tracking Number</Label>

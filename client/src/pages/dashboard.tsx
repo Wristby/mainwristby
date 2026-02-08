@@ -92,6 +92,7 @@ const createInventoryFormSchema = z.object({
   notes: z.string().optional().nullable(),
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
+  dateShipped: z.string().optional().nullable(),
   soldPlatform: z.string().optional().nullable(),
   dateSentToService: z.string().optional().nullable(),
   dateReturnedFromService: z.string().optional().nullable(),
@@ -203,6 +204,7 @@ export default function Dashboard() {
       notes: "",
       shippingPartner: "",
       trackingNumber: "",
+      dateShipped: null,
       soldPlatform: "",
       dateSentToService: null,
       dateReturnedFromService: null,
@@ -254,6 +256,7 @@ export default function Dashboard() {
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
   const [showShippingDetails, setShowShippingDetails] = useState(false);
+  const [isDateShippedOpen, setIsDateShippedOpen] = useState(false);
   const { data: clients } = useQuery<Array<{ id: number; name: string; type: string }>>({ queryKey: ["/api/clients"] });
 
   // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
@@ -313,6 +316,7 @@ export default function Dashboard() {
       dateReceived: data.dateReceived || null,
       purchaseDate: data.purchaseDate || null,
       dateListed: data.dateListed || null,
+      dateShipped: data.dateShipped || null,
       dateSold: data.dateSold || null,
       soldDate: data.dateSold || null,
       dateSentToService: data.dateSentToService || null,
@@ -1241,7 +1245,7 @@ export default function Dashboard() {
               </div>
               
               {showShippingDetails && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
                   <div className="space-y-2">
                     <Label>Shipping Partner</Label>
                     <Select value={watchForm.watch("shippingPartner") || ""} onValueChange={(val) => watchForm.setValue("shippingPartner", val)}>
@@ -1254,6 +1258,34 @@ export default function Dashboard() {
                         <SelectItem value="DHL">DHL</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date Shipped</Label>
+                    <Popover open={isDateShippedOpen} onOpenChange={setIsDateShippedOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-white border-slate-200",
+                            !watchForm.watch("dateShipped") && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {watchForm.watch("dateShipped") ? format(new Date(watchForm.watch("dateShipped")!), "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                        <Calendar
+                          mode="single"
+                          selected={watchForm.watch("dateShipped") ? new Date(watchForm.watch("dateShipped")!) : undefined}
+                          onSelect={(date) => {
+                            watchForm.setValue("dateShipped", date ? date.toISOString() : null);
+                            setIsDateShippedOpen(false);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div className="space-y-2">
                     <Label>Tracking Number</Label>
