@@ -1254,6 +1254,46 @@ export default function InventoryDetail() {
                     </div>
                   </div>
                 )}
+                
+                {(item as any).dateSentToService && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Sent to Service</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <Wrench className="w-4 h-4" />
+                      <span className="text-sm font-medium">{format(new Date((item as any).dateSentToService), 'M/d/yyyy')}</span>
+                    </div>
+                  </div>
+                )}
+
+                {(item as any).dateReturnedFromService && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Returned from Service</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <Check className="w-4 h-4" />
+                      <span className="text-sm font-medium">{format(new Date((item as any).dateReturnedFromService), 'M/d/yyyy')}</span>
+                    </div>
+                  </div>
+                )}
+
+                {(item as any).dateShipped && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Shipped</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <ExternalLink className="w-4 h-4" />
+                      <span className="text-sm font-medium">{format(new Date((item as any).dateShipped), 'M/d/yyyy')}</span>
+                    </div>
+                  </div>
+                )}
+
+                {(item.soldDate || (item as any).dateSold) && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Sold</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <Check className="w-4 h-4 text-emerald-500" />
+                      <span className="text-sm font-medium">{format(new Date(item.soldDate || (item as any).dateSold || ""), 'M/d/yyyy')}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
