@@ -79,6 +79,16 @@ const COUNTRIES = [
   "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
 ];
 
+const getTrackingUrl = (partner: string | null | undefined, trackingNumber: string | null | undefined): string | null => {
+  if (!partner || !trackingNumber) return null;
+  switch (partner) {
+    case "UPS": return `https://www.ups.com/track?tracknum=${encodeURIComponent(trackingNumber)}`;
+    case "FedEx": return `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(trackingNumber)}`;
+    case "DHL": return `https://www.dhl.com/en/express/tracking.html?AWB=${encodeURIComponent(trackingNumber)}`;
+    default: return null;
+  }
+};
+
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
@@ -1165,7 +1175,17 @@ export default function InventoryDetail() {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-500">Tracking #</span>
-                        <span className="font-medium">{item.trackingNumber || 'N/A'}</span>
+                        {item.trackingNumber ? (
+                          getTrackingUrl(item.shippingPartner, item.trackingNumber) ? (
+                            <a href={getTrackingUrl(item.shippingPartner, item.trackingNumber)!} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-600 hover:underline inline-flex items-center gap-1" data-testid="link-tracking-transaction">
+                              {item.trackingNumber} <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            <span className="font-medium">{item.trackingNumber}</span>
+                          )
+                        ) : (
+                          <span className="font-medium">N/A</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1183,7 +1203,17 @@ export default function InventoryDetail() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Tracking #</span>
-                      <span className="font-medium">{item.trackingNumber || 'N/A'}</span>
+                      {item.trackingNumber ? (
+                        getTrackingUrl(item.shippingPartner, item.trackingNumber) ? (
+                          <a href={getTrackingUrl(item.shippingPartner, item.trackingNumber)!} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-600 hover:underline inline-flex items-center gap-1" data-testid="link-tracking-shipping">
+                            {item.trackingNumber} <ExternalLink className="w-3 h-3" />
+                          </a>
+                        ) : (
+                          <span className="font-medium">{item.trackingNumber}</span>
+                        )
+                      ) : (
+                        <span className="font-medium">N/A</span>
+                      )}
                     </div>
                   </div>
                 </div>
