@@ -173,6 +173,7 @@ export default function Inventory() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
+  const [showShippingDetails, setShowShippingDetails] = useState(false);
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
   const { toast } = useToast();
   const createMutation = useCreateInventory();
@@ -1182,28 +1183,37 @@ export default function Inventory() {
                 )}
               </div>
 
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Shipping Partner</Label>
-                          <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
-                            <SelectTrigger className="bg-white border-slate-200">
-                              <SelectValue placeholder="Select Partner" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white border-slate-200 text-slate-900">
-                              <SelectItem value="UPS">UPS</SelectItem>
-                              <SelectItem value="FedEx">FedEx</SelectItem>
-                              <SelectItem value="DHL">DHL</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Tracking Number</Label>
-                          <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" placeholder="e.g. 1Z999..." />
-                        </div>
-                      </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Shipping & Tracking</h3>
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="showShipping" className="text-sm font-medium text-slate-500">Show Shipping Fields</Label>
+                    <Switch id="showShipping" checked={showShippingDetails} onCheckedChange={setShowShippingDetails} />
+                  </div>
+                </div>
+                
+                {showShippingDetails && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-2">
+                      <Label>Shipping Partner</Label>
+                      <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
+                        <SelectTrigger className="bg-white border-slate-200">
+                          <SelectValue placeholder="Select Partner" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="UPS">UPS</SelectItem>
+                          <SelectItem value="FedEx">FedEx</SelectItem>
+                          <SelectItem value="DHL">DHL</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+                    <div className="space-y-2">
+                      <Label>Tracking Number</Label>
+                      <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" placeholder="e.g. 1Z999..." />
+                    </div>
+                  </div>
+                )}
+              </div>
 
                     <div className="space-y-4">
                       <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>

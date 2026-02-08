@@ -252,6 +252,7 @@ export default function Dashboard() {
 
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
+  const [showShippingDetails, setShowShippingDetails] = useState(false);
   const { data: clients } = useQuery<Array<{ id: number; name: string; type: string }>>({ queryKey: ["/api/clients"] });
 
   // Watch for changes to salePrice and soldPlatform to auto-calculate platformFees
@@ -1183,26 +1184,35 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Shipping & Tracking</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Shipping Partner</Label>
-                  <Select value={watchForm.watch("shippingPartner") || ""} onValueChange={(val) => watchForm.setValue("shippingPartner", val)}>
-                    <SelectTrigger className="bg-white border-slate-200">
-                      <SelectValue placeholder="Select Partner" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 text-slate-900">
-                      <SelectItem value="UPS">UPS</SelectItem>
-                      <SelectItem value="FedEx">FedEx</SelectItem>
-                      <SelectItem value="DHL">DHL</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Tracking Number</Label>
-                  <Input {...watchForm.register("trackingNumber")} className="bg-white border-slate-200" placeholder="Enter tracking number" />
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Shipping & Tracking</h3>
+                <div className="flex items-center space-x-2">
+                  <Label htmlFor="dash-showShipping" className="text-sm font-medium text-slate-500">Show Shipping Fields</Label>
+                  <Switch id="dash-showShipping" checked={showShippingDetails} onCheckedChange={setShowShippingDetails} />
                 </div>
               </div>
+              
+              {showShippingDetails && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-2">
+                    <Label>Shipping Partner</Label>
+                    <Select value={watchForm.watch("shippingPartner") || ""} onValueChange={(val) => watchForm.setValue("shippingPartner", val)}>
+                      <SelectTrigger className="bg-white border-slate-200">
+                        <SelectValue placeholder="Select Partner" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white border-slate-200 text-slate-900">
+                        <SelectItem value="UPS">UPS</SelectItem>
+                        <SelectItem value="FedEx">FedEx</SelectItem>
+                        <SelectItem value="DHL">DHL</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tracking Number</Label>
+                    <Input {...watchForm.register("trackingNumber")} className="bg-white border-slate-200" placeholder="Enter tracking number" />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
