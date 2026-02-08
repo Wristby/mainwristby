@@ -17,6 +17,7 @@ const inventoryInputSchema = insertInventorySchema.extend({
   dateReceived: dateStringToDate,
   dateSentToService: dateStringToDate,
   dateReturnedFromService: dateStringToDate,
+  dateShipped: dateStringToDate,
 });
 
 // Extended expense schema that properly handles date strings from JSON
