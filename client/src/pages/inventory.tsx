@@ -579,7 +579,51 @@ export default function Inventory() {
             <Download className="w-4 h-4 mr-2" />
             Export CSV
           </Button>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <Dialog open={isCreateOpen} onOpenChange={(open) => {
+            setIsCreateOpen(open);
+            if (!open) {
+              form.reset({
+                brand: "",
+                model: "",
+                referenceNumber: "",
+                serialNumber: "",
+                internalSerial: "",
+                year: null,
+                purchasedFrom: "",
+                paidWith: "",
+                clientId: undefined,
+                purchasePrice: 0,
+                importFee: 0,
+                watchRegister: false,
+                serviceFee: 0,
+                polishFee: 0,
+                salePrice: 0,
+                soldTo: "",
+                platformFees: 0,
+                shippingFee: 0,
+                insuranceFee: 0,
+                dateReceived: null,
+                purchaseDate: null,
+                dateListed: null,
+                dateSold: null,
+                status: "incoming",
+                condition: "Used",
+                box: false,
+                papers: false,
+                gdriveLink: "",
+                notes: "",
+                shippingPartner: "",
+                trackingNumber: "",
+                soldPlatform: "",
+                dateSentToService: null,
+                dateReturnedFromService: null,
+                serviceNotes: "",
+              });
+              setShowSaleDetails(false);
+              setShowServiceDetails(false);
+              setShowShippingDetails(false);
+            }
+          }}>
             <DialogTrigger asChild>
               <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">
                 <Plus className="w-4 h-4 mr-2" />

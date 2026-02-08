@@ -857,7 +857,51 @@ export default function Dashboard() {
         </div>
       </div>
       {/* Add Watch Dialog - Full Form */}
-      <Dialog open={isAddWatchOpen} onOpenChange={setIsAddWatchOpen}>
+      <Dialog open={isAddWatchOpen} onOpenChange={(open) => {
+        setIsAddWatchOpen(open);
+        if (!open) {
+          watchForm.reset({
+            brand: "",
+            model: "",
+            referenceNumber: "",
+            serialNumber: "",
+            internalSerial: "",
+            year: null,
+            purchasedFrom: "",
+            paidWith: "",
+            clientId: undefined,
+            purchasePrice: 0,
+            importFee: 0,
+            watchRegister: false,
+            serviceFee: 0,
+            polishFee: 0,
+            salePrice: 0,
+            soldTo: "",
+            platformFees: 0,
+            shippingFee: 0,
+            insuranceFee: 0,
+            dateReceived: null,
+            purchaseDate: null,
+            dateListed: null,
+            dateSold: null,
+            status: "incoming",
+            condition: "Used",
+            box: false,
+            papers: false,
+            gdriveLink: "",
+            notes: "",
+            shippingPartner: "",
+            trackingNumber: "",
+            soldPlatform: "",
+            dateSentToService: null,
+            dateReturnedFromService: null,
+            serviceNotes: "",
+          });
+          setShowSaleDetails(false);
+          setShowServiceDetails(false);
+          setShowShippingDetails(false);
+        }
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
           <DialogHeader><DialogTitle>Add New Watch</DialogTitle></DialogHeader>
           <form onSubmit={watchForm.handleSubmit(onWatchSubmit)} className="space-y-6 mt-4">
