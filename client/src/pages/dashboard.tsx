@@ -695,7 +695,7 @@ export default function Dashboard() {
               </div>
               <div className="w-0.5 h-4 bg-slate-900/20" />
             </div>
-            <div className="flex justify-between text-xs text-slate-400 pt-[9px] pb-[9px] mt-[0px] mb-[0px]">
+            <div className="flex justify-between text-xs text-slate-400 mt-[14px] mb-[14px] pt-[0px] pb-[0px]">
               <span>{goalProgress.toFixed(0)}% of goal</span>
               {currentMonthProfit >= monthlyGoal ? (
                 <span className="text-emerald-600 font-medium">Fuck Yeah!</span>
