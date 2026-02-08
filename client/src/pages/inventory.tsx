@@ -52,10 +52,10 @@ import { Textarea } from "@/components/ui/textarea";
 
 const WATCH_BRANDS = [
   "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
-  "Cartier", "Chopard", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
-  "H. Moser and Cie", "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
-  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe", "Parmigiani",
-  "Roger Dubuis", "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
+  "Cartier", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
+  "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
+  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe",
+  "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
   "Vacheron Constantin", "Zenith"
 ];
 
