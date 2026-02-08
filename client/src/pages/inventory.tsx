@@ -1128,9 +1128,10 @@ export default function Inventory() {
                             type="text" 
                             {...form.register("serviceFee", {
                               setValueAs: (v) => {
-                                if (v === "") return 0;
+                                if (v === "" || v === undefined || v === null) return 0;
                                 const normalized = v.toString().replace(",", ".");
-                                return parseFloat(normalized);
+                                const parsed = parseFloat(normalized);
+                                return isNaN(parsed) ? 0 : parsed;
                               }
                             })}
                             onBlur={(e) => {

@@ -1160,20 +1160,58 @@ export default function Dashboard() {
                         </PopoverContent>
                       </Popover>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Service Fee</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("serviceFee")} className="pl-7 bg-white border-slate-200" />
-                      </div>
+                  <div className="space-y-2">
+                    <Label>Service Fee</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        type="text" 
+                        {...watchForm.register("serviceFee", {
+                          setValueAs: (v) => {
+                            if (v === "" || v === undefined || v === null) return 0;
+                            const normalized = v.toString().replace(",", ".");
+                            const parsed = parseFloat(normalized);
+                            return isNaN(parsed) ? 0 : parsed;
+                          }
+                        })}
+                        onBlur={(e) => {
+                          const normalized = e.target.value.replace(",", ".");
+                          const val = parseFloat(normalized);
+                          if (!isNaN(val)) {
+                            watchForm.setValue("serviceFee", parseFloat(val.toFixed(2)));
+                          }
+                        }}
+                        className="pl-7 bg-white border-slate-200" 
+                        placeholder="0,00"
+                      />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Polish Fee</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input type="text" inputMode="numeric" pattern="[0-9]*" {...watchForm.register("polishFee")} className="pl-7 bg-white border-slate-200" />
-                      </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Polish Fee</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                      <Input 
+                        type="text" 
+                        {...watchForm.register("polishFee", {
+                          setValueAs: (v) => {
+                            if (v === "" || v === undefined || v === null) return 0;
+                            const normalized = v.toString().replace(",", ".");
+                            const parsed = parseFloat(normalized);
+                            return isNaN(parsed) ? 0 : parsed;
+                          }
+                        })}
+                        onBlur={(e) => {
+                          const normalized = e.target.value.replace(",", ".");
+                          const val = parseFloat(normalized);
+                          if (!isNaN(val)) {
+                            watchForm.setValue("polishFee", parseFloat(val.toFixed(2)));
+                          }
+                        }}
+                        className="pl-7 bg-white border-slate-200" 
+                        placeholder="0,00"
+                      />
                     </div>
+                  </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Service Notes</Label>
