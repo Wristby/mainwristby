@@ -580,7 +580,6 @@ export default function Inventory() {
             Export CSV
           </Button>
           <Dialog open={isCreateOpen} onOpenChange={(open) => {
-            setIsCreateOpen(open);
             if (!open) {
               form.reset({
                 brand: "",
@@ -623,6 +622,7 @@ export default function Inventory() {
               setShowServiceDetails(false);
               setShowShippingDetails(false);
             }
+            setIsCreateOpen(open);
           }}>
             <DialogTrigger asChild>
               <Button className="bg-emerald-600 hover:bg-emerald-500 text-white shadow-md" data-testid="button-add-watch">

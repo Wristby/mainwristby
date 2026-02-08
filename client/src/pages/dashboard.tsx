@@ -858,7 +858,6 @@ export default function Dashboard() {
       </div>
       {/* Add Watch Dialog - Full Form */}
       <Dialog open={isAddWatchOpen} onOpenChange={(open) => {
-        setIsAddWatchOpen(open);
         if (!open) {
           watchForm.reset({
             brand: "",
@@ -901,6 +900,7 @@ export default function Dashboard() {
           setShowServiceDetails(false);
           setShowShippingDetails(false);
         }
+        setIsAddWatchOpen(open);
       }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
           <DialogHeader><DialogTitle>Add New Watch</DialogTitle></DialogHeader>
