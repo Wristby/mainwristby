@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type CreateClientRequest, type UpdateClientRequest } from "@shared/routes";
+import { api, buildUrl } from "@shared/routes";
 
 export function useClients() {
   return useQuery({
@@ -28,7 +28,7 @@ export function useClient(id: number) {
 export function useCreateClient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: CreateClientRequest) => {
+    mutationFn: async (data: any) => {
       const res = await fetch(api.clients.create.path, {
         method: api.clients.create.method,
         headers: { "Content-Type": "application/json" },
@@ -47,7 +47,7 @@ export function useCreateClient() {
 export function useUpdateClient() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...data }: UpdateClientRequest & { id: number }) => {
+    mutationFn: async ({ id, ...data }: any) => {
       const url = buildUrl(api.clients.update.path, { id });
       const res = await fetch(url, {
         method: api.clients.update.method,
@@ -57,6 +57,24 @@ export function useUpdateClient() {
       });
       if (!res.ok) throw new Error("Failed to update client");
       return api.clients.update.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
+    },
+  });
+}
+
+export function useDeleteClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const url = buildUrl(api.clients.delete.path, { id });
+      const res = await fetch(url, {
+        method: api.clients.delete.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete client");
+      return true;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });

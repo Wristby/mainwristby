@@ -25,6 +25,7 @@ export interface IStorage {
   getClient(id: number): Promise<Client | undefined>;
   createClient(client: InsertClient): Promise<Client>;
   updateClient(id: number, updates: UpdateClientRequest): Promise<Client>;
+  deleteClient(id: number): Promise<void>;
 
   // Inventory
   getInventoryItems(status?: string): Promise<(InventoryItem & { seller?: Client })[]>;
@@ -63,6 +64,13 @@ export class DatabaseStorage implements IStorage {
   async updateClient(id: number, updates: UpdateClientRequest): Promise<Client> {
     const [client] = await db.update(clients).set(updates).where(eq(clients.id, id)).returning();
     return client;
+  }
+
+  async deleteClient(id: number): Promise<void> {
+    // Unlink from inventory items (set clientId to null)
+    await db.update(inventory).set({ clientId: null }).where(eq(inventory.clientId, id));
+    // Then delete the client
+    await db.delete(clients).where(eq(clients.id, id));
   }
 
   // Inventory

@@ -4,7 +4,7 @@ import { Client, InventoryItem, insertClientSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Phone, Mail, Globe, User, Star, ArrowLeft, Watch, History, TrendingUp, ExternalLink, Pencil, Check } from "lucide-react";
+import { Loader2, Phone, Mail, Globe, User, Star, ArrowLeft, Watch, History, TrendingUp, ExternalLink, Pencil, Check, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import {
   Table,
@@ -21,6 +21,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Form,
   FormControl,
@@ -43,7 +54,7 @@ import { format } from "date-fns";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useUpdateClient } from "@/hooks/use-clients";
+import { useUpdateClient, useDeleteClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
@@ -62,6 +73,7 @@ export default function ClientDetail() {
   const { toast } = useToast();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const updateClientMutation = useUpdateClient();
+  const deleteClientMutation = useDeleteClient();
 
   const { data: clients, isLoading: isLoadingClients } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
@@ -130,6 +142,18 @@ export default function ClientDetail() {
         setIsEditOpen(false);
         queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
         toast({ title: "Success", description: "Client updated successfully" });
+      },
+      onError: (error: any) => {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
+    });
+  };
+
+  const handleDelete = () => {
+    deleteClientMutation.mutate(client.id, {
+      onSuccess: () => {
+        toast({ title: "Success", description: "Client deleted successfully" });
+        setLocation("/clients");
       },
       onError: (error: any) => {
         toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -326,6 +350,31 @@ export default function ClientDetail() {
               </Form>
             </DialogContent>
           </Dialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover-elevate shadow-sm">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="bg-white border-slate-200">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the client and unlink them from any inventory records.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="border-slate-200">Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDelete}
+                  className="bg-red-500 hover:bg-red-600 text-white"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

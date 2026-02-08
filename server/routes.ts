@@ -52,6 +52,15 @@ export async function registerRoutes(
     }
   });
 
+  app.delete(api.clients.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteClient(Number(req.params.id));
+      res.sendStatus(204);
+    } catch (err) {
+      res.status(404).json({ message: "Client not found" });
+    }
+  });
+
   // Inventory
   app.get(api.inventory.list.path, isAuthenticated, async (req, res) => {
     const status = req.query.status as string;
