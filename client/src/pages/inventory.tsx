@@ -1232,7 +1232,7 @@ export default function Inventory() {
                     </div>
 
               <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => { form.reset(); setShowSaleDetails(false); setShowServiceDetails(false); setShowShippingDetails(false); setFormKey(k => k + 1); setIsCreateOpen(false); }}>Cancel</Button>
                 <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[120px]">
                   {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                   Add Watch
