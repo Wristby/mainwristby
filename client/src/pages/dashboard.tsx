@@ -402,6 +402,7 @@ export default function Dashboard() {
   // Inventory status counts
   const statusCounts = {
     incoming: inventory?.filter((i) => i.status === "incoming").length || 0,
+    received: inventory?.filter((i) => i.status === "received").length || 0,
     inService: inventory?.filter((i) => i.status === "servicing").length || 0,
     listed: inventory?.filter((i) => i.status === "in_stock").length || 0,
     sold: inventory?.filter((i) => i.status === "sold").length || 0,
@@ -718,11 +719,17 @@ export default function Dashboard() {
             <CardHeader className="pb-4">
               <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <Link href="/inventory?status=incoming">
                 <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
                   <span className="text-xs text-slate-500 uppercase font-semibold">Incoming</span>
                   <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
+                </div>
+              </Link>
+              <Link href="/inventory?status=received">
+                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                  <span className="text-xs text-slate-500 uppercase font-semibold">Received</span>
+                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.received}</span>
                 </div>
               </Link>
               <Link href="/inventory?status=servicing">
