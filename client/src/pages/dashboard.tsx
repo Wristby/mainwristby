@@ -296,6 +296,8 @@ export default function Dashboard() {
     let finalStatus = data.status;
     if (data.dateSold) {
       finalStatus = "sold";
+    } else if (data.dateReturnedFromService && finalStatus === "servicing") {
+      finalStatus = "received";
     } else if (data.dateListed && finalStatus !== "sold" && finalStatus !== "servicing") {
       finalStatus = "in_stock";
     } else if (data.purchaseDate && finalStatus === "incoming") {
