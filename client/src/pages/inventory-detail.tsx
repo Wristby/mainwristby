@@ -318,15 +318,18 @@ export default function InventoryDetail() {
   };
 
   const onSubmitEdit = (data: EditFormValues) => {
+    const userChangedStatus = data.status !== item?.status;
     let finalStatus = data.status;
-    if (data.dateSold) {
-      finalStatus = "sold";
-    } else if (data.dateReturnedFromService && finalStatus === "servicing") {
-      finalStatus = "received";
-    } else if (data.dateListed && finalStatus !== "sold" && finalStatus !== "servicing") {
-      finalStatus = "in_stock";
-    } else if (data.purchaseDate && finalStatus === "incoming") {
-      finalStatus = "received";
+    if (!userChangedStatus) {
+      if (data.dateSold) {
+        finalStatus = "sold";
+      } else if (data.dateReturnedFromService && finalStatus === "servicing") {
+        finalStatus = "received";
+      } else if (data.dateListed && finalStatus !== "sold" && finalStatus !== "servicing") {
+        finalStatus = "in_stock";
+      } else if (data.purchaseDate && finalStatus === "incoming") {
+        finalStatus = "received";
+      }
     }
     
     const submissionData = {
