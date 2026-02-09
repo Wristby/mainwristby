@@ -728,7 +728,7 @@ export default function Dashboard() {
               </Link>
               <Link href="/inventory?status=received">
                 <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
-                  <span className="text-xs text-slate-500 uppercase font-semibold">Received</span>
+                  <span className="text-xs text-slate-500 uppercase font-semibold">NEED TO LIST</span>
                   <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.received}</span>
                 </div>
               </Link>
