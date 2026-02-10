@@ -1413,61 +1413,93 @@ export default function Dashboard() {
       </Dialog>
       {/* Add Expense Dialog - Full Form */}
       <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
-        <DialogContent className="max-w-lg bg-white border-slate-200 text-slate-900">
+        <DialogContent className="max-w-md bg-white border-slate-200 text-slate-900">
           <DialogHeader><DialogTitle>Add New Expense</DialogTitle></DialogHeader>
           <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
             <div className="space-y-2">
-              <Label>Description *</Label>
-              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="Enter expense description" />
+              <Label>Description</Label>
+              <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="Monthly subscription..." data-testid="input-description" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Amount (€) *</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                  <Input 
-                    type="text" 
-                    {...expenseForm.register("amount", {
-                      setValueAs: (v) => {
-                        if (v === "") return 0;
-                        const normalized = v.toString().replace(",", ".");
-                        return parseFloat(normalized);
-                      }
-                    })}
-                    onBlur={(e) => {
-                      const normalized = e.target.value.replace(",", ".");
-                      const val = parseFloat(normalized);
-                      if (!isNaN(val)) {
-                        expenseForm.setValue("amount", parseFloat(val.toFixed(2)));
-                      }
-                    }}
-                    className="pl-7 bg-white border-slate-200" 
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={expenseForm.watch("category") as string} onValueChange={(val) => expenseForm.setValue("category", val as any)}>
-                  <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Category" /></SelectTrigger>
-                  <SelectContent className="bg-white border-slate-200 text-slate-900">
-                    {EXPENSE_CATEGORIES.map(cat => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label>Amount</Label>
+              <Input 
+                type="text" 
+                {...expenseForm.register("amount", {
+                  setValueAs: (v) => {
+                    if (v === "") return 0;
+                    const normalized = v.toString().replace(",", ".");
+                    return parseFloat(normalized);
+                  }
+                })}
+                onBlur={(e) => {
+                  const normalized = e.target.value.replace(",", ".");
+                  const val = parseFloat(normalized);
+                  if (!isNaN(val)) {
+                    expenseForm.setValue("amount", parseFloat(val.toFixed(2)));
+                  }
+                }}
+                className="bg-white border-slate-200" 
+                placeholder="10,00" 
+                data-testid="input-amount" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select value={expenseForm.watch("category") as string} onValueChange={(val) => expenseForm.setValue("category", val as any)}>
+                <SelectTrigger className="bg-white border-slate-200" data-testid="select-category-form">
+                  <SelectValue placeholder="Select Category" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900">
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Date</Label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !expenseForm.watch("date") && "text-muted-foreground")}>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal bg-white border-slate-200",
+                      !expenseForm.watch("date") && "text-muted-foreground"
+                    )}
+                    data-testid="button-date-picker"
+                  >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {expenseForm.watch("date") ? format(new Date(expenseForm.watch("date") as Date), "PPP") : <span>Pick a date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                  <Calendar mode="single" selected={expenseForm.watch("date") ? new Date(expenseForm.watch("date") as Date) : undefined} onSelect={(date) => expenseForm.setValue("date", date || new Date())} initialFocus />
+                  <Calendar
+                    mode="single"
+                    selected={expenseForm.watch("date") ? new Date(expenseForm.watch("date") as Date) : undefined}
+                    onSelect={(date) => expenseForm.setValue("date", date || new Date())}
+                    initialFocus
+                  />
                 </PopoverContent>
               </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label>Link to Watch (Optional)</Label>
+              <Select
+                value={expenseForm.watch("inventoryId")?.toString() || "none"}
+                onValueChange={(val) => expenseForm.setValue("inventoryId", val === "none" ? null : parseInt(val))}
+              >
+                <SelectTrigger className="bg-white border-slate-200" data-testid="select-watch-expense">
+                  <SelectValue placeholder="No watch linked" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-60">
+                  <SelectItem value="none">No watch linked</SelectItem>
+                  {inventory?.filter((w: any) => w.status !== "sold").map((w: any) => (
+                    <SelectItem key={w.id} value={w.id.toString()}>
+                      #{w.id} — {w.brand} {w.model} — {w.referenceNumber}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox id="dash-isRecurring" checked={expenseForm.watch("isRecurring")} onCheckedChange={(checked) => expenseForm.setValue("isRecurring", !!checked)} />
@@ -1475,7 +1507,7 @@ export default function Dashboard() {
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
               <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={createExpenseMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white">
+              <Button type="submit" disabled={createExpenseMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-submit-expense">
                 {createExpenseMutation.isPending ? "Adding..." : "Add Expense"}
               </Button>
             </div>
