@@ -1385,7 +1385,7 @@ export default function Inventory() {
                 <div className="flex items-center">COGS <SortIcon field="purchasePrice" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('holdTime')}>
-                <div className="flex items-center">Hold Time <SortIcon field="holdTime" /></div>
+                <div className="flex items-center">Since Received <SortIcon field="holdTime" /></div>
               </TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('status')}>
                 <div className="flex items-center">Status <SortIcon field="status" /></div>
