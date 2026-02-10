@@ -135,6 +135,7 @@ export default function Financials() {
       category: "other",
       date: new Date(),
       isRecurring: false,
+      inventoryId: null,
     },
   });
 
@@ -177,6 +178,7 @@ export default function Financials() {
     form.setValue("category", expense.category);
     form.setValue("date", new Date(expense.date));
     form.setValue("isRecurring", expense.isRecurring);
+    form.setValue("inventoryId", expense.inventoryId || null);
     setIsCreateOpen(true);
   };
 
@@ -585,6 +587,25 @@ export default function Financials() {
                       />
                     </PopoverContent>
                   </Popover>
+                </div>
+                <div className="space-y-2">
+                  <Label>Link to Watch (Optional)</Label>
+                  <Select
+                    value={form.watch("inventoryId")?.toString() || "none"}
+                    onValueChange={(val) => form.setValue("inventoryId", val === "none" ? null : parseInt(val))}
+                  >
+                    <SelectTrigger className="bg-white border-slate-200" data-testid="select-watch-expense">
+                      <SelectValue placeholder="No watch linked" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-60">
+                      <SelectItem value="none">No watch linked</SelectItem>
+                      {inventory?.filter((w: any) => w.status !== "sold").map((w: any) => (
+                        <SelectItem key={w.id} value={w.id.toString()}>
+                          {w.brand} {w.model} — {w.referenceNumber}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/50">
                   <div className="space-y-0.5">

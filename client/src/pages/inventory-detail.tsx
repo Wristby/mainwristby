@@ -1,6 +1,7 @@
 import { useInventoryItem, useUpdateInventory, useDeleteInventory } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
-import { insertClientSchema } from "@shared/schema";
+import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
+import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -144,6 +145,26 @@ const editFormSchema = z.object({
 
 type EditFormValues = z.infer<typeof editFormSchema>;
 
+const EXPENSE_CATEGORIES = [
+  { value: "marketing", label: "Marketing" },
+  { value: "rent_storage", label: "Rent/Storage" },
+  { value: "subscriptions", label: "Subscriptions" },
+  { value: "tools", label: "Tools" },
+  { value: "insurance", label: "Insurance" },
+  { value: "service", label: "Service" },
+  { value: "shipping", label: "Shipping" },
+  { value: "parts", label: "Parts" },
+  { value: "platform_fees", label: "Platform Fees" },
+  { value: "other", label: "Other" },
+];
+
+const expenseFormSchema = insertExpenseSchema.extend({
+  amount: z.coerce.number().min(0.01, "Amount is required"),
+  date: z.coerce.date(),
+});
+
+type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
+
 export default function InventoryDetail() {
   const [match, params] = useRoute("/inventory/:id");
   const id = params ? parseInt(params.id) : 0;
@@ -152,12 +173,61 @@ export default function InventoryDetail() {
   const updateMutation = useUpdateInventory();
   const deleteMutation = useDeleteInventory();
   const quickAddClientMutation = useCreateClient();
+  const createExpenseMutation = useCreateExpense();
+  const deleteExpenseMutation = useDeleteExpense();
   const { toast } = useToast();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
   const [showShippingDetails, setShowShippingDetails] = useState(false);
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
+  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+
+  const expenseForm = useForm<ExpenseFormValues>({
+    resolver: zodResolver(expenseFormSchema),
+    defaultValues: {
+      description: "",
+      amount: 0,
+      category: "other",
+      date: new Date(),
+      isRecurring: false,
+      inventoryId: id,
+    },
+  });
+
+  const onExpenseSubmit = (data: ExpenseFormValues) => {
+    const submitData = {
+      ...data,
+      amount: Math.round(data.amount * 100),
+      inventoryId: id,
+      date: data.date instanceof Date ? data.date : new Date(data.date),
+    };
+    createExpenseMutation.mutate(submitData, {
+      onSuccess: () => {
+        setIsAddExpenseOpen(false);
+        expenseForm.reset({ description: "", amount: 0, category: "other", date: new Date(), isRecurring: false, inventoryId: id });
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+        toast({ title: "Success", description: "Expense added to this watch" });
+      },
+      onError: (err) => {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      },
+    });
+  };
+
+  const handleDeleteExpense = (expenseId: number) => {
+    deleteExpenseMutation.mutate(expenseId, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+        toast({ title: "Success", description: "Expense removed" });
+      },
+      onError: (err) => {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      },
+    });
+  };
 
   const quickClientForm = useForm({
     resolver: zodResolver(insertClientSchema),
@@ -1226,13 +1296,87 @@ export default function InventoryDetail() {
 
               {/* Additional Expenses Section */}
               <div className="pt-4 border-t border-slate-100">
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Additional Expenses</h4>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Additional Expenses</h4>
+                  <Dialog open={isAddExpenseOpen} onOpenChange={setIsAddExpenseOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline" className="border-slate-200 text-slate-600" data-testid="button-add-watch-expense">
+                        <Plus className="w-3 h-3 mr-1" /> Add
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md bg-white border-slate-200 text-slate-900">
+                      <DialogHeader>
+                        <DialogTitle>Add Expense to {item.brand} {item.model}</DialogTitle>
+                      </DialogHeader>
+                      <form onSubmit={expenseForm.handleSubmit(onExpenseSubmit)} className="space-y-4 mt-4">
+                        <div className="space-y-2">
+                          <Label>Description</Label>
+                          <Input {...expenseForm.register("description")} className="bg-white border-slate-200" placeholder="Strap replacement, polishing..." data-testid="input-expense-description" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Amount</Label>
+                          <Input
+                            type="text"
+                            {...expenseForm.register("amount", {
+                              setValueAs: (v) => {
+                                if (v === "") return 0;
+                                const normalized = v.toString().replace(",", ".");
+                                return parseFloat(normalized);
+                              }
+                            })}
+                            className="bg-white border-slate-200"
+                            placeholder="10,00"
+                            data-testid="input-expense-amount"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Category</Label>
+                          <Select onValueChange={(val) => expenseForm.setValue("category", val as any)} defaultValue="other">
+                            <SelectTrigger className="bg-white border-slate-200" data-testid="select-expense-category">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-200 text-slate-900">
+                              {EXPENSE_CATEGORIES.map(cat => (
+                                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Date</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !expenseForm.watch("date") && "text-muted-foreground")}>
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {expenseForm.watch("date") ? format(new Date(expenseForm.watch("date")!), "PPP") : <span>Pick a date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                              <Calendar mode="single" selected={expenseForm.watch("date") || new Date()} onSelect={(date) => expenseForm.setValue("date", date || new Date())} initialFocus />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-2">
+                          <Button type="button" variant="outline" onClick={() => setIsAddExpenseOpen(false)} className="border-slate-200 text-slate-600">Cancel</Button>
+                          <Button type="submit" disabled={createExpenseMutation.isPending} className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-submit-watch-expense">
+                            {createExpenseMutation.isPending ? "Saving..." : "Add Expense"}
+                          </Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                </div>
                 <div className="space-y-2">
                   {(item as any).expenses && (item as any).expenses.length > 0 ? (
                     (item as any).expenses.map((expense: any) => (
-                      <div key={expense.id} className="flex justify-between text-sm gap-4">
+                      <div key={expense.id} className="flex items-center justify-between text-sm gap-4">
                         <span className="text-slate-500 line-clamp-2">{expense.description}</span>
-                        <span className="font-medium shrink-0">{formatCurrency(expense.amount)}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-medium">{formatCurrency(expense.amount)}</span>
+                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleDeleteExpense(expense.id)} data-testid={`button-delete-expense-${expense.id}`}>
+                            <Trash2 className="w-3 h-3 text-red-400" />
+                          </Button>
+                        </div>
                       </div>
                     ))
                   ) : (
