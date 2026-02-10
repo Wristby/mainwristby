@@ -1476,6 +1476,17 @@ export default function InventoryDetail() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="border-slate-200 bg-white shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg text-slate-900">Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm text-slate-600 whitespace-pre-wrap min-h-[4rem]">
+                {item.notes || "No notes available for this watch."}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
