@@ -601,7 +601,7 @@ export default function Financials() {
                       <SelectItem value="none">No watch linked</SelectItem>
                       {inventory?.filter((w: any) => w.status !== "sold").map((w: any) => (
                         <SelectItem key={w.id} value={w.id.toString()}>
-                          {w.brand} {w.model} — {w.referenceNumber}
+                          #{w.id} — {w.brand} {w.model} — {w.referenceNumber}
                         </SelectItem>
                       ))}
                     </SelectContent>
