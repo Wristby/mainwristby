@@ -367,9 +367,10 @@ export default function Inventory() {
   }, [inventory]);
 
   const getHoldTime = (item: any) => {
-    const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
+    const startDate = item.dateReceived ? new Date(item.dateReceived) : null;
+    if (!startDate) return 0;
     const endDate = item.status === "sold" && item.soldDate ? new Date(item.soldDate) : new Date();
-    return Math.max(0, differenceInDays(endDate, purchaseDate));
+    return Math.max(0, differenceInDays(endDate, startDate));
   };
 
   const handleSort = (field: SortField) => {

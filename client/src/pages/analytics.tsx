@@ -354,10 +354,10 @@ export default function Analytics() {
   // All watches hold time
   const allWatchesWithHoldTime = (inventory || []).map((item) => {
     const endDate = item.soldDate ? new Date(item.soldDate) : (item.dateSold ? new Date(item.dateSold) : today);
-    const startDate = item.purchaseDate ? new Date(item.purchaseDate) : today;
+    const startDate = item.dateReceived ? new Date(item.dateReceived) : null;
     return {
       ...item,
-      holdDays: Math.max(0, differenceInDays(endDate, startDate)),
+      holdDays: startDate ? Math.max(0, differenceInDays(endDate, startDate)) : 0,
     };
   });
   const avgHoldTime = allWatchesWithHoldTime.length > 0

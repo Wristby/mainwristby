@@ -396,7 +396,7 @@ export default function Dashboard() {
   const agingInventory = activeInventory
     .map((item) => ({
       ...item,
-      daysHeld: differenceInDays(today, item.purchaseDate ? new Date(item.purchaseDate) : today),
+      daysHeld: item.dateReceived ? differenceInDays(today, new Date(item.dateReceived)) : 0,
     }))
     .filter((item) => item.daysHeld > 45)
     .sort((a, b) => b.daysHeld - a.daysHeld);

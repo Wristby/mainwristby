@@ -409,10 +409,10 @@ export default function InventoryDetail() {
     return startOfDay(new Date());
   };
   
-  const holdTime = item.purchaseDate 
+  const holdTime = item.dateReceived 
     ? Math.max(0, differenceInDays(
         getEndDate(),
-        startOfDay(typeof item.purchaseDate === 'string' ? parseISO(item.purchaseDate) : new Date(item.purchaseDate))
+        startOfDay(typeof item.dateReceived === 'string' ? parseISO(item.dateReceived) : new Date(item.dateReceived))
       )) 
     : 0;
   const daysInStock = item.dateReceived
