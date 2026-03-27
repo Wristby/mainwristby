@@ -43,7 +43,11 @@ import {
   DollarSign,
   Calendar as CalendarIcon,
   RefreshCw,
-  Download
+  Download,
+  Check,
+  X,
+  AlertTriangle,
+  Info
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
@@ -118,6 +122,12 @@ export default function Financials() {
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
+  const [taxRate, setTaxRate] = useState<number>(() => {
+    const saved = localStorage.getItem("taxRate");
+    return saved ? parseFloat(saved) : 36.97;
+  });
+  const [isEditingTaxRate, setIsEditingTaxRate] = useState(false);
+  const [taxRateInput, setTaxRateInput] = useState("");
   
   const { data: expenses, isLoading: expensesLoading } = useExpenses();
   const { data: inventory, isLoading: inventoryLoading } = useInventory();
@@ -872,6 +882,120 @@ export default function Financials() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Tax Estimate */}
+      {(() => {
+        const grossProfit = metrics.grossProfit;
+        const allExpenses = grossProfit - metrics.netProfit;
+        const taxableIncome = metrics.netProfit;
+        const estimatedTax = taxableIncome > 0 ? (taxableIncome * taxRate) / 100 : 0;
+        const afterTaxIncome = taxableIncome - estimatedTax;
+
+        return (
+          <Card className="border-slate-200 bg-white">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-slate-500" />
+                  <h3 className="text-lg font-semibold text-slate-900">Tax Estimate</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isEditingTaxRate ? (
+                    <>
+                      <span className="text-sm text-slate-500">Rate:</span>
+                      <div className="relative">
+                        <Input
+                          className="h-8 w-24 text-sm text-right pr-6"
+                          value={taxRateInput}
+                          onChange={(e) => setTaxRateInput(e.target.value)}
+                          autoFocus
+                        />
+                        <span className="absolute right-2 top-1.5 text-xs text-slate-400">%</span>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                        onClick={() => {
+                          const val = parseFloat(taxRateInput);
+                          if (!isNaN(val) && val >= 0 && val <= 100) {
+                            setTaxRate(val);
+                            localStorage.setItem("taxRate", val.toString());
+                            toast({ title: "Tax rate updated", description: `Set to ${val}%` });
+                          }
+                          setIsEditingTaxRate(false);
+                        }}
+                      >
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-slate-400 hover:bg-slate-100"
+                        onClick={() => setIsEditingTaxRate(false)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs border-slate-200 text-slate-600"
+                      onClick={() => {
+                        setTaxRateInput(taxRate.toString());
+                        setIsEditingTaxRate(true);
+                      }}
+                    >
+                      Rate: {taxRate}% — Edit
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-0 divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                <div className="flex justify-between items-center px-4 py-3 bg-slate-50">
+                  <span className="text-sm text-slate-600">Gross Profit</span>
+                  <span className={`text-sm font-semibold tabular-nums ${grossProfit >= 0 ? "text-slate-900" : "text-red-600"}`}>
+                    {formatCurrency(grossProfit)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-sm text-slate-600">Total Deductible Expenses</span>
+                  <span className="text-sm font-semibold tabular-nums text-red-500">
+                    -{formatCurrency(allExpenses > 0 ? allExpenses : 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3 bg-slate-50">
+                  <span className="text-sm font-medium text-slate-700">Taxable Income</span>
+                  <span className={`text-sm font-bold tabular-nums ${taxableIncome >= 0 ? "text-slate-900" : "text-red-600"}`}>
+                    {formatCurrency(taxableIncome)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-sm text-slate-600">Estimated Tax ({taxRate}%)</span>
+                  <span className="text-sm font-semibold tabular-nums text-red-500">
+                    -{formatCurrency(estimatedTax)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-4 bg-emerald-50">
+                  <span className="text-sm font-bold text-emerald-800">After-Tax Net Income</span>
+                  <span className={`text-lg font-bold tabular-nums ${afterTaxIncome >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                    {formatCurrency(afterTaxIncome)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100">
+                <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-700">
+                  This is a simplified estimate only. The default rate (36.97%) reflects the Netherlands Box 1 income tax bracket. Consult a tax professional for accurate calculations — deductible items and applicable rates vary based on your situation.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }
