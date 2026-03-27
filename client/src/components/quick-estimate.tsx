@@ -45,7 +45,8 @@ export function QuickEstimate() {
     return {
       netProfit,
       margin,
-      roi
+      roi,
+      platformFee
     };
   }, [buyPrice, serviceCost, salePrice, platform, watchRegister, shipping]);
 
@@ -132,6 +133,14 @@ export function QuickEstimate() {
                 <SelectItem value="chrono24">Chrono24 (6.5%)</SelectItem>
               </SelectContent>
             </Select>
+            {platform !== "none" && calculate.platformFee > 0 && (
+              <p className="text-xs font-semibold text-red-500 text-right">
+                Fee: -{formatCurrency(calculate.platformFee)}
+              </p>
+            )}
+            {platform !== "none" && calculate.platformFee === 0 && parseFloat(salePrice || "0") === 0 && (
+              <p className="text-xs text-slate-400 text-right">Enter a sale price to see the fee</p>
+            )}
           </div>
         </div>
 
