@@ -571,7 +571,7 @@ function ColumnSelector({ title, allColumns, selectedColumns, onSave }: {
         <Label className="text-sm font-semibold text-slate-700">{title}</Label>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={selectAll} className="text-xs" data-testid={`button-select-all-${title.toLowerCase().replace(/\s+/g, '-')}`}>Select All</Button>
-          <Button variant="outline" size="sm" onClick={selectNone} className="text-xs" data-testid={`button-select-none-${title.toLowerCase().replace(/\s+/g, '-')}`}>Select None</Button>
+          <Button variant="outline" size="sm" onClick={selectNone} className="text-xs" data-testid={`button-select-none-${title.toLowerCase().replace(/\s+/g, '-')}`}>Reset (All Columns)</Button>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
