@@ -388,7 +388,7 @@ export default function Dashboard() {
   const today = new Date();
   const formattedDate = format(today, "EEEE, MMMM d, yyyy");
 
-  // Calculate aging inventory (held > 45 days, only active items)
+  // Calculate aging inventory (held > 60 days, only active items)
   const activeInventory = inventory?.filter(
     (item) => item.status !== "sold"
   ) || [];
@@ -398,7 +398,7 @@ export default function Dashboard() {
       ...item,
       daysHeld: item.dateReceived ? differenceInDays(today, new Date(item.dateReceived)) : 0,
     }))
-    .filter((item) => item.daysHeld > 45)
+    .filter((item) => item.daysHeld > 60)
     .sort((a, b) => b.daysHeld - a.daysHeld);
 
   // Inventory status counts
