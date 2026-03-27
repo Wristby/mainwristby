@@ -493,6 +493,15 @@ export default function InventoryDetail() {
     : 0;
   const totalFees = ((item as any).platformFees || 0) + ((item as any).shippingFee || 0) + ((item as any).insuranceFee || 0);
 
+  const daysListed = (item as any).dateListed
+    ? Math.max(0, differenceInDays(
+        item.status === "sold" && ((item as any).dateSold || (item as any).soldDate)
+          ? startOfDay(new Date((item as any).dateSold || (item as any).soldDate))
+          : startOfDay(new Date()),
+        startOfDay(typeof (item as any).dateListed === 'string' ? parseISO((item as any).dateListed) : new Date((item as any).dateListed))
+      ))
+    : null;
+
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       {/* Header */}
@@ -1161,6 +1170,12 @@ export default function InventoryDetail() {
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Total Fees</p>
                   <p className="text-xl font-bold text-red-500">{formatCurrency(totalFees)}</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Days Listed</p>
+                  <p className="text-xl font-bold text-slate-900 tabular-nums">
+                    {daysListed !== null ? `${daysListed} days` : "—"}
+                  </p>
                 </div>
               </div>
 
