@@ -29,7 +29,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon, Download, Check, X } from "lucide-react";
+import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pencil, ArrowUpDown, ArrowUp, ArrowDown, Calendar, ExternalLink, Info, TrendingUp, Calendar as CalendarIcon, Download } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -273,13 +273,6 @@ export default function Inventory() {
   const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
   const [isDateSentOpen, setIsDateSentOpen] = useState(false);
   const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
-  const [marginRate, setMarginRate] = useState<number>(() => {
-    const saved = localStorage.getItem("marginRate");
-    const parsed = saved ? parseFloat(saved) : NaN;
-    return !isNaN(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 12.5;
-  });
-  const [isEditingMarginRate, setIsEditingMarginRate] = useState(false);
-  const [marginRateInput, setMarginRateInput] = useState("");
 
   const onSubmit = (data: CreateFormValues) => {
     let finalStatus = data.status;
@@ -347,7 +340,7 @@ export default function Inventory() {
     const active = activeItems.length;
     const atService = inventory.filter(i => i.status === 'servicing').length;
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-    const projectedProfit = Math.round(capitalDeployed * marginRate / 100);
+    const projectedProfit = Math.round(capitalDeployed * 0.125);
     
     const listedValue = inventory
       .filter(i => i.status === 'in_stock')
@@ -371,7 +364,7 @@ export default function Inventory() {
       serviceValue,
       incomingValue
     };
-  }, [inventory, marginRate]);
+  }, [inventory]);
 
   const getHoldTime = (item: any) => {
     const startDate = item.dateReceived ? new Date(item.dateReceived) : null;
@@ -567,62 +560,18 @@ export default function Inventory() {
             <span>•</span>
             <div className="flex items-center gap-1">
               <span className="text-emerald-600 font-medium">{formatCurrency(metrics.projectedProfit)} projected profit</span>
-              {isEditingMarginRate ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    value={marginRateInput}
-                    onChange={e => setMarginRateInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === "Enter") {
-                        const parsed = parseFloat(marginRateInput);
-                        if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
-                          setMarginRate(parsed);
-                          localStorage.setItem("marginRate", String(parsed));
-                          setIsEditingMarginRate(false);
-                        }
-                      }
-                      if (e.key === "Escape") setIsEditingMarginRate(false);
-                    }}
-                    className="w-14 h-5 text-xs border border-slate-300 rounded px-1 text-center focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                    autoFocus
-                  />
-                  <span className="text-xs text-slate-400">%</span>
-                  <button
-                    onClick={() => {
-                      const parsed = parseFloat(marginRateInput);
-                      if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
-                        setMarginRate(parsed);
-                        localStorage.setItem("marginRate", String(parsed));
-                        setIsEditingMarginRate(false);
-                      }
-                    }}
-                    className="text-emerald-600 hover:text-emerald-700"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => setIsEditingMarginRate(false)} className="text-slate-400 hover:text-slate-600">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <TooltipProvider delayDuration={0}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => { setMarginRateInput(String(marginRate)); setIsEditingMarginRate(true); }}
-                        className="inline-flex items-center"
-                        data-testid="button-edit-margin-rate"
-                      >
-                        <Info className="h-3.5 w-3.5 text-slate-400 hover:text-slate-600 cursor-pointer" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Based off a {marginRate}% margin — click to edit</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
+              <TooltipProvider delayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Based off a 12.5% margin</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </div>
