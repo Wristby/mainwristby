@@ -300,7 +300,7 @@ export default function Dashboard() {
       finalStatus = "received";
     } else if (data.dateListed && finalStatus !== "sold" && finalStatus !== "servicing") {
       finalStatus = "in_stock";
-    } else if (data.purchaseDate && finalStatus === "incoming") {
+    } else if (data.dateReceived && finalStatus === "incoming") {
       finalStatus = "received";
     }
 
