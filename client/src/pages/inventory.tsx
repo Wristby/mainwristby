@@ -271,6 +271,10 @@ export default function Inventory() {
   const [isEditingMarginRate, setIsEditingMarginRate] = useState(false);
   const [marginRateInput, setMarginRateInput] = useState("");
 
+  useEffect(() => {
+    setMarginRate(settings.default_margin_rate);
+  }, [settings.default_margin_rate]);
+
   const onSubmit = (data: CreateFormValues) => {
     let finalStatus = data.status;
     if (data.dateSold) {
@@ -437,7 +441,7 @@ export default function Inventory() {
       return;
     }
     
-    const headers = [
+    const allHeaders = [
       "ID", "Brand", "Model", "Reference Number", "Serial Number", "Movement Serial", 
       "Year", "Condition", "Box", "Papers", "Status", "Purchased From", "Paid With",
       "Purchase Price (EUR)", "Import Fee (EUR)", "Watch Register", "Service Fee (EUR)", 
@@ -446,6 +450,9 @@ export default function Inventory() {
       "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed", "Hold Time (Days)",
       "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes"
     ];
+    const enabledCols = settings.inventory_export_columns as string[];
+    const colIndices = allHeaders.map((h, i) => ({ header: h, index: i })).filter(c => enabledCols.includes(c.header));
+    const headers = colIndices.map(c => c.header);
     
     const rows = filteredInventory.map((item: any) => {
       const purchasePrice = item.purchasePrice / 100;
@@ -464,7 +471,7 @@ export default function Inventory() {
       const margin = salePrice > 0 && totalCosts > 0 ? ((salePrice - totalCosts) / totalCosts * 100).toFixed(1) : "";
       const holdTime = getHoldTime(item);
       
-      return [
+      const allValues = [
         item.id,
         `"${item.brand}"`,
         `"${item.model.replace(/"/g, '""')}"`,
@@ -502,6 +509,7 @@ export default function Inventory() {
         profit,
         `"${(item.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`
       ];
+      return colIndices.map(c => allValues[c.index]);
     });
     
     const csvContent = [

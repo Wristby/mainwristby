@@ -496,6 +496,9 @@ export default function Dashboard() {
     );
   }
 
+  const dashSections = settings.dashboard_sections as Record<string, { order: number; visible: boolean }>;
+  const isSectionVisible = (key: string) => dashSections?.[key]?.visible !== false;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -515,7 +518,7 @@ export default function Dashboard() {
         </div>
       </div>
       {/* KPI Cards Row - Top */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+      {isSectionVisible("kpi_cards") && <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
@@ -610,9 +613,9 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </div>}
       {/* Quick Actions Card - Below KPIs */}
-      <Card className="bg-white border-slate-200">
+      {isSectionVisible("quick_actions") && <Card className="bg-white border-slate-200">
         <CardHeader className="pb-4">
           <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>
         </CardHeader>
@@ -639,9 +642,9 @@ export default function Dashboard() {
             <UserPlus className="h-4 w-4 mr-3 text-blue-600" /> Add Client
           </Button>
         </CardContent>
-      </Card>
+      </Card>}
       {/* Monthly Goal Progress Bar - Below Quick Actions */}
-      <Card className="bg-white border-slate-200 shadow-sm">
+      {isSectionVisible("monthly_profit_goal") && <Card className="bg-white border-slate-200 shadow-sm">
         <CardContent className="py-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -717,12 +720,12 @@ export default function Dashboard() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Inventory Status - Moved here above Aging Inventory */}
-          <Card className="bg-white border-slate-200">
+          {isSectionVisible("inventory_status") && <Card className="bg-white border-slate-200">
             <CardHeader className="pb-4">
               <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
             </CardHeader>
@@ -758,11 +761,11 @@ export default function Dashboard() {
                 </div>
               </Link>
             </CardContent>
-          </Card>
+          </Card>}
 
           <div className="grid gap-6 md:grid-cols-1">
             {/* Aging Inventory */}
-            <Card className="bg-white border-slate-200">
+            {isSectionVisible("aging_inventory") && <Card className="bg-white border-slate-200">
               <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
                 <div className="flex items-center gap-3">
                   <AlertTriangle className="h-5 w-5 text-amber-500" />
@@ -796,7 +799,7 @@ export default function Dashboard() {
                   ))
                 )}
               </CardContent>
-            </Card>
+            </Card>}
 
             {/* Meet in the Middle Calculator */}
             <Card className="bg-white border-slate-200">
@@ -849,7 +852,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Recent Additions */}
-            <div className="space-y-4">
+            {isSectionVisible("recent_additions") && <div className="space-y-4">
               <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
               <div className="flex gap-4 overflow-x-auto pb-2">
                 {recentAdditions.map((item) => (
@@ -866,13 +869,13 @@ export default function Dashboard() {
                   </Link>
                 ))}
               </div>
-            </div>
+            </div>}
           </div>
         </div>
 
         {/* Sidebar widgets */}
         <div className="space-y-6">
-          <QuickEstimate />
+          {isSectionVisible("quick_estimate") && <QuickEstimate />}
         </div>
       </div>
       {/* Add Watch Dialog - Full Form */}

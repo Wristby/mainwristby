@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
 export interface AppSettings {
@@ -65,10 +66,42 @@ const DEFAULTS: AppSettings = {
   },
 };
 
+async function migrateLocalStorage() {
+  const migrationKey = "settings_migrated_to_db";
+  if (localStorage.getItem(migrationKey)) return;
+  const mappings: Record<string, string> = {
+    taxRate: "default_tax_rate",
+    marginRate: "default_margin_rate",
+    monthlyProfitGoal: "monthly_profit_goal",
+  };
+  for (const [lsKey, settingKey] of Object.entries(mappings)) {
+    const val = localStorage.getItem(lsKey);
+    if (val !== null) {
+      const num = parseFloat(val);
+      if (!isNaN(num)) {
+        try {
+          await apiRequest("PUT", `/api/settings/${settingKey}`, { value: settingKey === "monthly_profit_goal" ? Math.round(num * 100) : num });
+        } catch {}
+      }
+      localStorage.removeItem(lsKey);
+    }
+  }
+  localStorage.setItem(migrationKey, "1");
+}
+
 export function useSettings() {
   const query = useQuery<AppSettings>({
     queryKey: ["/api/settings"],
   });
+  const migrated = useRef(false);
+  useEffect(() => {
+    if (query.data && !migrated.current) {
+      migrated.current = true;
+      migrateLocalStorage().then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      });
+    }
+  }, [query.data]);
 
   const merged: AppSettings = { ...DEFAULTS, ...(query.data || {}) };
 

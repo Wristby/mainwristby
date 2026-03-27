@@ -48,7 +48,7 @@ import {
   X,
   Info
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertExpenseSchema } from "@shared/schema";
@@ -112,12 +112,14 @@ export default function Financials() {
   const { settings } = useSettings();
   const updateSettingMutation = useUpdateSetting();
   const EXPENSE_CATEGORIES = settings.expense_categories;
-  const [taxRate, setTaxRate] = useState<number>(() => {
-    return settings.default_tax_rate;
-  });
+  const [taxRate, setTaxRate] = useState<number>(settings.default_tax_rate);
   const [isEditingTaxRate, setIsEditingTaxRate] = useState(false);
   const [taxRateInput, setTaxRateInput] = useState("");
   
+  useEffect(() => {
+    setTaxRate(settings.default_tax_rate);
+  }, [settings.default_tax_rate]);
+
   const { data: expenses, isLoading: expensesLoading } = useExpenses();
   const { data: inventory, isLoading: inventoryLoading } = useInventory();
   const { toast } = useToast();
@@ -339,12 +341,15 @@ export default function Financials() {
       return;
     }
     
-    const headers = ["Description", "Amount (EUR)", "Category", "Date", "Recurring", "Watch Reference"];
+    const allHeaders = ["Description", "Amount (EUR)", "Category", "Date", "Recurring", "Watch Reference"];
+    const enabledCols = settings.financial_export_columns as string[];
+    const colIndices = allHeaders.map((h, i) => ({ header: h, index: i })).filter(c => enabledCols.includes(c.header));
+    const headers = colIndices.map(c => c.header);
     const rows = filteredExpenses.map((expense: any) => {
       const watchRef = expense.inventory 
         ? `${expense.inventory.brand} ${expense.inventory.model} - Ref#${expense.inventory.referenceNumber}`
         : "";
-      return [
+      const allValues = [
         `"${expense.description.replace(/"/g, '""')}"`,
         (expense.amount / 100).toString(),
         getCategoryLabel(expense.category),
@@ -352,6 +357,7 @@ export default function Financials() {
         expense.isRecurring ? "Yes" : "No",
         `"${watchRef}"`
       ];
+      return colIndices.map(c => allValues[c.index]);
     });
     
     const csvContent = [
