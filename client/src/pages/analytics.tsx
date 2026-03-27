@@ -351,8 +351,8 @@ export default function Analytics() {
     ? profits.reduce((sum, p) => sum + p.daysOnMarket, 0) / soldItems.length
     : 0;
 
-  const avgWatchCost = soldItems.length > 0
-    ? profits.reduce((sum, p) => sum + p.purchasePrice, 0) / soldItems.length
+  const avgWatchCost = (inventory?.length ?? 0) > 0
+    ? (inventory || []).reduce((sum, item) => sum + item.purchasePrice, 0) / (inventory?.length ?? 1)
     : 0;
 
   // All watches hold time
@@ -820,7 +820,7 @@ export default function Analytics() {
                   <p className="text-3xl font-bold text-orange-600 mt-1 tabular-nums">
                     {formatCurrency(avgWatchCost)}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">Avg COGS per sold watch</p>
+                  <p className="text-xs text-slate-400 mt-1">Across all {inventory?.length ?? 0} watches</p>
                 </div>
                 <div className="p-2 bg-orange-50 rounded-full">
                   <ShoppingCart className="h-5 w-5 text-orange-600" />
