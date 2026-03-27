@@ -719,161 +719,153 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card></div>}
-      <div style={{ order: 50 }} className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          {isSectionVisible("inventory_status") && <Card className="bg-white border-slate-200">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <Link href="/inventory?status=incoming">
-                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
-                  <span className="text-xs text-slate-500 uppercase font-semibold">Incoming</span>
-                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
-                </div>
-              </Link>
-              <Link href="/inventory?status=received">
-                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
-                  <span className="text-xs text-slate-500 uppercase font-semibold">NEED TO LIST</span>
-                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.received}</span>
-                </div>
-              </Link>
-              <Link href="/inventory?status=servicing">
-                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
-                  <span className="text-xs text-slate-500 uppercase font-semibold">In Service</span>
-                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.inService}</span>
-                </div>
-              </Link>
-              <Link href="/inventory?status=in_stock">
-                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
-                  <span className="text-xs text-slate-500 uppercase font-semibold">Listed</span>
-                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.listed}</span>
-                </div>
-              </Link>
-              <Link href="/inventory?status=sold">
-                <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
-                  <span className="text-xs text-slate-500 uppercase font-semibold">Sold</span>
-                  <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.sold}</span>
-                </div>
-              </Link>
-            </CardContent>
-          </Card>}
-
-          <div className="grid gap-6 md:grid-cols-1">
-            {/* Aging Inventory */}
-            {isSectionVisible("aging_inventory") && <Card className="bg-white border-slate-200">
-              <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5 text-amber-500" />
-                  <div>
-                    <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
-                  </div>
-                </div>
-                <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
-                  {agingInventory.length} watches
-                </Badge>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {agingInventory.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400">No aging inventory.</div>
-                ) : (
-                  agingInventory.slice(0, 5).map((item) => (
-                    <Link key={item.id} href={`/inventory/${item.id}`}>
-                      <div className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors">
-                        <div className="flex items-center gap-3">
-                          <Watch className="h-5 w-5 text-slate-400" />
-                          <div>
-                            <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
-                            <p className="text-xs text-slate-500">{formatCurrency(item.purchasePrice)}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-amber-600">{item.daysHeld} days</p>
-                        </div>
-                      </div>
-                    </Link>
-                  ))
-                )}
-              </CardContent>
-            </Card>}
-
-            {/* Meet in the Middle Calculator */}
-            <Card className="bg-white border-slate-200">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-900">
-                  <Scale className="w-5 h-5 text-blue-600" />
-                  Meet in the Middle
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold text-slate-500 uppercase">Their Offer</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        placeholder="0"
-                        value={offerPrice}
-                        onChange={(e) => setOfferPrice(e.target.value)}
-                        className="pl-7 bg-white border-slate-200 text-slate-900"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold text-slate-500 uppercase">Your Demand</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                      <Input 
-                        placeholder="0"
-                        value={demandPrice}
-                        onChange={(e) => setDemandPrice(e.target.value)}
-                        className="pl-7 bg-white border-slate-200 text-slate-900"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
-                  <p className="text-xs text-blue-600 font-semibold uppercase mb-1">Middle Point</p>
-                  <p className="text-3xl font-bold text-blue-700 tabular-nums">
-                    €{(() => {
-                      const offer = parseFloat(offerPrice || "0");
-                      const demand = parseFloat(demandPrice || "0");
-                      if (offer === 0 && demand === 0) return "0";
-                      const middle = (offer + demand) / 2;
-                      return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(middle);
-                    })()}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recent Additions */}
-            {isSectionVisible("recent_additions") && <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
-              <div className="flex gap-4 overflow-x-auto pb-2">
-                {recentAdditions.map((item) => (
-                  <Link key={item.id} href={`/inventory/${item.id}`}>
-                    <Card className="min-w-[160px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors">
-                      <CardContent className="p-3">
-                        <p className="font-medium text-slate-900 text-sm truncate">{item.brand}</p>
-                        <p className="text-xs text-slate-500 truncate">{item.model}</p>
-                        <Badge variant="secondary" className="mt-2 text-[10px]">
-                          {item.status.replace("_", " ")}
-                        </Badge>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                ))}
+      {isSectionVisible("inventory_status") && <div style={{ order: getOrder("inventory_status") }}>
+        <Card className="bg-white border-slate-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <Link href="/inventory?status=incoming">
+              <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                <span className="text-xs text-slate-500 uppercase font-semibold">Incoming</span>
+                <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.incoming}</span>
               </div>
-            </div>}
-          </div>
-        </div>
-
-        {/* Sidebar widgets */}
-        <div className="space-y-6">
-          {isSectionVisible("quick_estimate") && <QuickEstimate />}
-        </div>
+            </Link>
+            <Link href="/inventory?status=received">
+              <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                <span className="text-xs text-slate-500 uppercase font-semibold">NEED TO LIST</span>
+                <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.received}</span>
+              </div>
+            </Link>
+            <Link href="/inventory?status=servicing">
+              <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                <span className="text-xs text-slate-500 uppercase font-semibold">In Service</span>
+                <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.inService}</span>
+              </div>
+            </Link>
+            <Link href="/inventory?status=in_stock">
+              <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                <span className="text-xs text-slate-500 uppercase font-semibold">Listed</span>
+                <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.listed}</span>
+              </div>
+            </Link>
+            <Link href="/inventory?status=sold">
+              <div className="flex flex-col p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer">
+                <span className="text-xs text-slate-500 uppercase font-semibold">Sold</span>
+                <span className="text-2xl font-bold text-slate-900 tabular-nums">{statusCounts.sold}</span>
+              </div>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>}
+      {isSectionVisible("aging_inventory") && <div style={{ order: getOrder("aging_inventory") }}>
+        <Card className="bg-white border-slate-200">
+          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <div>
+                <CardTitle className="text-slate-900 text-lg">Aging Inventory</CardTitle>
+              </div>
+            </div>
+            <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
+              {agingInventory.length} watches
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {agingInventory.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">No aging inventory.</div>
+            ) : (
+              agingInventory.slice(0, 5).map((item) => (
+                <Link key={item.id} href={`/inventory/${item.id}`}>
+                  <div className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Watch className="h-5 w-5 text-slate-400" />
+                      <div>
+                        <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
+                        <p className="text-xs text-slate-500">{formatCurrency(item.purchasePrice)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-amber-600">{item.daysHeld} days</p>
+                    </div>
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>}
+      <div style={{ order: 50 }}>
+        <Card className="bg-white border-slate-200">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-900">
+              <Scale className="w-5 h-5 text-blue-600" />
+              Meet in the Middle
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-slate-500 uppercase">Their Offer</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                  <Input 
+                    placeholder="0"
+                    value={offerPrice}
+                    onChange={(e) => setOfferPrice(e.target.value)}
+                    className="pl-7 bg-white border-slate-200 text-slate-900"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-slate-500 uppercase">Your Demand</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                  <Input 
+                    placeholder="0"
+                    value={demandPrice}
+                    onChange={(e) => setDemandPrice(e.target.value)}
+                    className="pl-7 bg-white border-slate-200 text-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
+              <p className="text-xs text-blue-600 font-semibold uppercase mb-1">Middle Point</p>
+              <p className="text-3xl font-bold text-blue-700 tabular-nums">
+                €{(() => {
+                  const offer = parseFloat(offerPrice || "0");
+                  const demand = parseFloat(demandPrice || "0");
+                  if (offer === 0 && demand === 0) return "0";
+                  const middle = (offer + demand) / 2;
+                  return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(middle);
+                })()}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+      {isSectionVisible("recent_additions") && <div style={{ order: getOrder("recent_additions") }} className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          {recentAdditions.map((item) => (
+            <Link key={item.id} href={`/inventory/${item.id}`}>
+              <Card className="min-w-[160px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors">
+                <CardContent className="p-3">
+                  <p className="font-medium text-slate-900 text-sm truncate">{item.brand}</p>
+                  <p className="text-xs text-slate-500 truncate">{item.model}</p>
+                  <Badge variant="secondary" className="mt-2 text-[10px]">
+                    {item.status.replace("_", " ")}
+                  </Badge>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>}
+      {isSectionVisible("quick_estimate") && <div style={{ order: getOrder("quick_estimate") }}>
+        <QuickEstimate />
+      </div>}
       {/* Add Watch Dialog - Full Form */}
       <Dialog open={isAddWatchOpen} onOpenChange={(open) => {
         if (!open) {

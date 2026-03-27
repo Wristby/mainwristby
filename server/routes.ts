@@ -164,7 +164,7 @@ export async function registerRoutes(
   });
 
   app.put("/api/settings/:key", isAuthenticated, async (req, res) => {
-    const { key } = req.params;
+    const key = String(req.params.key);
     const { value } = req.body;
     if (value === undefined) {
       return res.status(400).json({ message: "Value is required" });
