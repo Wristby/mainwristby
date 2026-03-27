@@ -343,7 +343,7 @@ export default function Financials() {
     
     const allHeaders = ["Description", "Amount (EUR)", "Category", "Date", "Recurring", "Watch Reference"];
     const enabledCols = settings.financial_export_columns as string[];
-    const colIndices = allHeaders.map((h, i) => ({ header: h, index: i })).filter(c => enabledCols.includes(c.header));
+    const colIndices = allHeaders.map((h, i) => ({ header: h, index: i })).filter(c => !enabledCols.length || enabledCols.includes(c.header));
     const headers = colIndices.map(c => c.header);
     const rows = filteredExpenses.map((expense: any) => {
       const watchRef = expense.inventory 

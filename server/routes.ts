@@ -185,10 +185,10 @@ export async function registerRoutes(
       if (!response.ok) {
         return res.json({ models: [] });
       }
-      const data = await response.json() as any;
+      const data = await response.json() as { data?: Array<{ name?: string; model?: string; pricing?: Record<string, unknown> }> };
       const models = data?.data || [];
       const chatModels = Array.isArray(models)
-        ? models.filter((m: any) => m.name && m.model).map((m: any) => ({ name: m.name, model: m.model, pricing: m.pricing }))
+        ? models.filter((m) => m.name && m.model).map((m) => ({ name: m.name, model: m.model, pricing: m.pricing }))
         : [];
       res.json({ models: chatModels });
     } catch {
@@ -246,7 +246,16 @@ Papers/Cards: {{papers}}`;
         return res.status(502).json({ message: `Straico API error: ${errText}` });
       }
 
-      const data = await response.json() as any;
+      interface StraicoChatResponse {
+        data?: {
+          completions?: Record<string, {
+            completion?: {
+              choices?: Array<{ message?: { content?: string } }>;
+            };
+          }>;
+        };
+      }
+      const data = await response.json() as StraicoChatResponse;
 
       let description = "";
       const completions = data?.data?.completions;

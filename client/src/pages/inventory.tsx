@@ -451,7 +451,7 @@ export default function Inventory() {
       "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes"
     ];
     const enabledCols = settings.inventory_export_columns as string[];
-    const colIndices = allHeaders.map((h, i) => ({ header: h, index: i })).filter(c => enabledCols.includes(c.header));
+    const colIndices = allHeaders.map((h, i) => ({ header: h, index: i })).filter(c => !enabledCols.length || enabledCols.includes(c.header));
     const headers = colIndices.map(c => c.header);
     
     const rows = filteredInventory.map((item: any) => {

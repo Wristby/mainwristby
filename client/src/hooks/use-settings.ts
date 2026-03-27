@@ -74,6 +74,7 @@ async function migrateLocalStorage() {
     marginRate: "default_margin_rate",
     monthlyProfitGoal: "monthly_profit_goal",
   };
+  let allSucceeded = true;
   for (const [lsKey, settingKey] of Object.entries(mappings)) {
     const val = localStorage.getItem(lsKey);
     if (val !== null) {
@@ -81,12 +82,19 @@ async function migrateLocalStorage() {
       if (!isNaN(num)) {
         try {
           await apiRequest("PUT", `/api/settings/${settingKey}`, { value: num });
-        } catch {}
+          localStorage.removeItem(lsKey);
+        } catch (err) {
+          console.error(`Failed to migrate setting ${lsKey} -> ${settingKey}:`, err);
+          allSucceeded = false;
+        }
+      } else {
+        localStorage.removeItem(lsKey);
       }
-      localStorage.removeItem(lsKey);
     }
   }
-  localStorage.setItem(migrationKey, "1");
+  if (allSucceeded) {
+    localStorage.setItem(migrationKey, "1");
+  }
 }
 
 export function useSettings() {
@@ -113,7 +121,7 @@ export function useSettings() {
 
 export function useUpdateSetting() {
   return useMutation({
-    mutationFn: async ({ key, value }: { key: string; value: any }) => {
+    mutationFn: async ({ key, value }: { key: string; value: string | number | boolean | string[] | Record<string, unknown> }) => {
       const res = await apiRequest("PUT", `/api/settings/${key}`, { value });
       return res.json();
     },

@@ -36,7 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 
 function CollapsibleSection({ title, icon: Icon, children, defaultOpen = true }: {
   title: string;
-  icon: any;
+  icon: React.ElementType;
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
@@ -254,7 +254,7 @@ export default function Admin() {
     queryKey: ["/api/ai/models"],
   });
 
-  const saveSetting = (key: string, value: any) => {
+  const saveSetting = (key: string, value: string | number | boolean | string[] | Record<string, unknown>) => {
     updateSetting.mutate({ key, value }, {
       onSuccess: () => {
         toast({ title: "Saved", description: "Setting updated successfully" });
