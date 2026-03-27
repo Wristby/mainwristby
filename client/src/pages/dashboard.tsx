@@ -535,7 +535,7 @@ export default function Dashboard() {
         </div>
       </div>
       {/* KPI Cards Row - Top */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
