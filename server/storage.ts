@@ -221,8 +221,8 @@ export class DatabaseStorage implements IStorage {
   async getDashboardStats(): Promise<DashboardStats> {
     const allInventory = await db.select().from(inventory);
     
-    const activeInventory = allInventory.filter(i => i.status === 'in_stock' || i.status === 'servicing' || i.status === 'incoming');
-    const soldInventory = allInventory.filter(i => i.status === 'sold' || i.dateSold !== null);
+    const activeInventory = allInventory.filter(i => i.status !== 'sold');
+    const soldInventory = allInventory.filter(i => i.status === 'sold');
     
     const totalInventoryValue = activeInventory.reduce((sum, item) => {
       const basePrice = item.purchasePrice || 0;
