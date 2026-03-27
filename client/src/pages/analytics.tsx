@@ -221,7 +221,8 @@ export default function Analytics() {
   };
 
   const csvEscape = (val: string | number | null | undefined) => {
-    const s = String(val ?? "");
+    let s = String(val ?? "");
+    if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
     return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
   };
 
