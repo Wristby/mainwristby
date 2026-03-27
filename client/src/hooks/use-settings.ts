@@ -80,7 +80,7 @@ async function migrateLocalStorage() {
       const num = parseFloat(val);
       if (!isNaN(num)) {
         try {
-          await apiRequest("PUT", `/api/settings/${settingKey}`, { value: settingKey === "monthly_profit_goal" ? Math.round(num * 100) : num });
+          await apiRequest("PUT", `/api/settings/${settingKey}`, { value: num });
         } catch {}
       }
       localStorage.removeItem(lsKey);
