@@ -39,7 +39,20 @@ Core entities:
 - **Clients**: Buyers and dealers with contact info, VIP status, notes
 - **Inventory**: Watches with full tracking (brand, model, reference number, purchase/sale prices, condition, status)
 - **Expenses**: Costs associated with inventory items (shipping, servicing, authentication)
+- **Settings**: Key-value store for app configuration (key text PK, value jsonb). All business rates, dropdown lists, AI config, dashboard layout, and export columns are stored here and seeded with defaults on startup.
 - **Sessions/Users**: Replit Auth managed tables (mandatory, do not modify)
+
+### Admin Panel
+The Admin page (`/admin`) provides centralized configuration management:
+- **Business Rates & Fees**: Chrono24 commission %, Watch Register fee, default tax/margin rates
+- **Monthly Profit Goal**: Target profit tracked on dashboard
+- **Aging Threshold**: Days before inventory is flagged as aging
+- **Dropdown Lists**: Watch brands, sales platforms, shipping partners, purchase channels, expense categories — all editable with add/remove/reorder
+- **AI Settings**: Model selection (fetched from Straico API), prompt template with placeholders
+- **Data Export Columns**: Toggle which columns appear in inventory/financial exports
+- **Dashboard Customization**: Toggle visibility and reorder dashboard sections
+
+Settings are fetched via `useSettings()` hook (`client/src/hooks/use-settings.ts`) which provides merged defaults. All pages consume settings from this hook instead of hardcoded values or localStorage.
 
 ### Shared Code
 The `shared/` directory contains code used by both frontend and backend:

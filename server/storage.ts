@@ -1,10 +1,10 @@
 import { db } from "./db";
 import {
-  clients, inventory, expenses,
+  clients, inventory, expenses, settings,
   type Client, type InsertClient, type UpdateClientRequest,
   type InventoryItem, type InsertInventory, type UpdateInventoryRequest,
   type Expense, type InsertExpense,
-  type DashboardStats
+  type DashboardStats, type Setting
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 
@@ -16,7 +16,7 @@ const FEE_TYPES = [
   { field: 'shippingFee', category: 'shipping' as const, label: 'Shipping Fee', isBoolean: false },
   { field: 'insuranceFee', category: 'insurance' as const, label: 'Insurance Fee', isBoolean: false },
   { field: 'importFee', category: 'other' as const, label: 'Import Fee', isBoolean: false },
-  { field: 'watchRegister', category: 'other' as const, label: 'Watch Register Fee', isBoolean: true, fixedAmount: 600 },
+  { field: 'watchRegister', category: 'other' as const, label: 'Watch Register Fee', isBoolean: true },
 ] as const;
 
 export interface IStorage {
@@ -43,6 +43,11 @@ export interface IStorage {
 
   // Stats
   getDashboardStats(): Promise<DashboardStats>;
+
+  // Settings
+  getAllSettings(): Promise<Record<string, any>>;
+  getSetting(key: string): Promise<any>;
+  upsertSetting(key: string, value: any): Promise<Setting>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -122,13 +127,13 @@ export class DatabaseStorage implements IStorage {
   private async syncWatchFeesToExpenses(item: InventoryItem): Promise<void> {
     const watchRef = `${item.brand} ${item.model} - Ref#${item.referenceNumber}`;
     const feeDate = item.purchaseDate || new Date();
+    const watchRegisterFee = await this.getSetting("watch_register_fee") || 600;
 
     for (const feeType of FEE_TYPES) {
-      // Handle boolean fees (like watchRegister) vs numeric fees
       let feeValue: number;
       if (feeType.isBoolean) {
         const boolValue = (item as any)[feeType.field];
-        feeValue = boolValue ? (feeType as any).fixedAmount : 0;
+        feeValue = boolValue ? watchRegisterFee : 0;
       } else {
         feeValue = (item as any)[feeType.field] || 0;
       }
@@ -219,6 +224,7 @@ export class DatabaseStorage implements IStorage {
 
   // Stats
   async getDashboardStats(): Promise<DashboardStats> {
+    const wrFee = await this.getSetting("watch_register_fee") || 600;
     const allInventory = await db.select().from(inventory);
     
     const activeInventory = allInventory.filter(i => i.status !== 'sold');
@@ -226,19 +232,19 @@ export class DatabaseStorage implements IStorage {
     
     const totalInventoryValue = activeInventory.reduce((sum, item) => {
       const basePrice = item.purchasePrice || 0;
-      const watchRegisterFee = item.watchRegister ? 600 : 0;
+      const watchRegisterFee = item.watchRegister ? wrFee : 0;
       return sum + basePrice + watchRegisterFee;
     }, 0);
     
     const totalProfit = soldInventory.reduce((sum, item) => {
       const sold = item.salePrice || 0;
-      if (sold === 0) return sum; // Only calculate profit for items that have a sale price
+      if (sold === 0) return sum;
 
       const bought = item.purchasePrice || 0;
       const importFee = item.importFee || 0;
       const serviceFee = (item as any).serviceFee || 0;
       const polishFee = (item as any).polishFee || 0;
-      const watchRegisterFee = item.watchRegister ? 600 : 0;
+      const watchRegisterFee = item.watchRegister ? wrFee : 0;
       const platformFees = item.platformFees || 0;
       const shippingFee = item.shippingFee || 0;
       const insuranceFee = item.insuranceFee || 0;
@@ -272,6 +278,30 @@ export class DatabaseStorage implements IStorage {
       soldInventoryCount: soldInventory.length,
       turnRate
     };
+  }
+
+  // Settings
+  async getAllSettings(): Promise<Record<string, any>> {
+    const rows = await db.select().from(settings);
+    const result: Record<string, any> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  }
+
+  async getSetting(key: string): Promise<any> {
+    const [row] = await db.select().from(settings).where(eq(settings.key, key));
+    return row?.value ?? null;
+  }
+
+  async upsertSetting(key: string, value: any): Promise<Setting> {
+    const [result] = await db
+      .insert(settings)
+      .values({ key, value })
+      .onConflictDoUpdate({ target: settings.key, set: { value } })
+      .returning();
+    return result;
   }
 }
 

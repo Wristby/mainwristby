@@ -42,19 +42,8 @@ import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn } from "@/lib/utils";
+import { useSettings } from "@/hooks/use-settings";
 
-const WATCH_BRANDS = [
-  "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
-  "Cartier", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
-  "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
-  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe",
-  "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
-  "Vacheron Constantin", "Zenith"
-];
-
-const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"];
-const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
-const PURCHASE_CHANNEL_OPTIONS = ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"];
 const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
 
 const COUNTRIES = [
@@ -145,18 +134,6 @@ const editFormSchema = z.object({
 
 type EditFormValues = z.infer<typeof editFormSchema>;
 
-const EXPENSE_CATEGORIES = [
-  { value: "marketing", label: "Marketing" },
-  { value: "rent_storage", label: "Rent/Storage" },
-  { value: "subscriptions", label: "Subscriptions" },
-  { value: "tools", label: "Tools" },
-  { value: "insurance", label: "Insurance" },
-  { value: "service", label: "Service" },
-  { value: "shipping", label: "Shipping" },
-  { value: "parts", label: "Parts" },
-  { value: "platform_fees", label: "Platform Fees" },
-  { value: "other", label: "Other" },
-];
 
 const expenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number().min(0.01, "Amount is required"),
@@ -176,6 +153,12 @@ export default function InventoryDetail() {
   const createExpenseMutation = useCreateExpense();
   const deleteExpenseMutation = useDeleteExpense();
   const { toast } = useToast();
+  const { settings } = useSettings();
+  const WATCH_BRANDS = settings.watch_brands;
+  const SOLD_ON_OPTIONS = settings.sales_platforms;
+  const SHIPPING_PARTNERS = settings.shipping_partners;
+  const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
+  const EXPENSE_CATEGORIES = settings.expense_categories;
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
@@ -301,7 +284,7 @@ export default function InventoryDetail() {
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
-      const fee = watchedSalePrice * 0.065;
+      const fee = watchedSalePrice * (settings.chrono24_commission / 100);
       form.setValue("platformFees", Number(fee.toFixed(2)));
     }
   }, [watchedSalePrice, watchedSoldPlatform, form.setValue]);
@@ -514,7 +497,7 @@ export default function InventoryDetail() {
     ((item as any).platformFees || 0) + 
     ((item as any).shippingFee || 0) + 
     ((item as any).insuranceFee || 0) +
-    ((item as any).watchRegister ? 600 : 0);
+    ((item as any).watchRegister ? settings.watch_register_fee : 0);
   
   const salePrice = (item as any).salePrice || 0;
   const profit = salePrice > 0 ? salePrice - totalCosts : 0;
@@ -1248,12 +1231,12 @@ export default function InventoryDetail() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Watch Register</span>
-                      <span className="font-medium">{formatCurrency((item as any).watchRegister ? 600 : 0)}</span>
+                      <span className="font-medium">{formatCurrency((item as any).watchRegister ? settings.watch_register_fee : 0)}</span>
                     </div>
                     <Separator className="my-3" />
                     <div className="flex justify-between text-sm font-bold">
                       <span className="text-slate-700">Total Sourcing</span>
-                      <span className="text-slate-900">{formatCurrency(item.purchasePrice + ((item as any).importFee || 0) + ((item as any).watchRegister ? 600 : 0))}</span>
+                      <span className="text-slate-900">{formatCurrency(item.purchasePrice + ((item as any).importFee || 0) + ((item as any).watchRegister ? settings.watch_register_fee : 0))}</span>
                     </div>
                   </div>
                 </div>

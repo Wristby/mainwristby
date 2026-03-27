@@ -12,6 +12,7 @@ import Clients from "@/pages/clients";
 import ClientDetail from "@/pages/client-detail";
 import Financials from "@/pages/financials";
 import Analytics from "@/pages/analytics";
+import Admin from "@/pages/admin";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -64,6 +65,9 @@ function Router() {
       </Route>
       <Route path="/analytics">
         <ProtectedRoute component={Analytics} />
+      </Route>
+      <Route path="/admin">
+        <ProtectedRoute component={Admin} />
       </Route>
       <Route component={NotFound} />
     </Switch>

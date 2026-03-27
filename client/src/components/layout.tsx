@@ -7,7 +7,8 @@ import {
   LogOut, 
   Menu,
   BarChart3,
-  DollarSign
+  DollarSign,
+  Settings
 } from "lucide-react";
 import logoPng from "@assets/WRISTBY-login-logo_1770424094780.png";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { icon: Users, label: "Clients", href: "/clients" },
   { icon: DollarSign, label: "Financials", href: "/financials" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
+  { icon: Settings, label: "Admin", href: "/admin" },
 ];
 
 export function Sidebar() {

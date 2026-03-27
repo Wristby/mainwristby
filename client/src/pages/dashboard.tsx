@@ -48,15 +48,7 @@ import { useCreateExpense } from "@/hooks/use-expenses";
 import { useCreateClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-
-const WATCH_BRANDS = [
-  "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
-  "Cartier", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
-  "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
-  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe",
-  "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
-  "Vacheron Constantin", "Zenith"
-];
+import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 
 const createInventoryFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
@@ -109,9 +101,6 @@ const createExpenseFormSchema = insertExpenseSchema.extend({
 
 type CreateExpenseFormValues = z.infer<typeof createExpenseFormSchema>;
 
-const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"];
-const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
-const PURCHASE_CHANNEL_OPTIONS = ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"];
 const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
 
 const COUNTRIES = [
@@ -137,28 +126,15 @@ const COUNTRIES = [
   "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
 ];
 
-const EXPENSE_CATEGORIES = [
-  { value: "marketing", label: "Marketing" },
-  { value: "rent_storage", label: "Rent/Storage" },
-  { value: "subscriptions", label: "Subscriptions" },
-  { value: "tools", label: "Tools" },
-  { value: "insurance", label: "Insurance" },
-  { value: "service", label: "Service" },
-  { value: "shipping", label: "Shipping" },
-  { value: "parts", label: "Parts" },
-  { value: "platform_fees", label: "Platform Fees" },
-  { value: "other", label: "Other" },
-];
 
 export default function Dashboard() {
   const [isAddWatchOpen, setIsAddWatchOpen] = useState(false);
   const [watchFormKey, setWatchFormKey] = useState(0);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
-  const [monthlyGoal, setMonthlyGoal] = useState(() => {
-    const saved = localStorage.getItem("monthlyProfitGoal");
-    return saved ? parseInt(saved, 10) : 200000; // Default €2,000 (stored in cents)
-  });
+  const { settings } = useSettings();
+  const updateSettingMutation = useUpdateSetting();
+  const monthlyGoal = settings.monthly_profit_goal;
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [goalInputValue, setGoalInputValue] = useState("");
   const [kpiView, setKpiView] = useState<"month" | "ytd">("month");
@@ -166,6 +142,11 @@ export default function Dashboard() {
   const [demandPrice, setDemandPrice] = useState<string>("");
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
   const { toast } = useToast();
+  const WATCH_BRANDS = settings.watch_brands;
+  const SOLD_ON_OPTIONS = settings.sales_platforms;
+  const SHIPPING_PARTNERS = settings.shipping_partners;
+  const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
+  const EXPENSE_CATEGORIES = settings.expense_categories;
 
   const createWatchMutation = useCreateInventory();
   const createExpenseMutation = useCreateExpense();
@@ -279,7 +260,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && (watchedSalePrice || 0) > 0) {
-      const fee = Math.round((watchedSalePrice || 0) * 0.065);
+      const fee = Math.round((watchedSalePrice || 0) * (settings.chrono24_commission / 100));
       watchForm.setValue("platformFees", fee);
     }
   }, [watchedSalePrice, watchedSoldPlatform, watchForm]);
@@ -389,7 +370,7 @@ export default function Dashboard() {
   const today = new Date();
   const formattedDate = format(today, "EEEE, MMMM d, yyyy");
 
-  // Calculate aging inventory (held > 60 days, only active items)
+  // Calculate aging inventory (held > threshold days, only active items)
   const activeInventory = inventory?.filter(
     (item) => item.status !== "sold"
   ) || [];
@@ -399,7 +380,7 @@ export default function Dashboard() {
       ...item,
       daysHeld: item.dateReceived ? differenceInDays(today, new Date(item.dateReceived)) : 0,
     }))
-    .filter((item) => item.daysHeld > 60)
+    .filter((item) => item.daysHeld > settings.aging_threshold_days)
     .sort((a, b) => b.daysHeld - a.daysHeld);
 
   // Inventory status counts
@@ -431,7 +412,7 @@ export default function Dashboard() {
                       (item.platformFees || 0) + 
                       (item.shippingFee || 0) + 
                       (item.insuranceFee || 0) +
-                      (item.watchRegister ? 600 : 0);
+                      (item.watchRegister ? settings.watch_register_fee : 0);
     return revenue - totalCost;
   };
 
@@ -490,8 +471,7 @@ export default function Dashboard() {
   const handleGoalSave = () => {
     const newGoal = Math.round(parseFloat(goalInputValue || "0") * 100);
     if (newGoal > 0) {
-      setMonthlyGoal(newGoal);
-      localStorage.setItem("monthlyProfitGoal", newGoal.toString());
+      updateSettingMutation.mutate({ key: "monthly_profit_goal", value: newGoal });
       toast({ title: "Goal Updated", description: `Monthly goal set to €${(newGoal / 100).toLocaleString()}` });
     }
     setIsEditingGoal(false);

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useSettings } from "@/hooks/use-settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,6 +153,7 @@ const PERIOD_OPTIONS: { value: PeriodPreset; label: string; group: string }[] = 
 ];
 
 export default function Analytics() {
+  const { settings } = useSettings();
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("all");
   const [comparePeriodPreset, setComparePeriodPreset] = useState<PeriodPreset>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
@@ -207,7 +209,7 @@ export default function Analytics() {
            (item.platformFees || 0) + 
            (item.shippingFee || 0) + 
            (item.insuranceFee || 0) +
-           (item.watchRegister ? 600 : 0);
+           (item.watchRegister ? settings.watch_register_fee : 0);
   };
 
   const triggerDownload = (filename: string, csvContent: string) => {

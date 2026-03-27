@@ -157,6 +157,45 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  // Settings
+  app.get("/api/settings", isAuthenticated, async (req, res) => {
+    const allSettings = await storage.getAllSettings();
+    res.json(allSettings);
+  });
+
+  app.put("/api/settings/:key", isAuthenticated, async (req, res) => {
+    const { key } = req.params;
+    const { value } = req.body;
+    if (value === undefined) {
+      return res.status(400).json({ message: "Value is required" });
+    }
+    const result = await storage.upsertSetting(key, value);
+    res.json(result);
+  });
+
+  app.get("/api/ai/models", isAuthenticated, async (req, res) => {
+    const apiKey = process.env.STRAICO_API_KEY;
+    if (!apiKey) {
+      return res.json({ models: [] });
+    }
+    try {
+      const response = await fetch("https://api.straico.com/v1/models", {
+        headers: { "Authorization": `Bearer ${apiKey}` },
+      });
+      if (!response.ok) {
+        return res.json({ models: [] });
+      }
+      const data = await response.json() as any;
+      const models = data?.data || [];
+      const chatModels = Array.isArray(models)
+        ? models.filter((m: any) => m.name && m.model).map((m: any) => ({ name: m.name, model: m.model, pricing: m.pricing }))
+        : [];
+      res.json({ models: chatModels });
+    } catch {
+      res.json({ models: [] });
+    }
+  });
+
   // AI — Generate Listing Description
   app.post("/api/ai/generate-description", isAuthenticated, async (req, res) => {
     const apiKey = process.env.STRAICO_API_KEY;
@@ -169,15 +208,25 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Brand and model are required." });
     }
 
-    const prompt = `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
+    const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
+    const promptTemplate = await storage.getSetting("ai_prompt_template") || `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
 
-Brand: ${brand}
-Model: ${model}
-Reference: ${referenceNumber || "Not specified"}
-Year: ${year || "Not specified"}
-Condition: ${condition || "Not specified"}
-Original Box: ${box ? "Yes" : "No"}
-Papers/Cards: ${papers ? "Yes" : "No"}`;
+Brand: {{brand}}
+Model: {{model}}
+Reference: {{referenceNumber}}
+Year: {{year}}
+Condition: {{condition}}
+Original Box: {{box}}
+Papers/Cards: {{papers}}`;
+
+    const prompt = promptTemplate
+      .replace(/\{\{brand\}\}/g, brand)
+      .replace(/\{\{model\}\}/g, model)
+      .replace(/\{\{referenceNumber\}\}/g, referenceNumber || "Not specified")
+      .replace(/\{\{year\}\}/g, year || "Not specified")
+      .replace(/\{\{condition\}\}/g, condition || "Not specified")
+      .replace(/\{\{box\}\}/g, box ? "Yes" : "No")
+      .replace(/\{\{papers\}\}/g, papers ? "Yes" : "No");
 
     try {
       const response = await fetch("https://api.straico.com/v1/prompt/completion", {
@@ -187,7 +236,7 @@ Papers/Cards: ${papers ? "Yes" : "No"}`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          models: ["openai/gpt-4o-mini"],
+          models: [aiModel],
           message: prompt,
         }),
       });
@@ -218,8 +267,9 @@ Papers/Cards: ${papers ? "Yes" : "No"}`;
     }
   });
 
-  // Seed Data
+  // Seed Data & Settings
   await seedDatabase();
+  await seedSettings();
 
   return httpServer;
 }
@@ -291,5 +341,77 @@ async function seedDatabase() {
       clientId: client.id,
       notes: "Needs movement service."
     });
+  }
+}
+
+const DEFAULT_SETTINGS: Record<string, any> = {
+  chrono24_commission: 6.5,
+  watch_register_fee: 600,
+  default_tax_rate: 36.97,
+  default_margin_rate: 12.5,
+  monthly_profit_goal: 200000,
+  aging_threshold_days: 60,
+  watch_brands: [
+    "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
+    "Cartier", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
+    "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
+    "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe",
+    "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
+    "Vacheron Constantin", "Zenith"
+  ],
+  sales_platforms: ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"],
+  shipping_partners: ["DHL", "FedEx", "UPS"],
+  purchase_channels: ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"],
+  expense_categories: [
+    { value: "marketing", label: "Marketing" },
+    { value: "rent_storage", label: "Rent/Storage" },
+    { value: "subscriptions", label: "Subscriptions" },
+    { value: "tools", label: "Tools" },
+    { value: "insurance", label: "Insurance" },
+    { value: "service", label: "Service" },
+    { value: "shipping", label: "Shipping" },
+    { value: "parts", label: "Parts" },
+    { value: "platform_fees", label: "Platform Fees" },
+    { value: "other", label: "Other" },
+  ],
+  ai_model: "openai/gpt-4o-mini",
+  ai_prompt_template: `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
+
+Brand: {{brand}}
+Model: {{model}}
+Reference: {{referenceNumber}}
+Year: {{year}}
+Condition: {{condition}}
+Original Box: {{box}}
+Papers/Cards: {{papers}}`,
+  inventory_export_columns: [
+    "ID", "Brand", "Model", "Reference Number", "Serial Number", "Movement Serial",
+    "Year", "Condition", "Box", "Papers", "Status", "Purchased From", "Paid With",
+    "Purchase Price (EUR)", "Import Fee (EUR)", "Watch Register", "Service Fee (EUR)",
+    "Polish Fee (EUR)", "Target Sell Price (EUR)", "Sale Price (EUR)", "Sold Date",
+    "Platform Fees (EUR)", "Shipping Fee (EUR)", "Insurance Fee (EUR)", "Margin %",
+    "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed", "Hold Time (Days)",
+    "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes"
+  ],
+  financial_export_columns: [
+    "Description", "Amount (EUR)", "Category", "Date", "Recurring", "Watch Reference"
+  ],
+  dashboard_sections: {
+    kpi_cards: { visible: true, order: 0 },
+    quick_actions: { visible: true, order: 1 },
+    monthly_profit_goal: { visible: true, order: 2 },
+    quick_estimate: { visible: true, order: 3 },
+    inventory_status: { visible: true, order: 4 },
+    aging_inventory: { visible: true, order: 5 },
+    recent_additions: { visible: true, order: 6 },
+  },
+};
+
+async function seedSettings() {
+  const existing = await storage.getAllSettings();
+  for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+    if (!(key in existing)) {
+      await storage.upsertSetting(key, value);
+    }
   }
 }

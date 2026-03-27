@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calculator, TrendingUp, Percent, Wallet } from "lucide-react";
+import { useSettings } from "@/hooks/use-settings";
 
 export function QuickEstimate() {
+  const { settings } = useSettings();
   const [buyPrice, setBuyPrice] = useState<string>("");
   const [serviceCost, setServiceCost] = useState<string>("");
   const [salePrice, setSalePrice] = useState<string>("");
@@ -32,10 +34,10 @@ export function QuickEstimate() {
     
     let platformFee = 0;
     if (platform === "chrono24") {
-      platformFee = sale * 0.065;
+      platformFee = sale * (settings.chrono24_commission / 100);
     }
 
-    const wrFee = watchRegister ? 6 : 0;
+    const wrFee = watchRegister ? settings.watch_register_fee / 100 : 0;
     
     const totalCost = buy + service + platformFee + ship + wrFee;
     const netProfit = sale > 0 ? sale - totalCost : 0;
@@ -48,7 +50,7 @@ export function QuickEstimate() {
       roi,
       platformFee
     };
-  }, [buyPrice, serviceCost, salePrice, platform, watchRegister, shipping]);
+  }, [buyPrice, serviceCost, salePrice, platform, watchRegister, shipping, settings.chrono24_commission, settings.watch_register_fee]);
 
   return (
     <Card className="bg-white border-slate-200 text-slate-900 shadow-sm">
@@ -130,7 +132,7 @@ export function QuickEstimate() {
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 text-slate-900">
                 <SelectItem value="none">None (Direct Sale)</SelectItem>
-                <SelectItem value="chrono24">Chrono24 (6.5%)</SelectItem>
+                <SelectItem value="chrono24">Chrono24 ({settings.chrono24_commission}%)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -142,7 +144,7 @@ export function QuickEstimate() {
               <div className="flex items-center gap-2">
                 <Percent className="w-4 h-4 text-red-500" />
                 <span className="text-sm font-medium text-slate-600">
-                  {platform === "chrono24" ? "Chrono24 Fee (6.5%)" : "Platform Fee"}
+                  {platform === "chrono24" ? `Chrono24 Fee (${settings.chrono24_commission}%)` : "Platform Fee"}
                 </span>
               </div>
               <span className="text-lg font-bold text-red-500 tabular-nums">

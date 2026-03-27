@@ -68,19 +68,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-
-const EXPENSE_CATEGORIES = [
-  { value: "marketing", label: "Marketing" },
-  { value: "rent_storage", label: "Rent/Storage" },
-  { value: "subscriptions", label: "Subscriptions" },
-  { value: "tools", label: "Tools" },
-  { value: "insurance", label: "Insurance" },
-  { value: "service", label: "Service" },
-  { value: "shipping", label: "Shipping" },
-  { value: "parts", label: "Parts" },
-  { value: "platform_fees", label: "Platform Fees" },
-  { value: "other", label: "Other" },
-];
+import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -121,10 +109,11 @@ export default function Financials() {
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
+  const { settings } = useSettings();
+  const updateSettingMutation = useUpdateSetting();
+  const EXPENSE_CATEGORIES = settings.expense_categories;
   const [taxRate, setTaxRate] = useState<number>(() => {
-    const saved = localStorage.getItem("taxRate");
-    const parsed = saved ? parseFloat(saved) : NaN;
-    return !isNaN(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 36.97;
+    return settings.default_tax_rate;
   });
   const [isEditingTaxRate, setIsEditingTaxRate] = useState(false);
   const [taxRateInput, setTaxRateInput] = useState("");
@@ -250,7 +239,7 @@ export default function Financials() {
       sum + (item.shippingFee || 0) + (item.insuranceFee || 0), 0);
     
     const totalWatchRegisterFees = soldItems.reduce((sum, item) => 
-      sum + (item.watchRegister ? 600 : 0), 0);
+      sum + (item.watchRegister ? settings.watch_register_fee : 0), 0);
     
     const totalImportFees = soldItems.reduce((sum, item) => 
       sum + (item.importFee || 0), 0);
@@ -276,7 +265,7 @@ export default function Financials() {
                             (item.platformFees || 0) + 
                             (item.shippingFee || 0) + 
                             (item.insuranceFee || 0) +
-                            (item.watchRegister ? 600 : 0) +
+                            (item.watchRegister ? settings.watch_register_fee : 0) +
                             (item.importFee || 0);
         const profit = salePrice - item.purchasePrice - itemExpenses;
         const roi = (profit / item.purchasePrice) * 100;
@@ -316,7 +305,7 @@ export default function Financials() {
                           (item.platformFees || 0) + 
                           (item.shippingFee || 0) + 
                           (item.insuranceFee || 0) +
-                          (item.watchRegister ? 600 : 0);
+                          (item.watchRegister ? settings.watch_register_fee : 0);
       months[month].expenses += itemExpenses;
     });
 
@@ -414,7 +403,7 @@ export default function Financials() {
     const filteredCogs = filteredSoldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
     const filteredWatchFees = filteredSoldItems.reduce((sum, item) => 
       sum + (item.serviceFee || 0) + (item.polishFee || 0) + (item.platformFees || 0) + 
-      (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? 600 : 0) + (item.importFee || 0), 0);
+      (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? settings.watch_register_fee : 0) + (item.importFee || 0), 0);
     const filteredExpenseTotal = filteredExpensesForPeriod.reduce((sum, e) => sum + e.amount, 0);
     
     const filteredNetProfit = filteredRevenue - filteredCogs - filteredWatchFees - filteredExpenseTotal;
@@ -920,7 +909,7 @@ export default function Financials() {
                           const val = parseFloat(taxRateInput);
                           if (!isNaN(val) && val >= 0 && val <= 100) {
                             setTaxRate(val);
-                            localStorage.setItem("taxRate", val.toString());
+                            updateSettingMutation.mutate({ key: "default_tax_rate", value: val });
                             toast({ title: "Tax rate updated", description: `Set to ${val}%` });
                           }
                           setIsEditingTaxRate(false);

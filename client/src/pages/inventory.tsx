@@ -49,20 +49,8 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 
-const WATCH_BRANDS = [
-  "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
-  "Cartier", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
-  "Hublot", "IWC", "Jaeger-LeCoultre", "Longines",
-  "Nomos Glashutte", "Omega", "Panerai", "Patek Philippe",
-  "Rolex", "Tag Heuer", "Tudor", "Ulysse Nardin",
-  "Vacheron Constantin", "Zenith"
-];
-
-const SOLD_ON_OPTIONS = ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"];
-const SHIPPING_PARTNERS = ["DHL", "FedEx", "UPS"];
-
-const PURCHASE_CHANNEL_OPTIONS = ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"];
 const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
 
 const COUNTRIES = [
@@ -178,6 +166,12 @@ export default function Inventory() {
   const [showShippingDetails, setShowShippingDetails] = useState(false);
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
   const { toast } = useToast();
+  const { settings } = useSettings();
+  const updateSettingMutation = useUpdateSetting();
+  const WATCH_BRANDS = settings.watch_brands;
+  const SOLD_ON_OPTIONS = settings.sales_platforms;
+  const SHIPPING_PARTNERS = settings.shipping_partners;
+  const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
   const createMutation = useCreateInventory();
   const quickAddClientMutation = useCreateClient();
 
@@ -244,7 +238,7 @@ export default function Inventory() {
 
   useEffect(() => {
     if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
-      const fee = watchedSalePrice * 0.065;
+      const fee = watchedSalePrice * (settings.chrono24_commission / 100);
       form.setValue("platformFees", Number(fee.toFixed(2)));
     }
   }, [watchedSalePrice, watchedSoldPlatform, form]);
@@ -273,11 +267,7 @@ export default function Inventory() {
   const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
   const [isDateSentOpen, setIsDateSentOpen] = useState(false);
   const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
-  const [marginRate, setMarginRate] = useState<number>(() => {
-    const saved = localStorage.getItem("marginRate");
-    const parsed = saved ? parseFloat(saved) : NaN;
-    return !isNaN(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 12.5;
-  });
+  const [marginRate, setMarginRate] = useState<number>(settings.default_margin_rate);
   const [isEditingMarginRate, setIsEditingMarginRate] = useState(false);
   const [marginRateInput, setMarginRateInput] = useState("");
 
@@ -467,7 +457,7 @@ export default function Inventory() {
       const shippingFee = item.shippingFee ? item.shippingFee / 100 : 0;
       const insuranceFee = item.insuranceFee ? item.insuranceFee / 100 : 0;
       const targetSellPrice = item.targetSellPrice ? item.targetSellPrice / 100 : 0;
-      const watchRegisterCost = item.watchRegister ? 6 : 0;
+      const watchRegisterCost = item.watchRegister ? settings.watch_register_fee / 100 : 0;
       
       const totalCosts = purchasePrice + importFee + serviceFee + polishFee + watchRegisterCost + platformFees + shippingFee + insuranceFee;
       const profit = salePrice > 0 ? salePrice - totalCosts : 0;
@@ -578,7 +568,7 @@ export default function Inventory() {
                         const parsed = parseFloat(marginRateInput);
                         if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
                           setMarginRate(parsed);
-                          localStorage.setItem("marginRate", String(parsed));
+                          updateSettingMutation.mutate({ key: "default_margin_rate", value: parsed });
                           setIsEditingMarginRate(false);
                         }
                       }
@@ -593,7 +583,7 @@ export default function Inventory() {
                       const parsed = parseFloat(marginRateInput);
                       if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
                         setMarginRate(parsed);
-                        localStorage.setItem("marginRate", String(parsed));
+                        updateSettingMutation.mutate({ key: "default_margin_rate", value: parsed });
                         setIsEditingMarginRate(false);
                       }
                     }}
