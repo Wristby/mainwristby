@@ -198,9 +198,15 @@ Papers/Cards: ${papers ? "Yes" : "No"}`;
       }
 
       const data = await response.json() as any;
-      const description = data?.data?.completion?.choices?.[0]?.message?.content
-        ?? data?.data?.completions?.[0]?.completion?.choices?.[0]?.message?.content
-        ?? "";
+
+      let description = "";
+      const completions = data?.data?.completions;
+      if (completions && typeof completions === "object") {
+        const modelKey = Object.keys(completions)[0];
+        if (modelKey) {
+          description = completions[modelKey]?.completion?.choices?.[0]?.message?.content || "";
+        }
+      }
 
       if (!description) {
         return res.status(502).json({ message: "No description returned from AI." });
