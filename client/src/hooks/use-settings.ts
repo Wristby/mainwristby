@@ -121,7 +121,7 @@ export function useSettings() {
 
 export function useUpdateSetting() {
   return useMutation({
-    mutationFn: async ({ key, value }: { key: string; value: string | number | boolean | string[] | Record<string, unknown> }) => {
+    mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
       const res = await apiRequest("PUT", `/api/settings/${key}`, { value });
       return res.json();
     },

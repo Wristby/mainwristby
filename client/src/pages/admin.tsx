@@ -254,7 +254,7 @@ export default function Admin() {
     queryKey: ["/api/ai/models"],
   });
 
-  const saveSetting = (key: string, value: string | number | boolean | string[] | Record<string, unknown>) => {
+  const saveSetting = (key: string, value: unknown) => {
     updateSetting.mutate({ key, value }, {
       onSuccess: () => {
         toast({ title: "Saved", description: "Setting updated successfully" });
