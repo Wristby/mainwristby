@@ -982,7 +982,7 @@ export default function Analytics() {
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-red-600 mb-3">Slow Movers (&gt; 60 days)</h3>
+              <h3 className="text-sm font-medium text-red-600 mb-3">Slow Movers (60+ days)</h3>
               {slowMovers.length === 0 ? (
                 <p className="text-slate-400 text-sm">None</p>
               ) : (
