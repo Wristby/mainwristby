@@ -232,7 +232,7 @@ export default function Analytics() {
   type EnrichedItem = InventoryItem & { profit: number; roi: number; daysOnMarket: number };
   const buildWatchRows = (items: EnrichedItem[]) => {
     const header = [
-      "Brand","Model","Reference Number","Internal Serial",
+      "Brand","Model","Reference Number","Serial Number",
       "Purchase Date","Sold Date","Days Held",
       "Purchase Price (EUR)","Sale Price (EUR)","Total Fees (EUR)","Net Profit (EUR)",
       "Margin %","ROI %","Sold Platform"
