@@ -493,10 +493,11 @@ export default function InventoryDetail() {
     : 0;
   const totalFees = ((item as any).platformFees || 0) + ((item as any).shippingFee || 0) + ((item as any).insuranceFee || 0);
 
+  const _soldDateRaw = (item as any).dateSold || (item as any).soldDate;
   const daysListed = (item as any).dateListed
     ? Math.max(0, differenceInDays(
-        item.status === "sold" && ((item as any).dateSold || (item as any).soldDate)
-          ? startOfDay(new Date((item as any).dateSold || (item as any).soldDate))
+        item.status === "sold" && _soldDateRaw
+          ? startOfDay(typeof _soldDateRaw === 'string' ? parseISO(_soldDateRaw) : new Date(_soldDateRaw))
           : startOfDay(new Date()),
         startOfDay(typeof (item as any).dateListed === 'string' ? parseISO((item as any).dateListed) : new Date((item as any).dateListed))
       ))
