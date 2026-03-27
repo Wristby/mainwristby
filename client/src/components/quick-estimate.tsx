@@ -120,7 +120,7 @@ export function QuickEstimate() {
                 onCheckedChange={(checked) => setWatchRegister(!!checked)}
                 className="h-4 w-4 border-slate-300 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
               />
-              <Label htmlFor="wr" className="text-xs text-slate-600 cursor-pointer">Watch Register Fee (€6)</Label>
+              <Label htmlFor="wr" className="text-xs text-slate-600 cursor-pointer">Watch Register Fee (€{(settings.watch_register_fee / 100).toLocaleString("de-DE")})</Label>
             </div>
           </div>
 

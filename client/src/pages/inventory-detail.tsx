@@ -287,7 +287,7 @@ export default function InventoryDetail() {
       const fee = watchedSalePrice * (settings.chrono24_commission / 100);
       form.setValue("platformFees", Number(fee.toFixed(2)));
     }
-  }, [watchedSalePrice, watchedSoldPlatform, form.setValue]);
+  }, [watchedSalePrice, watchedSoldPlatform, form.setValue, settings.chrono24_commission]);
 
   const watchedPurchaseChannel = form.watch("purchasedFrom");
   const showSellerField = watchedPurchaseChannel === "Dealer" || watchedPurchaseChannel === "Private Purchase" || watchedPurchaseChannel === "Other";

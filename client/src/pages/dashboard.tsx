@@ -263,7 +263,7 @@ export default function Dashboard() {
       const fee = Math.round((watchedSalePrice || 0) * (settings.chrono24_commission / 100));
       watchForm.setValue("platformFees", fee);
     }
-  }, [watchedSalePrice, watchedSoldPlatform, watchForm]);
+  }, [watchedSalePrice, watchedSoldPlatform, watchForm, settings.chrono24_commission]);
 
   useEffect(() => {
     if (watchedStatus === "sold") {
