@@ -135,6 +135,14 @@ CREATE TABLE IF NOT EXISTS expenses (
 );
 
 -- =============================================
+-- SETTINGS TABLE (key-value store for app config)
+-- =============================================
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL
+);
+
+-- =============================================
 -- INDEXES FOR PERFORMANCE
 -- =============================================
 CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory(status);

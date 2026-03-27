@@ -498,10 +498,11 @@ export default function Dashboard() {
 
   const dashSections = settings.dashboard_sections as Record<string, { order: number; visible: boolean }>;
   const isSectionVisible = (key: string) => dashSections?.[key]?.visible !== false;
+  const getOrder = (key: string) => dashSections?.[key]?.order ?? 99;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="flex flex-col gap-6">
+      {/* Header - always first */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
@@ -517,8 +518,7 @@ export default function Dashboard() {
           <span className={cn("text-sm font-medium", kpiView === "ytd" ? "text-slate-900" : "text-slate-400")}>YTD</span>
         </div>
       </div>
-      {/* KPI Cards Row - Top */}
-      {isSectionVisible("kpi_cards") && <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+      {isSectionVisible("kpi_cards") && <div style={{ order: getOrder("kpi_cards") }} className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
@@ -614,8 +614,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>}
-      {/* Quick Actions Card - Below KPIs */}
-      {isSectionVisible("quick_actions") && <Card className="bg-white border-slate-200">
+      {isSectionVisible("quick_actions") && <div style={{ order: getOrder("quick_actions") }}><Card className="bg-white border-slate-200">
         <CardHeader className="pb-4">
           <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>
         </CardHeader>
@@ -642,9 +641,8 @@ export default function Dashboard() {
             <UserPlus className="h-4 w-4 mr-3 text-blue-600" /> Add Client
           </Button>
         </CardContent>
-      </Card>}
-      {/* Monthly Goal Progress Bar - Below Quick Actions */}
-      {isSectionVisible("monthly_profit_goal") && <Card className="bg-white border-slate-200 shadow-sm">
+      </Card></div>}
+      {isSectionVisible("monthly_profit_goal") && <div style={{ order: getOrder("monthly_profit_goal") }}><Card className="bg-white border-slate-200 shadow-sm">
         <CardContent className="py-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -720,11 +718,9 @@ export default function Dashboard() {
             </div>
           </div>
         </CardContent>
-      </Card>}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Content */}
+      </Card></div>}
+      <div style={{ order: 50 }} className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-          {/* Inventory Status - Moved here above Aging Inventory */}
           {isSectionVisible("inventory_status") && <Card className="bg-white border-slate-200">
             <CardHeader className="pb-4">
               <CardTitle className="text-slate-900 text-lg">Inventory Status</CardTitle>
