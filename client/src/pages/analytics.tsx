@@ -16,7 +16,8 @@ import {
   Package,
   ArrowUpRight,
   ArrowDownRight,
-  GitCompare
+  GitCompare,
+  Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -27,7 +28,8 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useState, useMemo } from "react";
-import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter } from "date-fns";
+import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
 
 const MONTHS = [
@@ -206,6 +208,114 @@ export default function Analytics() {
            (item.shippingFee || 0) + 
            (item.insuranceFee || 0) +
            (item.watchRegister ? 600 : 0);
+  };
+
+  const triggerDownload = (filename: string, csvContent: string) => {
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const csvEscape = (val: string | number | null | undefined) => {
+    const s = String(val ?? "");
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const fmtMoney = (cents: number) => (cents / 100).toFixed(2);
+  const fmtDate = (d: string | Date | null | undefined) => d ? formatDate(new Date(d), "yyyy-MM-dd") : "";
+
+  type EnrichedItem = InventoryItem & { profit: number; roi: number; daysOnMarket: number };
+  const buildWatchRows = (items: EnrichedItem[]) => {
+    const header = [
+      "Brand","Model","Reference Number","Internal Serial",
+      "Purchase Date","Sold Date","Days Held",
+      "Purchase Price (EUR)","Sale Price (EUR)","Total Fees (EUR)","Net Profit (EUR)",
+      "Margin %","ROI %","Sold Platform"
+    ].join(",");
+    const rows = items.map(item => {
+      const revenue = (item.salePrice || 0);
+      const fees = getItemFees(item);
+      const profit = revenue - item.purchasePrice - fees;
+      const margin = revenue > 0 ? ((profit / revenue) * 100) : 0;
+      const roi = item.purchasePrice > 0 ? ((profit / item.purchasePrice) * 100) : 0;
+      const soldDate = item.soldDate || item.dateSold;
+      const daysHeld = soldDate && item.purchaseDate
+        ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
+        : 0;
+      return [
+        csvEscape(item.brand),
+        csvEscape(item.model),
+        csvEscape(item.referenceNumber),
+        csvEscape(item.internalSerial),
+        fmtDate(item.purchaseDate),
+        fmtDate(soldDate),
+        daysHeld,
+        fmtMoney(item.purchasePrice),
+        fmtMoney(revenue),
+        fmtMoney(fees),
+        fmtMoney(profit),
+        margin.toFixed(2),
+        roi.toFixed(2),
+        csvEscape(item.soldPlatform),
+      ].join(",");
+    });
+    return [header, ...rows].join("\n");
+  };
+
+  const handleExportCsv = () => {
+    const { profits } = calculatedMetrics;
+    const today = formatDate(new Date(), "yyyy-MM-dd");
+    const label = primaryDateRange.label.replace(/[^a-zA-Z0-9]/g, "_");
+    const filename = `analytics_${label}_${today}.csv`;
+    triggerDownload(filename, buildWatchRows(profits));
+  };
+
+  const handleExportComparison = () => {
+    if (!compareMode || !compareMetrics) return;
+    const today = formatDate(new Date(), "yyyy-MM-dd");
+    const pLabel = primaryDateRange.label.replace(/[^a-zA-Z0-9]/g, "_");
+    const cLabel = compareDateRange.label.replace(/[^a-zA-Z0-9]/g, "_");
+    const filename = `analytics_comparison_${pLabel}_vs_${cLabel}_${today}.csv`;
+
+    const pM = calculatedMetrics;
+    const cM = compareMetrics;
+    const diff = (a: number, b: number) => (a - b).toFixed(2);
+
+    const summaryHeader = `Metric,${csvEscape(primaryDateRange.label)},${csvEscape(compareDateRange.label)},Difference`;
+    const summaryRows = [
+      `Watches Sold,${pM.soldItems.length},${cM.soldItems.length},${pM.soldItems.length - cM.soldItems.length}`,
+      `Total Revenue (EUR),${fmtMoney(pM.totalRevenue)},${fmtMoney(cM.totalRevenue)},${diff(pM.totalRevenue / 100, cM.totalRevenue / 100)}`,
+      `Total COGS (EUR),${fmtMoney(pM.totalCOGS)},${fmtMoney(cM.totalCOGS)},${diff(pM.totalCOGS / 100, cM.totalCOGS / 100)}`,
+      `Total Fees (EUR),${fmtMoney(pM.totalFees)},${fmtMoney(cM.totalFees)},${diff(pM.totalFees / 100, cM.totalFees / 100)}`,
+      `Net Profit (EUR),${fmtMoney(pM.totalNetIncome)},${fmtMoney(cM.totalNetIncome)},${diff(pM.totalNetIncome / 100, cM.totalNetIncome / 100)}`,
+      `Avg Margin %,${pM.averageMargin.toFixed(2)},${cM.averageMargin.toFixed(2)},${(pM.averageMargin - cM.averageMargin).toFixed(2)}`,
+      `Capital Deployed (EUR),${fmtMoney(pM.capitalDeployed)},${fmtMoney(cM.capitalDeployed)},${diff(pM.capitalDeployed / 100, cM.capitalDeployed / 100)}`,
+    ];
+
+    const primaryWatchSection = `--- Period: ${primaryDateRange.label} ---\n${buildWatchRows(calculatedMetrics.profits)}`;
+    const compareWatchSection = `--- Period: ${compareDateRange.label} ---\n${buildWatchRows(
+      cM.soldItems.map(item => {
+        const revenue = item.salePrice || 0;
+        const fees = getItemFees(item);
+        const profit = revenue - item.purchasePrice - fees;
+        const soldDate = item.soldDate || item.dateSold;
+        return {
+          ...item,
+          profit,
+          roi: item.purchasePrice > 0 ? (profit / item.purchasePrice) * 100 : 0,
+          daysOnMarket: soldDate && item.purchaseDate
+            ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
+            : 0,
+        };
+      })
+    )}`;
+
+    const csv = [summaryHeader, ...summaryRows, "", primaryWatchSection, "", compareWatchSection].join("\n");
+    triggerDownload(filename, csv);
   };
 
   // Calculate metrics (moved before loading check for hook consistency)
@@ -503,6 +613,42 @@ export default function Analytics() {
               <GitCompare className="w-4 h-4 mr-2" />
               Compare
             </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              className="border-slate-200"
+              data-testid="button-export-csv"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
+
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportComparison}
+                      disabled={!compareMode}
+                      className="border-slate-200 disabled:opacity-50"
+                      data-testid="button-export-comparison"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Export Comparison
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {!compareMode && (
+                  <TooltipContent>
+                    <p>Enable Compare Mode to export a comparison</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
         
