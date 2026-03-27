@@ -76,6 +76,9 @@ export const inventory = pgTable("inventory", {
   gdriveLink: text("gdrive_link"),
   notes: text("notes"),
   
+  // Listing Description (AI-generated or manual)
+  description: text("description"),
+
   // Shipping & Tracking
   shippingPartner: text("shipping_partner"),
   trackingNumber: text("tracking_number"),

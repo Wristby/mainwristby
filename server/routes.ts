@@ -157,6 +157,61 @@ export async function registerRoutes(
     res.json(stats);
   });
 
+  // AI — Generate Listing Description
+  app.post("/api/ai/generate-description", isAuthenticated, async (req, res) => {
+    const apiKey = process.env.STRAICO_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ message: "AI generation is not configured. Please add your STRAICO_API_KEY." });
+    }
+
+    const { brand, model, referenceNumber, year, condition, box, papers } = req.body;
+    if (!brand || !model) {
+      return res.status(400).json({ message: "Brand and model are required." });
+    }
+
+    const prompt = `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
+
+Brand: ${brand}
+Model: ${model}
+Reference: ${referenceNumber || "Not specified"}
+Year: ${year || "Not specified"}
+Condition: ${condition || "Not specified"}
+Original Box: ${box ? "Yes" : "No"}
+Papers/Cards: ${papers ? "Yes" : "No"}`;
+
+    try {
+      const response = await fetch("https://api.straico.com/v1/prompt/completion", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          models: ["openai/gpt-4o-mini"],
+          message: prompt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(502).json({ message: `Straico API error: ${errText}` });
+      }
+
+      const data = await response.json() as any;
+      const description = data?.data?.completion?.choices?.[0]?.message?.content
+        ?? data?.data?.completions?.[0]?.completion?.choices?.[0]?.message?.content
+        ?? "";
+
+      if (!description) {
+        return res.status(502).json({ message: "No description returned from AI." });
+      }
+
+      res.json({ description });
+    } catch (err: any) {
+      res.status(502).json({ message: `Failed to reach AI service: ${err.message}` });
+    }
+  });
+
   // Seed Data
   await seedDatabase();
 

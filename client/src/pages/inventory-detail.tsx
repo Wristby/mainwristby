@@ -2,7 +2,7 @@ import { useInventoryItem, useUpdateInventory, useDeleteInventory } from "@/hook
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus, Sparkles, Copy } from "lucide-react";
 import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -373,6 +373,55 @@ export default function InventoryDetail() {
   const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
   const [isDateSentOpen, setIsDateSentOpen] = useState(false);
   const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
+
+  const [descriptionValue, setDescriptionValue] = useState((item as any)?.description || "");
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setDescriptionValue((item as any).description || "");
+    }
+  }, [item]);
+
+  const handleSaveDescription = async () => {
+    setIsSavingDescription(true);
+    try {
+      await apiRequest("PUT", `/api/inventory/${id}`, { description: descriptionValue });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      toast({ title: "Saved", description: "Listing description saved." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingDescription(false);
+    }
+  };
+
+  const handleGenerateDescription = async () => {
+    if (!item) return;
+    setIsGenerating(true);
+    try {
+      const result = await apiRequest("POST", "/api/ai/generate-description", {
+        brand: item.brand,
+        model: item.model,
+        referenceNumber: item.referenceNumber,
+        year: item.year,
+        condition: item.condition,
+        box: item.box,
+        papers: item.papers,
+      });
+      const data = await result.json();
+      if (data.description) {
+        setDescriptionValue(data.description);
+      } else {
+        toast({ title: "Error", description: data.message || "No description generated.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   if (isLoading) return <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
   if (!item) return <div className="text-slate-600">Item not found</div>;
@@ -1502,6 +1551,65 @@ export default function InventoryDetail() {
             <CardContent>
               <div className="text-sm text-slate-600 whitespace-pre-wrap min-h-[4rem]">
                 {item.notes || "No notes available for this watch."}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg text-slate-900">Listing Description</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleGenerateDescription}
+                  disabled={isGenerating}
+                  data-testid="button-generate-description"
+                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  {isGenerating ? "Generating..." : "Generate with AI"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                value={descriptionValue}
+                onChange={(e) => setDescriptionValue(e.target.value)}
+                placeholder="Write or generate a listing description for this watch..."
+                className="bg-white border-slate-200 min-h-[160px] text-sm text-slate-700 resize-y"
+                data-testid="textarea-listing-description"
+              />
+              <div className="flex items-center justify-between gap-2">
+                {descriptionValue && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      navigator.clipboard.writeText(descriptionValue);
+                      toast({ title: "Copied", description: "Description copied to clipboard." });
+                    }}
+                    className="text-slate-500 hover:text-slate-700 gap-1.5 text-xs"
+                    data-testid="button-copy-description"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleSaveDescription}
+                  disabled={isSavingDescription}
+                  data-testid="button-save-description"
+                  className="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {isSavingDescription ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+                  Save
+                </Button>
               </div>
             </CardContent>
           </Card>
