@@ -46,7 +46,6 @@ import {
   Download,
   Check,
   X,
-  AlertTriangle,
   Info
 } from "lucide-react";
 import { useState, useMemo } from "react";
@@ -124,7 +123,8 @@ export default function Financials() {
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const [taxRate, setTaxRate] = useState<number>(() => {
     const saved = localStorage.getItem("taxRate");
-    return saved ? parseFloat(saved) : 36.97;
+    const parsed = saved ? parseFloat(saved) : NaN;
+    return !isNaN(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 36.97;
   });
   const [isEditingTaxRate, setIsEditingTaxRate] = useState(false);
   const [taxRateInput, setTaxRateInput] = useState("");
