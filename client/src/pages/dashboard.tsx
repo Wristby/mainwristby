@@ -22,7 +22,8 @@ import {
   Check,
   X,
   Scale,
-  ExternalLink
+  ExternalLink,
+  ShoppingBag
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { Link } from "wouter";
@@ -440,7 +441,7 @@ export default function Dashboard() {
     return revenue > 0 ? (profit / revenue) * 100 : 0;
   };
 
-  const { currentMonthProfit, ytdProfit, monthMargin, ytdMargin } = useMemo(() => {
+  const { currentMonthProfit, ytdProfit, monthMargin, ytdMargin, monthSoldCount, ytdSoldCount } = useMemo(() => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -470,11 +471,14 @@ export default function Dashboard() {
       ytdProfit: sumProfit(ytdSales),
       monthMargin: avgMargin(monthSales),
       ytdMargin: avgMargin(ytdSales),
+      monthSoldCount: monthSales.length,
+      ytdSoldCount: ytdSales.length,
     };
   }, [soldInventory]);
 
   const displayedProfit = kpiView === "month" ? currentMonthProfit : ytdProfit;
   const displayedMargin = kpiView === "month" ? monthMargin : ytdMargin;
+  const displayedSoldCount = kpiView === "month" ? monthSoldCount : ytdSoldCount;
 
   const goalProgress = monthlyGoal > 0 ? Math.min((currentMonthProfit / monthlyGoal) * 100, 100) : 0;
 
@@ -531,7 +535,7 @@ export default function Dashboard() {
         </div>
       </div>
       {/* KPI Cards Row - Top */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
@@ -585,6 +589,27 @@ export default function Dashboard() {
               </div>
               <div className="p-2 bg-blue-50 rounded-full">
                 <Percent className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-slate-200">
+          <CardContent className="pt-5 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="h-10">
+                  <p className="text-sm font-medium text-slate-500">
+                    Watches Sold{" "}
+                    <span className="text-xs text-slate-400">({kpiView === "month" ? "This Month" : "YTD"})</span>
+                  </p>
+                </div>
+                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {displayedSoldCount}
+                </p>
+              </div>
+              <div className="p-2 bg-violet-50 rounded-full">
+                <ShoppingBag className="h-5 w-5 text-violet-600" />
               </div>
             </div>
           </CardContent>
