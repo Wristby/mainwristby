@@ -1109,6 +1109,18 @@ export default function InventoryDetail() {
                   </div>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Hold Time</p>
+                  <p className="text-xl font-bold text-slate-900 tabular-nums">{holdTime} days</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Days Listed</p>
+                  <p className="text-xl font-bold text-slate-900 tabular-nums">
+                    {daysListed !== null ? `${daysListed} days` : "—"}
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -1165,18 +1177,8 @@ export default function InventoryDetail() {
                   <p className="text-xl font-bold text-emerald-600">{margin.toFixed(1)}%</p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Hold Time</p>
-                  <p className="text-xl font-bold text-slate-900 tabular-nums">{holdTime} days</p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Total Fees</p>
                   <p className="text-xl font-bold text-red-500">{formatCurrency(totalFees)}</p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Days Listed</p>
-                  <p className="text-xl font-bold text-slate-900 tabular-nums">
-                    {daysListed !== null ? `${daysListed} days` : "—"}
-                  </p>
                 </div>
               </div>
 
