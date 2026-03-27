@@ -351,6 +351,10 @@ export default function Analytics() {
     ? profits.reduce((sum, p) => sum + p.daysOnMarket, 0) / soldItems.length
     : 0;
 
+  const avgWatchCost = soldItems.length > 0
+    ? profits.reduce((sum, p) => sum + p.purchasePrice, 0) / soldItems.length
+    : 0;
+
   // All watches hold time
   const allWatchesWithHoldTime = (inventory || []).map((item) => {
     const endDate = item.soldDate ? new Date(item.soldDate) : (item.dateSold ? new Date(item.dateSold) : today);
@@ -803,6 +807,23 @@ export default function Analytics() {
                 </div>
                 <div className="p-2 bg-emerald-50 rounded-full">
                   <Package className="h-5 w-5 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-slate-200">
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Average Watch Cost</p>
+                  <p className="text-3xl font-bold text-orange-600 mt-1 tabular-nums">
+                    {formatCurrency(avgWatchCost)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">Avg COGS per sold watch</p>
+                </div>
+                <div className="p-2 bg-orange-50 rounded-full">
+                  <ShoppingCart className="h-5 w-5 text-orange-600" />
                 </div>
               </div>
             </CardContent>
