@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
+import { cn, parsePriceInput } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
@@ -797,19 +797,10 @@ export default function Inventory() {
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
                         type="text" 
-                        {...form.register("purchasePrice", {
-                          setValueAs: (v) => {
-                            if (v === "") return 0;
-                            const normalized = v.toString().replace(",", ".");
-                            return parseFloat(normalized);
-                          }
-                        })}
+                        {...form.register("purchasePrice", { setValueAs: parsePriceInput })}
                         onBlur={(e) => {
-                          const normalized = e.target.value.replace(",", ".");
-                          const val = parseFloat(normalized);
-                          if (!isNaN(val)) {
-                            form.setValue("purchasePrice", parseFloat(val.toFixed(2)));
-                          }
+                          const val = parsePriceInput(e.target.value);
+                          form.setValue("purchasePrice", parseFloat(val.toFixed(2)));
                         }}
                         className="pl-7 bg-white border-slate-200" 
                         data-testid="input-purchase-price" 
@@ -824,19 +815,10 @@ export default function Inventory() {
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
                         type="text" 
-                        {...form.register("importFee", {
-                          setValueAs: (v) => {
-                            if (v === "") return 0;
-                            const normalized = v.toString().replace(",", ".");
-                            return parseFloat(normalized);
-                          }
-                        })}
+                        {...form.register("importFee", { setValueAs: parsePriceInput })}
                         onBlur={(e) => {
-                          const normalized = e.target.value.replace(",", ".");
-                          const val = parseFloat(normalized);
-                          if (!isNaN(val)) {
-                            form.setValue("importFee", parseFloat(val.toFixed(2)));
-                          }
+                          const val = parsePriceInput(e.target.value);
+                          form.setValue("importFee", parseFloat(val.toFixed(2)));
                         }}
                         className="pl-7 bg-white border-slate-200" 
                         placeholder="0,00"
@@ -975,19 +957,10 @@ export default function Inventory() {
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
                           type="text" 
-                          {...form.register("salePrice", {
-                            setValueAs: (v) => {
-                              if (v === "") return 0;
-                              const normalized = v.toString().replace(",", ".");
-                              return parseFloat(normalized);
-                            }
-                          })}
+                          {...form.register("salePrice", { setValueAs: parsePriceInput })}
                           onBlur={(e) => {
-                            const normalized = e.target.value.replace(",", ".");
-                            const val = parseFloat(normalized);
-                            if (!isNaN(val)) {
-                              form.setValue("salePrice", parseFloat(val.toFixed(2)));
-                            }
+                            const val = parsePriceInput(e.target.value);
+                            form.setValue("salePrice", parseFloat(val.toFixed(2)));
                           }}
                           className="pl-7 bg-white border-slate-200" 
                           placeholder="0,00"
@@ -1013,14 +986,10 @@ export default function Inventory() {
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
                             type="text"
-                            {...form.register("platformFees", {
-                              setValueAs: (v) => v === "" ? 0 : parseFloat(v)
-                            })}
+                            {...form.register("platformFees", { setValueAs: parsePriceInput })}
                             onBlur={(e) => {
-                              const val = parseFloat(e.target.value);
-                              if (!isNaN(val)) {
-                                form.setValue("platformFees", parseFloat(val.toFixed(2)));
-                              }
+                              const val = parsePriceInput(e.target.value);
+                              form.setValue("platformFees", parseFloat(val.toFixed(2)));
                             }}
                             className="pl-7 bg-white border-slate-200" 
                           />
@@ -1032,19 +1001,10 @@ export default function Inventory() {
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
                           type="text" 
-                          {...form.register("shippingFee", {
-                            setValueAs: (v) => {
-                              if (v === "") return 0;
-                              const normalized = v.toString().replace(",", ".");
-                              return parseFloat(normalized);
-                            }
-                          })}
+                          {...form.register("shippingFee", { setValueAs: parsePriceInput })}
                           onBlur={(e) => {
-                            const normalized = e.target.value.replace(",", ".");
-                            const val = parseFloat(normalized);
-                            if (!isNaN(val)) {
-                              form.setValue("shippingFee", parseFloat(val.toFixed(2)));
-                            }
+                            const val = parsePriceInput(e.target.value);
+                            form.setValue("shippingFee", parseFloat(val.toFixed(2)));
                           }}
                           className="pl-7 bg-white border-slate-200" 
                           placeholder="0,00"
@@ -1057,19 +1017,10 @@ export default function Inventory() {
                         <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                         <Input 
                           type="text" 
-                          {...form.register("insuranceFee", {
-                            setValueAs: (v) => {
-                              if (v === "") return 0;
-                              const normalized = v.toString().replace(",", ".");
-                              return parseFloat(normalized);
-                            }
-                          })}
+                          {...form.register("insuranceFee", { setValueAs: parsePriceInput })}
                           onBlur={(e) => {
-                            const normalized = e.target.value.replace(",", ".");
-                            const val = parseFloat(normalized);
-                            if (!isNaN(val)) {
-                              form.setValue("insuranceFee", parseFloat(val.toFixed(2)));
-                            }
+                            const val = parsePriceInput(e.target.value);
+                            form.setValue("insuranceFee", parseFloat(val.toFixed(2)));
                           }}
                           className="pl-7 bg-white border-slate-200" 
                           placeholder="0,00"
@@ -1190,20 +1141,10 @@ export default function Inventory() {
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
                             type="text" 
-                            {...form.register("serviceFee", {
-                              setValueAs: (v) => {
-                                if (v === "" || v === undefined || v === null) return 0;
-                                const normalized = v.toString().replace(",", ".");
-                                const parsed = parseFloat(normalized);
-                                return isNaN(parsed) ? 0 : parsed;
-                              }
-                            })}
+                            {...form.register("serviceFee", { setValueAs: parsePriceInput })}
                             onBlur={(e) => {
-                              const normalized = e.target.value.replace(",", ".");
-                              const val = parseFloat(normalized);
-                              if (!isNaN(val)) {
-                                form.setValue("serviceFee", parseFloat(val.toFixed(2)));
-                              }
+                              const val = parsePriceInput(e.target.value);
+                              form.setValue("serviceFee", parseFloat(val.toFixed(2)));
                             }}
                             className="pl-7 bg-white border-slate-200" 
                             placeholder="0,00"
@@ -1216,19 +1157,10 @@ export default function Inventory() {
                           <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                           <Input 
                             type="text" 
-                            {...form.register("polishFee", {
-                              setValueAs: (v) => {
-                                if (v === "") return 0;
-                                const normalized = v.toString().replace(",", ".");
-                                return parseFloat(normalized);
-                              }
-                            })}
+                            {...form.register("polishFee", { setValueAs: parsePriceInput })}
                             onBlur={(e) => {
-                              const normalized = e.target.value.replace(",", ".");
-                              const val = parseFloat(normalized);
-                              if (!isNaN(val)) {
-                                form.setValue("polishFee", parseFloat(val.toFixed(2)));
-                              }
+                              const val = parsePriceInput(e.target.value);
+                              form.setValue("polishFee", parseFloat(val.toFixed(2)));
                             }}
                             className="pl-7 bg-white border-slate-200" 
                             placeholder="0,00"

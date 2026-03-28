@@ -37,7 +37,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { cn } from "@/lib/utils";
+import { cn, parsePriceInput } from "@/lib/utils";
 import { QuickEstimate } from "@/components/quick-estimate";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1185,20 +1185,10 @@ export default function Dashboard() {
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
                         type="text" 
-                        {...watchForm.register("serviceFee", {
-                          setValueAs: (v) => {
-                            if (v === "" || v === undefined || v === null) return 0;
-                            const normalized = v.toString().replace(",", ".");
-                            const parsed = parseFloat(normalized);
-                            return isNaN(parsed) ? 0 : parsed;
-                          }
-                        })}
+                        {...watchForm.register("serviceFee", { setValueAs: parsePriceInput })}
                         onBlur={(e) => {
-                          const normalized = e.target.value.replace(",", ".");
-                          const val = parseFloat(normalized);
-                          if (!isNaN(val)) {
-                            watchForm.setValue("serviceFee", parseFloat(val.toFixed(2)));
-                          }
+                          const val = parsePriceInput(e.target.value);
+                          watchForm.setValue("serviceFee", parseFloat(val.toFixed(2)));
                         }}
                         className="pl-7 bg-white border-slate-200" 
                         placeholder="0,00"
@@ -1211,20 +1201,10 @@ export default function Dashboard() {
                       <span className="absolute left-3 top-2.5 text-slate-400">€</span>
                       <Input 
                         type="text" 
-                        {...watchForm.register("polishFee", {
-                          setValueAs: (v) => {
-                            if (v === "" || v === undefined || v === null) return 0;
-                            const normalized = v.toString().replace(",", ".");
-                            const parsed = parseFloat(normalized);
-                            return isNaN(parsed) ? 0 : parsed;
-                          }
-                        })}
+                        {...watchForm.register("polishFee", { setValueAs: parsePriceInput })}
                         onBlur={(e) => {
-                          const normalized = e.target.value.replace(",", ".");
-                          const val = parseFloat(normalized);
-                          if (!isNaN(val)) {
-                            watchForm.setValue("polishFee", parseFloat(val.toFixed(2)));
-                          }
+                          const val = parsePriceInput(e.target.value);
+                          watchForm.setValue("polishFee", parseFloat(val.toFixed(2)));
                         }}
                         className="pl-7 bg-white border-slate-200" 
                         placeholder="0,00"
@@ -1420,19 +1400,10 @@ export default function Dashboard() {
               <Label>Amount</Label>
               <Input 
                 type="text" 
-                {...expenseForm.register("amount", {
-                  setValueAs: (v) => {
-                    if (v === "") return 0;
-                    const normalized = v.toString().replace(",", ".");
-                    return parseFloat(normalized);
-                  }
-                })}
+                {...expenseForm.register("amount", { setValueAs: parsePriceInput })}
                 onBlur={(e) => {
-                  const normalized = e.target.value.replace(",", ".");
-                  const val = parseFloat(normalized);
-                  if (!isNaN(val)) {
-                    expenseForm.setValue("amount", parseFloat(val.toFixed(2)));
-                  }
+                  const val = parsePriceInput(e.target.value);
+                  expenseForm.setValue("amount", parseFloat(val.toFixed(2)));
                 }}
                 className="bg-white border-slate-200" 
                 placeholder="10,00" 
