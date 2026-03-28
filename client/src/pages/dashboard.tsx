@@ -518,7 +518,7 @@ export default function Dashboard() {
           <span className={cn("text-sm font-medium", kpiView === "ytd" ? "text-slate-900" : "text-slate-400")}>YTD</span>
         </div>
       </div>
-      {isSectionVisible("kpi_cards") && <div style={{ order: getOrder("kpi_cards") }} className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {isSectionVisible("kpi_cards") && <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-emerald-600 border-emerald-500 relative overflow-hidden">
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
@@ -593,7 +593,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>}
-      {isSectionVisible("quick_actions") && <div style={{ order: getOrder("quick_actions") }}><Card className="bg-white border-slate-200">
+      {isSectionVisible("quick_actions") && <Card className="bg-white border-slate-200">
         <CardHeader className="pb-4">
           <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>
         </CardHeader>
@@ -620,8 +620,8 @@ export default function Dashboard() {
             <UserPlus className="h-4 w-4 mr-3 text-blue-600" /> Add Client
           </Button>
         </CardContent>
-      </Card></div>}
-      {isSectionVisible("monthly_profit_goal") && <div style={{ order: getOrder("monthly_profit_goal") }}><Card className="bg-white border-slate-200 shadow-sm">
+      </Card>}
+      {isSectionVisible("monthly_profit_goal") && <Card className="bg-white border-slate-200 shadow-sm">
         <CardContent className="py-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -697,7 +697,7 @@ export default function Dashboard() {
             </div>
           </div>
         </CardContent>
-      </Card></div>}
+      </Card>}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* Left column: stacked sections */}
         <div className="flex flex-col gap-6">
