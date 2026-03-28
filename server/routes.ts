@@ -185,11 +185,21 @@ export async function registerRoutes(
       if (!response.ok) {
         return res.json({ models: [] });
       }
-      const data = await response.json() as { data?: Array<{ name?: string; model?: string; pricing?: Record<string, unknown> }> };
-      const models = data?.data || [];
-      const chatModels = Array.isArray(models)
-        ? models.filter((m) => m.name && m.model).map((m) => ({ name: m.name, model: m.model, pricing: m.pricing }))
-        : [];
+      type StraicoModel = { name?: string; model?: string; pricing?: Record<string, unknown> };
+      type StraicoModelsResponse = {
+        data?: StraicoModel[] | Record<string, StraicoModel[]>;
+      };
+      const data = await response.json() as StraicoModelsResponse;
+      const raw = data?.data;
+      let allModels: StraicoModel[] = [];
+      if (Array.isArray(raw)) {
+        allModels = raw;
+      } else if (raw && typeof raw === "object") {
+        allModels = Object.values(raw).flat();
+      }
+      const chatModels = allModels
+        .filter((m) => m.name && m.model)
+        .map((m) => ({ name: m.name, model: m.model, pricing: m.pricing }));
       res.json({ models: chatModels });
     } catch {
       res.json({ models: [] });
