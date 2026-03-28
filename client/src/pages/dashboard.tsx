@@ -848,24 +848,6 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </div>
-          {isSectionVisible("recent_additions") && <div style={{ order: getOrder("recent_additions") }} className="space-y-4">
-            <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
-            <div className="flex gap-4 overflow-x-auto pb-2">
-              {recentAdditions.map((item) => (
-                <Link key={item.id} href={`/inventory/${item.id}`}>
-                  <Card className="min-w-[160px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors">
-                    <CardContent className="p-3">
-                      <p className="font-medium text-slate-900 text-sm truncate">{item.brand}</p>
-                      <p className="text-xs text-slate-500 truncate">{item.model}</p>
-                      <Badge variant="secondary" className="mt-2 text-[10px]">
-                        {item.status.replace("_", " ")}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          </div>}
         </div>
         {/* Right column: Quick Estimate */}
         {isSectionVisible("quick_estimate") && (
@@ -874,6 +856,24 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      {isSectionVisible("recent_additions") && <div style={{ order: getOrder("recent_additions") }} className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">Recent Additions</h2>
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          {recentAdditions.map((item) => (
+            <Link key={item.id} href={`/inventory/${item.id}`}>
+              <Card className="min-w-[160px] bg-white border-slate-200 cursor-pointer hover-elevate transition-colors">
+                <CardContent className="p-3">
+                  <p className="font-medium text-slate-900 text-sm truncate">{item.brand}</p>
+                  <p className="text-xs text-slate-500 truncate">{item.model}</p>
+                  <Badge variant="secondary" className="mt-2 text-[10px]">
+                    {item.status.replace("_", " ")}
+                  </Badge>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>}
       {/* Add Watch Dialog - Full Form */}
       <Dialog open={isAddWatchOpen} onOpenChange={(open) => {
         if (!open) {
