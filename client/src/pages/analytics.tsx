@@ -671,7 +671,6 @@ export default function Analytics() {
           </div>
         )}
       </div>
-      
       {/* Comparison View */}
       {compareMode && compareMetrics && (
         <Card className="bg-gradient-to-r from-slate-50 to-slate-100 border-slate-200" data-testid="card-comparison">
@@ -883,7 +882,7 @@ export default function Analytics() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide">Average Gross Margin</p>
-                  <p className="text-3xl font-bold text-blue-600 mt-1 tabular-nums">
+                  <p className="text-3xl font-bold mt-1 tabular-nums text-[#000000]">
                     {avgGrossMargin.toFixed(2)}%
                   </p>
                 </div>
