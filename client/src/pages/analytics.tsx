@@ -461,6 +461,8 @@ export default function Analytics() {
     ? profits.reduce((sum, p) => sum + p.roi, 0) / soldItems.length
     : 0;
 
+  const avgGrossMargin = totalRevenue > 0 ? ((totalGrossMargin / totalRevenue) * 100) : 0;
+
   const avgDaysOnMarket = soldItems.length > 0
     ? profits.reduce((sum, p) => sum + p.daysOnMarket, 0) / soldItems.length
     : 0;
@@ -767,12 +769,6 @@ export default function Analytics() {
             color="amber"
           />
           <MetricCard
-            label="GROSS MARGIN"
-            value={formatCurrency(totalGrossMargin)}
-            icon={GitCompare}
-            color="blue"
-          />
-          <MetricCard
             label="AVERAGE MARGIN"
             value={`${averageMargin.toFixed(2)}%`}
             icon={Percent}
@@ -877,6 +873,22 @@ export default function Analytics() {
                 </div>
                 <div className="p-2 bg-amber-50 rounded-full">
                   <Percent className="h-5 w-5 text-amber-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-slate-200">
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Average Gross Margin</p>
+                  <p className="text-3xl font-bold text-blue-600 mt-1 tabular-nums">
+                    {avgGrossMargin.toFixed(2)}%
+                  </p>
+                </div>
+                <div className="p-2 bg-blue-50 rounded-full">
+                  <GitCompare className="h-5 w-5 text-blue-600" />
                 </div>
               </div>
             </CardContent>
