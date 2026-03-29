@@ -329,6 +329,7 @@ export default function Analytics() {
 
     const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
     const totalCOGS = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const totalGrossMargin = totalRevenue - totalCOGS;
     const totalFees = soldItems.reduce((sum, item) => sum + getItemFees(item), 0);
     const totalNetIncome = totalRevenue - totalCOGS - totalFees;
     const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
@@ -351,7 +352,7 @@ export default function Analytics() {
     // Capital deployed (COGS of active inventory)
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
-    return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed };
+    return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed };
   }, [filteredInventory]);
 
   const compareFilteredInventory = useMemo(() => {
@@ -441,7 +442,7 @@ export default function Analytics() {
   }
 
   // Destructure calculated metrics for use in render
-  const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed } = calculatedMetrics;
+  const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed } = calculatedMetrics;
 
   const primaryPeriodLabel = primaryDateRange.label;
   const comparePeriodLabel = compareDateRange.label;
@@ -764,6 +765,12 @@ export default function Analytics() {
             value={formatCurrency(totalFees)}
             icon={Receipt}
             color="amber"
+          />
+          <MetricCard
+            label="GROSS MARGIN"
+            value={formatCurrency(totalGrossMargin)}
+            icon={GitCompare}
+            color="blue"
           />
           <MetricCard
             label="AVERAGE MARGIN"
