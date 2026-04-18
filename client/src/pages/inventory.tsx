@@ -1295,7 +1295,7 @@ export default function Inventory() {
           <CardContent className="pt-5 pb-5">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">Incoming Value</p>
+                <p className="text-sm font-medium text-slate-500">Incoming/Received Value</p>
                 <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
                   {formatCurrency(metrics.incomingValue)}
                 </p>
@@ -1468,7 +1468,6 @@ export default function Inventory() {
           </TableBody>
         </Table>
       </div>
-
       <Dialog open={isQuickAddClientOpen} onOpenChange={(open) => { setIsQuickAddClientOpen(open); if (!open) quickClientForm.reset(); }}>
         <DialogContent className="bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
