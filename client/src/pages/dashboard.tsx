@@ -775,7 +775,7 @@ export default function Dashboard() {
                           <div>
                             <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
                             <p className="text-xs text-slate-500">
-                              {soldDate ? format(new Date(soldDate), "d MMM yyyy") : "—"}
+                              {soldDate && !isNaN(new Date(soldDate).getTime()) ? format(new Date(soldDate), "d MMM yyyy") : "—"}
                             </p>
                           </div>
                         </div>
