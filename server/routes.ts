@@ -423,6 +423,7 @@ Papers/Cards: {{papers}}`,
     inventory_status: { visible: true, order: 4 },
     aging_inventory: { visible: true, order: 5 },
     recent_additions: { visible: true, order: 6 },
+    recently_sold: { visible: true, order: 7 },
   },
 };
 

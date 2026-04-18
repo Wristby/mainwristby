@@ -229,6 +229,7 @@ const DASHBOARD_SECTION_LABELS: Record<string, string> = {
   inventory_status: "Inventory Status Summary",
   aging_inventory: "Aging Inventory",
   recent_additions: "Recent Additions",
+  recently_sold: "Recently Sold",
 };
 
 const ALL_INVENTORY_COLUMNS = [
@@ -595,15 +596,38 @@ function ColumnSelector({ title, allColumns, selectedColumns, onSave }: {
   );
 }
 
+const DEFAULT_DASHBOARD_SECTIONS: Record<string, { visible: boolean; order: number }> = {
+  kpi_cards: { visible: true, order: 0 },
+  quick_actions: { visible: true, order: 1 },
+  monthly_profit_goal: { visible: true, order: 2 },
+  quick_estimate: { visible: true, order: 3 },
+  inventory_status: { visible: true, order: 4 },
+  aging_inventory: { visible: true, order: 5 },
+  recent_additions: { visible: true, order: 6 },
+  recently_sold: { visible: true, order: 7 },
+};
+
+function mergeSections(saved: Record<string, { visible: boolean; order: number }>) {
+  const maxOrder = Object.values(saved).reduce((m, s) => Math.max(m, s.order), -1);
+  let nextOrder = maxOrder + 1;
+  const merged = { ...saved };
+  for (const key of Object.keys(DEFAULT_DASHBOARD_SECTIONS)) {
+    if (!(key in merged)) {
+      merged[key] = { ...DEFAULT_DASHBOARD_SECTIONS[key], order: nextOrder++ };
+    }
+  }
+  return merged;
+}
+
 function DashboardCustomizer({ sections, onSave }: {
   sections: Record<string, { visible: boolean; order: number }>;
   onSave: (sections: Record<string, { visible: boolean; order: number }>) => void;
 }) {
-  const [config, setConfig] = useState(sections);
+  const [config, setConfig] = useState(() => mergeSections(sections));
   const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
-    setConfig(sections);
+    setConfig(mergeSections(sections));
     setIsDirty(false);
   }, [sections]);
 

@@ -748,6 +748,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           )}
+          {isSectionVisible("recently_sold") && (
           <Card className="bg-white border-slate-200">
             <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
               <div className="flex items-center gap-2">
@@ -792,6 +793,7 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
+          )}
           {isSectionVisible("aging_inventory") && (
             <Card className="bg-white border-slate-200">
               <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
