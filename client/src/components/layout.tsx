@@ -110,7 +110,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         <header className="h-16 lg:hidden flex items-center px-4 border-b border-slate-200 bg-slate-50">
           <MobileNav />
-          <div className="ml-4 font-semibold text-slate-900">CHRONOS</div>
+          <div className="ml-4 flex items-center gap-2">
+            <img src={logoPng} alt="Wristby Logo" className="w-7 h-7 rounded-md object-contain" />
+            <span className="font-bold text-slate-900 tracking-tight">WRISTBY</span>
+          </div>
         </header>
         
         <main className="flex-1 overflow-auto bg-slate-50 relative">
