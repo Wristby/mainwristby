@@ -307,53 +307,49 @@ Return ONLY a valid JSON object (no markdown, no explanation, no code fences) wi
   "beat_error": "the acceptable beat error, e.g. ≤ 0.5 ms, or N/A"
 }`;
 
-    const PRIMARY_MODEL = "openai/gpt-4.5-preview";
-    const FALLBACK_MODEL = "openai/gpt-4o";
+    // Use the same admin-configured model as the listing description
+    const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
 
-    interface StraicoChatResponse {
-      data?: {
-        completions?: Record<string, {
-          completion?: {
-            choices?: Array<{ message?: { content?: string } }>;
-          };
-        }>;
-      };
-    }
-
-    const callStraico = async (model: string): Promise<{ rawText: string } | null> => {
+    try {
       const response = await fetch("https://api.straico.com/v1/prompt/completion", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ models: [model], message: prompt }),
+        body: JSON.stringify({ models: [aiModel], message: prompt }),
       });
-      if (!response.ok) return null;
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(502).json({ message: `Straico API error: ${errText}` });
+      }
+
+      interface StraicoChatResponse {
+        data?: {
+          completions?: Record<string, {
+            completion?: {
+              choices?: Array<{ message?: { content?: string } }>;
+            };
+          }>;
+        };
+      }
       const data = await response.json() as StraicoChatResponse;
+
+      let rawText = "";
       const completions = data?.data?.completions;
-      if (!completions || typeof completions !== "object") return null;
-      const modelKey = Object.keys(completions)[0];
-      const rawText = modelKey ? (completions[modelKey]?.completion?.choices?.[0]?.message?.content || "") : "";
-      return rawText ? { rawText } : null;
-    };
-
-    try {
-      let result = await callStraico(PRIMARY_MODEL);
-      let modelUsed = PRIMARY_MODEL;
-
-      if (!result) {
-        result = await callStraico(FALLBACK_MODEL);
-        modelUsed = FALLBACK_MODEL;
+      if (completions && typeof completions === "object") {
+        const modelKey = Object.keys(completions)[0];
+        if (modelKey) {
+          rawText = completions[modelKey]?.completion?.choices?.[0]?.message?.content || "";
+        }
       }
 
-      if (!result) {
-        return res.status(502).json({ message: "No response returned from AI. Both primary and fallback models failed." });
+      if (!rawText) {
+        return res.status(502).json({ message: "No response returned from AI." });
       }
 
-      const { rawText } = result;
-
-      // Try to parse JSON — strip code fences if model included them anyway
+      // Strip code fences if model included them, then parse JSON
       const cleaned = rawText.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
       let specs: Record<string, string>;
       try {
@@ -366,12 +362,8 @@ Return ONLY a valid JSON object (no markdown, no explanation, no code fences) wi
           beat_error: String(parsed.beat_error || "N/A"),
         };
       } catch {
-        // Parse failure: return raw text only
+        // Parse failure: surface raw AI text so the frontend can still show something
         specs = { raw: rawText };
-      }
-
-      if (modelUsed === FALLBACK_MODEL) {
-        console.log(`[movement-specs] Primary model unavailable; used fallback ${FALLBACK_MODEL}`);
       }
 
       // Persist to the inventory record if an inventoryId was provided
