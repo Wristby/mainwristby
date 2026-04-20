@@ -35,7 +35,7 @@ import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, File
 import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Separator } from "@/components/ui/separator";
 import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
@@ -145,6 +145,7 @@ type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 export default function InventoryDetail() {
   const [match, params] = useRoute("/inventory/:id");
   const id = params ? parseInt(params.id) : 0;
+  const [, navigate] = useLocation();
   const { data: item, isLoading } = useInventoryItem(id);
   const { data: allInventory } = useInventory();
   const { data: clients } = useClients();
@@ -1607,13 +1608,19 @@ export default function InventoryDetail() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {historicals.map((h) => (
-                    <tr key={h.id} className="hover:bg-slate-50 transition-colors" data-testid={`row-historical-${h.id}`}>
+                    <tr
+                      key={h.id}
+                      className="hover:bg-slate-50 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/inventory/${h.id}`)}
+                      role="link"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate(`/inventory/${h.id}`); }}
+                      data-testid={`row-historical-${h.id}`}
+                    >
                       <td className="px-6 py-3">
-                        <Link href={`/inventory/${h.id}`}>
-                          <span className="font-medium text-slate-900 hover:text-emerald-600 cursor-pointer transition-colors">
-                            {h.brand} {h.model}
-                          </span>
-                        </Link>
+                        <span className="font-medium text-slate-900 hover:text-emerald-600 transition-colors">
+                          {h.brand} {h.model}
+                        </span>
                         <p className="text-xs text-slate-400 mt-0.5">#{h.id}</p>
                       </td>
                       <td className="px-4 py-3 text-slate-500">
