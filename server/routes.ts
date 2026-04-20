@@ -534,4 +534,15 @@ async function seedSettings() {
       await storage.upsertSetting(key, value);
     }
   }
+
+  // One-time migration: upgrade the movement prompt from 4-field to 5-field default
+  // Only replaces it when the stored value is the old default (not a custom prompt)
+  const storedMovementPrompt = existing["ai_movement_prompt_template"];
+  if (
+    typeof storedMovementPrompt === "string" &&
+    storedMovementPrompt.includes("four keys") &&
+    !storedMovementPrompt.includes('"rate"')
+  ) {
+    await storage.upsertSetting("ai_movement_prompt_template", DEFAULT_MOVEMENT_PROMPT);
+  }
 }
