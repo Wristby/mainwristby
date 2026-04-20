@@ -286,6 +286,92 @@ Papers/Cards: {{papers}}`;
     }
   });
 
+  // AI — Movement Specs Lookup
+  app.post("/api/ai/movement-specs", isAuthenticated, async (req, res) => {
+    const apiKey = process.env.STRAICO_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ message: "AI is not configured. Please add your STRAICO_API_KEY." });
+    }
+
+    const { brand, referenceNumber, inventoryId } = req.body;
+    if (!brand || !referenceNumber) {
+      return res.status(400).json({ message: "Brand and reference number are required." });
+    }
+
+    const prompt = `You are a horological reference database. Research the movement for watch reference ${referenceNumber} by ${brand}.
+Return ONLY a valid JSON object (no markdown, no explanation, no code fences) with exactly these four keys:
+{
+  "caliber": "the caliber name, e.g. Cal. 3235, or N/A",
+  "lift_angle": "the lift angle in degrees, e.g. 53°, or N/A",
+  "amplitude": "the healthy amplitude range when fully wound, e.g. 270–310°, or N/A",
+  "beat_error": "the acceptable beat error, e.g. ≤ 0.5 ms, or N/A"
+}`;
+
+    const movementModel = "openai/gpt-4.5-preview";
+
+    try {
+      const response = await fetch("https://api.straico.com/v1/prompt/completion", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          models: [movementModel],
+          message: prompt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(502).json({ message: `Straico API error: ${errText}` });
+      }
+
+      interface StraicoChatResponse {
+        data?: {
+          completions?: Record<string, {
+            completion?: {
+              choices?: Array<{ message?: { content?: string } }>;
+            };
+          }>;
+        };
+      }
+      const data = await response.json() as StraicoChatResponse;
+
+      let rawText = "";
+      const completions = data?.data?.completions;
+      if (completions && typeof completions === "object") {
+        const modelKey = Object.keys(completions)[0];
+        if (modelKey) {
+          rawText = completions[modelKey]?.completion?.choices?.[0]?.message?.content || "";
+        }
+      }
+
+      if (!rawText) {
+        return res.status(502).json({ message: "No response returned from AI." });
+      }
+
+      // Try to parse JSON — strip code fences if model included them anyway
+      const cleaned = rawText.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+      let specs: Record<string, string>;
+      try {
+        specs = JSON.parse(cleaned);
+      } catch {
+        // Fallback: return raw text so the frontend can still show something
+        specs = { raw: rawText };
+      }
+
+      // Persist to the inventory record if an inventoryId was provided
+      if (inventoryId && typeof inventoryId === "number") {
+        await storage.updateMovementSpecs(inventoryId, specs);
+      }
+
+      res.json({ specs });
+    } catch (err: any) {
+      res.status(502).json({ message: `Failed to reach AI service: ${err.message}` });
+    }
+  });
+
   // Seed Data & Settings
   await seedDatabase();
   await seedSettings();

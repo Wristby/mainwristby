@@ -32,6 +32,7 @@ export interface IStorage {
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
   createInventoryItem(item: InsertInventory): Promise<InventoryItem>;
   updateInventoryItem(id: number, updates: UpdateInventoryRequest): Promise<InventoryItem>;
+  updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem>;
   deleteInventoryItem(id: number): Promise<void>;
 
   // Expenses
@@ -120,6 +121,11 @@ export class DatabaseStorage implements IStorage {
     const [item] = await db.update(inventory).set(updates).where(eq(inventory.id, id)).returning();
     // Sync watch fees to expenses
     await this.syncWatchFeesToExpenses(item);
+    return item;
+  }
+
+  async updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem> {
+    const [item] = await db.update(inventory).set({ movementSpecs: specs }).where(eq(inventory.id, id)).returning();
     return item;
   }
 

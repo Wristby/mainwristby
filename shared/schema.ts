@@ -87,6 +87,9 @@ export const inventory = pgTable("inventory", {
   // Listing Description (AI-generated or manual)
   description: text("description"),
 
+  // Movement Specs (AI-fetched and cached)
+  movementSpecs: jsonb("movement_specs"),
+
   // Shipping & Tracking
   shippingPartner: text("shipping_partner"),
   trackingNumber: text("tracking_number"),

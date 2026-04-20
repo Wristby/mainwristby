@@ -362,10 +362,13 @@ export default function InventoryDetail() {
   const [descriptionValue, setDescriptionValue] = useState((item as any)?.description || "");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [movementSpecs, setMovementSpecs] = useState<Record<string, string> | null>(null);
+  const [isLookingUpSpecs, setIsLookingUpSpecs] = useState(false);
 
   useEffect(() => {
     if (item) {
       setDescriptionValue((item as any).description || "");
+      setMovementSpecs((item as any).movementSpecs || null);
     }
   }, [item]);
 
@@ -405,6 +408,29 @@ export default function InventoryDetail() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleLookupSpecs = async () => {
+    if (!item) return;
+    setIsLookingUpSpecs(true);
+    try {
+      const result = await apiRequest("POST", "/api/ai/movement-specs", {
+        brand: item.brand,
+        referenceNumber: item.referenceNumber,
+        inventoryId: id,
+      });
+      const data = await result.json();
+      if (data.specs) {
+        setMovementSpecs(data.specs);
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      } else {
+        toast({ title: "Error", description: data.message || "No specs returned.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsLookingUpSpecs(false);
     }
   };
 
@@ -1564,6 +1590,55 @@ export default function InventoryDetail() {
                   Save
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Movement Specs Card */}
+          <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-movement-specs">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg text-slate-900">Movement Specs</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleLookupSpecs}
+                  disabled={isLookingUpSpecs}
+                  data-testid="button-lookup-movement-specs"
+                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                >
+                  {isLookingUpSpecs ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  {isLookingUpSpecs ? "Looking up..." : movementSpecs ? "Re-look up" : "Look up"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {movementSpecs ? (
+                movementSpecs.raw ? (
+                  <pre className="text-xs text-slate-600 whitespace-pre-wrap bg-slate-50 rounded-lg p-3 border border-slate-100">{movementSpecs.raw}</pre>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3" data-testid="movement-specs-grid">
+                    {[
+                      { key: "caliber", label: "Caliber" },
+                      { key: "lift_angle", label: "Lift Angle" },
+                      { key: "amplitude", label: "Amplitude" },
+                      { key: "beat_error", label: "Beat Error" },
+                    ].map(({ key, label }) => (
+                      <div key={key} className="bg-slate-50 rounded-lg p-3 border border-slate-100" data-testid={`spec-tile-${key}`}>
+                        <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">{label}</p>
+                        <p className="text-sm font-semibold text-slate-900">{movementSpecs[key] || "N/A"}</p>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <p className="text-sm text-slate-400">
+                  Look up the caliber, lift angle, amplitude, and beat error targets for this reference.
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
