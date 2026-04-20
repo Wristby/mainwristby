@@ -1,4 +1,4 @@
-import { useInventoryItem, useUpdateInventory, useDeleteInventory } from "@/hooks/use-inventory";
+import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
@@ -146,6 +146,7 @@ export default function InventoryDetail() {
   const [match, params] = useRoute("/inventory/:id");
   const id = params ? parseInt(params.id) : 0;
   const { data: item, isLoading } = useInventoryItem(id);
+  const { data: allInventory } = useInventory();
   const { data: clients } = useClients();
   const updateMutation = useUpdateInventory();
   const deleteMutation = useDeleteInventory();
@@ -517,6 +518,43 @@ export default function InventoryDetail() {
         startOfDay(typeof item.dateReceived === 'string' ? parseISO(item.dateReceived) : new Date(item.dateReceived))
       )) 
     : 0;
+  const calcHistoricalProfit = (h: any) => {
+    const revenue = h.salePrice || 0;
+    const cost = h.purchasePrice +
+      (h.importFee || 0) +
+      (h.serviceFee || 0) +
+      (h.polishFee || 0) +
+      (h.platformFees || 0) +
+      (h.shippingFee || 0) +
+      (h.insuranceFee || 0) +
+      (h.watchRegister ? settings.watch_register_fee : 0);
+    return revenue - cost;
+  };
+
+  const historicals = (allInventory || [])
+    .filter((h) => h.referenceNumber === item.referenceNumber && h.status === "sold" && h.id !== item.id)
+    .map((h) => {
+      const soldDateStr = (h as any).soldDate || (h as any).dateSold;
+      const daysToSell =
+        soldDateStr && h.purchaseDate
+          ? Math.max(0, differenceInDays(new Date(soldDateStr), new Date(h.purchaseDate)))
+          : null;
+      const histProfit = calcHistoricalProfit(h);
+      const histRevenue = (h as any).salePrice || 0;
+      const histMargin = histRevenue > 0 ? (histProfit / histRevenue) * 100 : 0;
+      return { ...h, soldDateStr, daysToSell, histProfit, histMargin };
+    })
+    .sort((a, b) => {
+      const ta = a.soldDateStr ? new Date(a.soldDateStr).getTime() : 0;
+      const tb = b.soldDateStr ? new Date(b.soldDateStr).getTime() : 0;
+      return tb - ta;
+    });
+
+  const avgHistProfit =
+    historicals.length > 0
+      ? historicals.reduce((s, h) => s + h.histProfit, 0) / historicals.length
+      : 0;
+
   const daysInStock = item.dateReceived
     ? Math.max(0, differenceInDays(
         getEndDate(),
@@ -1529,6 +1567,83 @@ export default function InventoryDetail() {
           </Card>
         </div>
       </div>
+
+      {/* Historicals Section */}
+      {historicals.length > 0 && (
+        <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-historicals">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg text-slate-900">Historicals</CardTitle>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-400">{historicals.length} previous {historicals.length === 1 ? "sale" : "sales"} of this reference</span>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-xs font-medium",
+                    avgHistProfit >= 0
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-red-50 text-red-700 border-red-200"
+                  )}
+                  data-testid="badge-historicals-avg-profit"
+                >
+                  Avg profit: {formatCurrency(avgHistProfit)}
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50">
+                    <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-6 py-3">Watch</th>
+                    <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-4 py-3">Sold</th>
+                    <th className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider px-4 py-3">Purchase</th>
+                    <th className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider px-4 py-3">Sale</th>
+                    <th className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider px-4 py-3">Profit</th>
+                    <th className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider px-4 py-3">Margin</th>
+                    <th className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider px-4 py-3 pr-6">Days</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {historicals.map((h) => (
+                    <tr key={h.id} className="hover:bg-slate-50 transition-colors" data-testid={`row-historical-${h.id}`}>
+                      <td className="px-6 py-3">
+                        <Link href={`/inventory/${h.id}`}>
+                          <span className="font-medium text-slate-900 hover:text-emerald-600 cursor-pointer transition-colors">
+                            {h.brand} {h.model}
+                          </span>
+                        </Link>
+                        <p className="text-xs text-slate-400 mt-0.5">#{h.id}</p>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">
+                        {h.soldDateStr ? format(new Date(h.soldDateStr), "dd MMM yyyy") : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-700">
+                        {formatCurrency(h.purchasePrice)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-700">
+                        {h.salePrice ? formatCurrency(h.salePrice) : "—"}
+                      </td>
+                      <td className={cn("px-4 py-3 text-right font-semibold", h.histProfit >= 0 ? "text-emerald-600" : "text-red-500")}
+                        data-testid={`text-historical-profit-${h.id}`}>
+                        {formatCurrency(h.histProfit)}
+                      </td>
+                      <td className={cn("px-4 py-3 text-right font-medium", h.histMargin >= 0 ? "text-emerald-600" : "text-red-500")}
+                        data-testid={`text-historical-margin-${h.id}`}>
+                        {h.histMargin.toFixed(1)}%
+                      </td>
+                      <td className="px-4 py-3 pr-6 text-right text-slate-500" data-testid={`text-historical-days-${h.id}`}>
+                        {h.daysToSell !== null ? `${h.daysToSell}d` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={isQuickAddClientOpen} onOpenChange={(open) => { setIsQuickAddClientOpen(open); if (!open) quickClientForm.reset(); }}>
         <DialogContent className="bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
