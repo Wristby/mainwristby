@@ -1598,21 +1598,34 @@ export default function InventoryDetail() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Movement Specs</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleLookupSpecs}
-                  disabled={isLookingUpSpecs}
-                  data-testid="button-lookup-movement-specs"
-                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
-                >
-                  {isLookingUpSpecs ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  {isLookingUpSpecs ? "Looking up..." : movementSpecs ? "Re-look up" : "Look up"}
-                </Button>
+                {movementSpecs && !isLookingUpSpecs ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleLookupSpecs}
+                    data-testid="button-relookup-movement-specs"
+                    className="text-slate-400 hover:text-emerald-700 gap-1.5 text-xs"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Re-look up
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleLookupSpecs}
+                    disabled={isLookingUpSpecs}
+                    data-testid="button-lookup-movement-specs"
+                    className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                  >
+                    {isLookingUpSpecs ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5" />
+                    )}
+                    {isLookingUpSpecs ? "Looking up..." : "Look up"}
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
