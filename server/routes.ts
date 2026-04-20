@@ -298,7 +298,9 @@ Papers/Cards: {{papers}}`;
       return res.status(400).json({ message: "Brand and reference number are required." });
     }
 
-    const prompt = `You are a horological reference database. Research the movement for watch reference ${referenceNumber} by ${brand}.
+    // Read prompt template and model from admin settings
+    const rawTemplate = await storage.getSetting("ai_movement_prompt_template") ||
+      `You are a horological reference database. Research the movement for watch reference {{referenceNumber}} by {{brand}}.
 Return ONLY a valid JSON object (no markdown, no explanation, no code fences) with exactly these four keys:
 {
   "caliber": "the caliber name, e.g. Cal. 3235, or N/A",
@@ -306,6 +308,9 @@ Return ONLY a valid JSON object (no markdown, no explanation, no code fences) wi
   "amplitude": "the healthy amplitude range when fully wound, e.g. 270–310°, or N/A",
   "beat_error": "the acceptable beat error, e.g. ≤ 0.5 ms, or N/A"
 }`;
+    const prompt = (rawTemplate as string)
+      .replace(/\{\{brand\}\}/g, brand)
+      .replace(/\{\{referenceNumber\}\}/g, referenceNumber);
 
     // Use the same admin-configured model as the listing description
     const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
@@ -485,6 +490,14 @@ const DEFAULT_SETTINGS: Record<string, any> = {
     { value: "other", label: "Other" },
   ],
   ai_model: "openai/gpt-4o-mini",
+  ai_movement_prompt_template: `You are a horological reference database. Research the movement for watch reference {{referenceNumber}} by {{brand}}.
+Return ONLY a valid JSON object (no markdown, no explanation, no code fences) with exactly these four keys:
+{
+  "caliber": "the caliber name, e.g. Cal. 3235, or N/A",
+  "lift_angle": "the lift angle in degrees, e.g. 53°, or N/A",
+  "amplitude": "the healthy amplitude range when fully wound, e.g. 270–310°, or N/A",
+  "beat_error": "the acceptable beat error, e.g. ≤ 0.5 ms, or N/A"
+}`,
   ai_prompt_template: `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
 
 Brand: {{brand}}

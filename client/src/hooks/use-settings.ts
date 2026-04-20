@@ -16,6 +16,7 @@ export interface AppSettings {
   expense_categories: { value: string; label: string }[];
   ai_model: string;
   ai_prompt_template: string;
+  ai_movement_prompt_template: string;
   inventory_export_columns: string[];
   financial_export_columns: string[];
   dashboard_sections: Record<string, { visible: boolean; order: number }>;
@@ -53,6 +54,7 @@ const DEFAULTS: AppSettings = {
   ],
   ai_model: "openai/gpt-4o-mini",
   ai_prompt_template: "",
+  ai_movement_prompt_template: "",
   inventory_export_columns: [],
   financial_export_columns: [],
   dashboard_sections: {

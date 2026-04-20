@@ -374,10 +374,11 @@ export default function Admin() {
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection title="AI Description Settings" icon={Sparkles}>
-          <div className="space-y-4">
+        <CollapsibleSection title="AI Settings" icon={Sparkles}>
+          <div className="space-y-6">
             <div>
               <Label className="text-sm font-semibold text-slate-700">AI Model</Label>
+              <p className="text-xs text-slate-400 mt-1 mb-2">Applies to all AI features (Listing Description &amp; Movement Specs)</p>
               <Select
                 value={settings.ai_model}
                 onValueChange={(v) => saveSetting("ai_model", v)}
@@ -396,13 +397,23 @@ export default function Admin() {
               </Select>
             </div>
             <div>
-              <Label className="text-sm font-semibold text-slate-700">Prompt Template</Label>
+              <Label className="text-sm font-semibold text-slate-700">Listing Description Prompt</Label>
               <p className="text-xs text-slate-400 mt-1 mb-2">
                 Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}, {"{{box}}"}, {"{{papers}}"}
               </p>
               <PromptEditor
                 value={settings.ai_prompt_template}
                 onSave={(v) => saveSetting("ai_prompt_template", v)}
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-slate-700">Movement Specs Prompt</Label>
+              <p className="text-xs text-slate-400 mt-1 mb-2">
+                Available placeholders: {"{{brand}}"}, {"{{referenceNumber}}"}
+              </p>
+              <PromptEditor
+                value={settings.ai_movement_prompt_template}
+                onSave={(v) => saveSetting("ai_movement_prompt_template", v)}
               />
             </div>
           </div>
