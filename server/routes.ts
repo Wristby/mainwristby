@@ -357,14 +357,21 @@ Return ONLY a valid JSON object (no markdown, no explanation, no code fences) wi
       const cleaned = rawText.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
       let specs: Record<string, string>;
       try {
-        specs = JSON.parse(cleaned);
+        const parsed = JSON.parse(cleaned);
+        // Normalize: ensure all four canonical keys exist with "N/A" fallback
+        specs = {
+          caliber: String(parsed.caliber || "N/A"),
+          lift_angle: String(parsed.lift_angle || "N/A"),
+          amplitude: String(parsed.amplitude || "N/A"),
+          beat_error: String(parsed.beat_error || "N/A"),
+        };
       } catch {
+        // Parse failure: return raw text only
         specs = { raw: rawText };
       }
 
-      // Note fallback substitution in specs if it occurred
       if (modelUsed === FALLBACK_MODEL) {
-        specs = { ...specs, _model_note: `Returned by fallback model (${FALLBACK_MODEL})` };
+        console.log(`[movement-specs] Primary model unavailable; used fallback ${FALLBACK_MODEL}`);
       }
 
       // Persist to the inventory record if an inventoryId was provided
@@ -372,7 +379,7 @@ Return ONLY a valid JSON object (no markdown, no explanation, no code fences) wi
         await storage.updateMovementSpecs(inventoryId, specs);
       }
 
-      res.json({ specs, modelUsed });
+      res.json({ specs });
     } catch (err: any) {
       res.status(502).json({ message: `Failed to reach AI service: ${err.message}` });
     }
