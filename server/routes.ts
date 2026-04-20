@@ -351,10 +351,9 @@ Papers/Cards: {{papers}}`;
       let specs: Record<string, string>;
       try {
         const parsed = JSON.parse(cleaned);
-        // Normalize: ensure all five canonical keys exist with "N/A" fallback
+        // Normalize: ensure all four canonical keys exist with "N/A" fallback
         specs = {
           caliber: String(parsed.caliber || "N/A"),
-          rate: String(parsed.rate || "N/A"),
           lift_angle: String(parsed.lift_angle || "N/A"),
           amplitude: String(parsed.amplitude || "N/A"),
           beat_error: String(parsed.beat_error || "N/A"),
@@ -453,10 +452,9 @@ async function seedDatabase() {
 }
 
 const DEFAULT_MOVEMENT_PROMPT = `You are a horological reference database. Research the movement for watch reference {{referenceNumber}} by {{brand}}.
-Return ONLY a valid JSON object (no markdown, no explanation, no code fences) with exactly these five keys:
+Return ONLY a valid JSON object (no markdown, no explanation, no code fences) with exactly these four keys:
 {
   "caliber": "the caliber name, e.g. Cal. 3235, or N/A",
-  "rate": "the manufacturer's specified daily rate accuracy, e.g. -4/+6 sec/day, or N/A",
   "lift_angle": "the lift angle in degrees, e.g. 53°, or N/A",
   "amplitude": "the healthy amplitude range when fully wound, e.g. 270–310°, or N/A",
   "beat_error": "the acceptable beat error, e.g. ≤ 0.5 ms, or N/A"
@@ -533,16 +531,5 @@ async function seedSettings() {
     if (!(key in existing)) {
       await storage.upsertSetting(key, value);
     }
-  }
-
-  // One-time migration: upgrade the movement prompt from 4-field to 5-field default
-  // Only replaces it when the stored value is the old default (not a custom prompt)
-  const storedMovementPrompt = existing["ai_movement_prompt_template"];
-  if (
-    typeof storedMovementPrompt === "string" &&
-    storedMovementPrompt.includes("four keys") &&
-    !storedMovementPrompt.includes('"rate"')
-  ) {
-    await storage.upsertSetting("ai_movement_prompt_template", DEFAULT_MOVEMENT_PROMPT);
   }
 }

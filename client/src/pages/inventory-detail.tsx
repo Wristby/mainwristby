@@ -1636,7 +1636,6 @@ export default function InventoryDetail() {
                   <div className="grid grid-cols-2 gap-3" data-testid="movement-specs-grid">
                     {[
                       { key: "caliber", label: "Caliber" },
-                      { key: "rate", label: "Daily Rate" },
                       { key: "lift_angle", label: "Lift Angle" },
                       { key: "amplitude", label: "Amplitude" },
                       { key: "beat_error", label: "Beat Error" },
@@ -1650,7 +1649,7 @@ export default function InventoryDetail() {
                 )
               ) : (
                 <p className="text-sm text-slate-400">
-                  Look up the caliber, daily rate, lift angle, amplitude, and beat error targets for this reference.
+                  Look up the caliber, lift angle, amplitude, and beat error targets for this reference.
                 </p>
               )}
             </CardContent>
