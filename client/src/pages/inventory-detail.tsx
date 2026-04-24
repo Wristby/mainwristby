@@ -420,6 +420,10 @@ export default function InventoryDetail() {
         referenceNumber: item.referenceNumber,
         inventoryId: id,
       });
+      const contentType = result.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("Movement Specs endpoint not found on this server. Pull the latest app code and restart the server.");
+      }
       const data = await result.json();
       if (data.specs) {
         setMovementSpecs(data.specs);
