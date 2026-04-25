@@ -443,10 +443,11 @@ export default function InventoryDetail() {
   };
 
   const handleSaveNotes = async () => {
+    if (isSavingNotes) return;
     setIsSavingNotes(true);
     try {
       await apiRequest("PUT", `/api/inventory/${id}`, { notes: notesValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
       setIsEditingNotes(false);
       toast({ title: "Notes saved" });
