@@ -364,11 +364,15 @@ export default function InventoryDetail() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [movementSpecs, setMovementSpecs] = useState<Record<string, string> | null>(null);
   const [isLookingUpSpecs, setIsLookingUpSpecs] = useState(false);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState(item?.notes || "");
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
 
   useEffect(() => {
     if (item) {
       setDescriptionValue((item as any).description || "");
       setMovementSpecs((item as any).movementSpecs || null);
+      setNotesValue(item.notes || "");
     }
   }, [item]);
 
@@ -435,6 +439,21 @@ export default function InventoryDetail() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsLookingUpSpecs(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    setIsSavingNotes(true);
+    try {
+      await apiRequest("PUT", `/api/inventory/${id}`, { notes: notesValue });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      setIsEditingNotes(false);
+      toast({ title: "Notes saved" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingNotes(false);
     }
   };
 
@@ -1528,13 +1547,68 @@ export default function InventoryDetail() {
           </Card>
 
           <Card className="border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Notes</CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg text-slate-900">Notes</CardTitle>
+                {!isEditingNotes && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsEditingNotes(true)}
+                    data-testid="button-edit-notes"
+                    className="text-slate-400 hover:text-emerald-700 h-7 w-7 p-0"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-sm text-slate-600 whitespace-pre-wrap min-h-[4rem]">
-                {item.notes || "No notes available for this watch."}
-              </div>
+              {isEditingNotes ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={notesValue}
+                    onChange={(e) => setNotesValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") { setIsEditingNotes(false); setNotesValue(item.notes || ""); }
+                      if (e.key === "Enter" && e.ctrlKey) handleSaveNotes();
+                    }}
+                    className="bg-white border-slate-200 min-h-[6rem] text-sm resize-none"
+                    placeholder="Add any notes about this watch…"
+                    autoFocus
+                    data-testid="textarea-notes-inline"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setIsEditingNotes(false); setNotesValue(item.notes || ""); }}
+                      disabled={isSavingNotes}
+                      data-testid="button-cancel-notes"
+                      className="text-slate-500 hover:text-slate-700"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveNotes}
+                      disabled={isSavingNotes}
+                      data-testid="button-save-notes"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {isSavingNotes ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="text-sm text-slate-600 whitespace-pre-wrap min-h-[4rem] cursor-pointer rounded-md hover:bg-slate-50 p-1 -m-1 transition-colors"
+                  onClick={() => setIsEditingNotes(true)}
+                  data-testid="text-notes-display"
+                >
+                  {item.notes || <span className="text-slate-400 italic">Click to add a note…</span>}
+                </div>
+              )}
             </CardContent>
           </Card>
 
