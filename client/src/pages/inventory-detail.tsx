@@ -496,6 +496,7 @@ export default function InventoryDetail() {
       resetStatusPopover();
       setShowSaleDetails(true);
       setScrollToSaleOnOpen(true);
+      form.setValue("status", "sold");
       setIsEditOpen(true);
       return;
     }
