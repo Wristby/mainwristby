@@ -31,7 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus, Sparkles, Copy } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus, Sparkles, Copy, ChevronDown } from "lucide-react";
 import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -367,6 +367,8 @@ export default function InventoryDetail() {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState(item?.notes || "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [isStatusPopoverOpen, setIsStatusPopoverOpen] = useState(false);
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
 
   useEffect(() => {
     if (item) {
@@ -455,6 +457,25 @@ export default function InventoryDetail() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsSavingNotes(false);
+    }
+  };
+
+  const handleQuickStatusChange = async (newStatus: string) => {
+    if (isSavingStatus || newStatus === item?.status) {
+      setIsStatusPopoverOpen(false);
+      return;
+    }
+    setIsSavingStatus(true);
+    try {
+      await apiRequest("PUT", `/api/inventory/${id}`, { status: newStatus });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      setIsStatusPopoverOpen(false);
+      toast({ title: "Status updated", description: `Status changed to ${getStatusLabel(newStatus)}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingStatus(false);
     }
   };
 
@@ -1469,9 +1490,50 @@ export default function InventoryDetail() {
                 <div>
                   <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current State</Label>
                   <div className="mt-2 flex">
-                    <Badge variant="outline" className={cn("font-medium px-3 py-1", getStatusStyles(item.status))}>
-                      {getStatusLabel(item.status)}
-                    </Badge>
+                    <Popover open={isStatusPopoverOpen} onOpenChange={setIsStatusPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          data-testid="button-status-badge"
+                          disabled={isSavingStatus}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 font-medium px-3 py-1 rounded-full border text-sm cursor-pointer transition-opacity hover:opacity-80",
+                            getStatusStyles(item.status),
+                            isSavingStatus && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          {isSavingStatus ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <>
+                              {getStatusLabel(item.status)}
+                              <ChevronDown className="w-3 h-3" />
+                            </>
+                          )}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-44 p-1" align="start">
+                        {[
+                          { value: "incoming", label: "Incoming" },
+                          { value: "in_stock", label: "Listed" },
+                          { value: "servicing", label: "In Service" },
+                          { value: "received", label: "Received" },
+                          { value: "sold", label: "Sold" },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            data-testid={`status-option-${option.value}`}
+                            onClick={() => handleQuickStatusChange(option.value)}
+                            className={cn(
+                              "w-full flex items-center justify-between px-3 py-2 text-sm rounded-md hover:bg-slate-50 transition-colors",
+                              item.status === option.value ? "font-medium text-emerald-600" : "text-slate-700"
+                            )}
+                          >
+                            {option.label}
+                            {item.status === option.value && <Check className="w-3.5 h-3.5" />}
+                          </button>
+                        ))}
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
 
