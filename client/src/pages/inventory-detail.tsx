@@ -1792,7 +1792,7 @@ export default function InventoryDetail() {
                   ) : (
                     <Sparkles className="w-3.5 h-3.5" />
                   )}
-                  {isGenerating ? "Generating..." : "Generate with AI"}
+                  {isGenerating ? "Generating..." : "Generate"}
                 </Button>
               </div>
             </CardHeader>
