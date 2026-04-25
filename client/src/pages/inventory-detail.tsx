@@ -479,14 +479,21 @@ export default function InventoryDetail() {
 
   const DATE_STATUSES = ["incoming", "received"];
 
+  const resetStatusPopover = () => {
+    setStatusPickerStep("select");
+    setPendingStatus(null);
+    setStatusPickerDate(new Date());
+    setIsStatusPopoverOpen(false);
+  };
+
   const handleQuickStatusChange = (newStatus: string) => {
     if (isSavingStatus) return;
     if (newStatus === item?.status) {
-      setIsStatusPopoverOpen(false);
+      resetStatusPopover();
       return;
     }
     if (newStatus === "sold") {
-      setIsStatusPopoverOpen(false);
+      resetStatusPopover();
       setShowSaleDetails(true);
       setScrollToSaleOnOpen(true);
       setIsEditOpen(true);
@@ -514,7 +521,7 @@ export default function InventoryDetail() {
       await apiRequest("PUT", `/api/inventory/${id}`, payload);
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
-      setIsStatusPopoverOpen(false);
+      resetStatusPopover();
       toast({ title: "Status updated", description: `Status changed to ${getStatusLabel(newStatus)}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -1535,12 +1542,8 @@ export default function InventoryDetail() {
                   <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current State</Label>
                   <div className="mt-2 flex">
                     <Popover open={isStatusPopoverOpen} onOpenChange={(open) => {
-                      setIsStatusPopoverOpen(open);
-                      if (!open) {
-                        setStatusPickerStep("select");
-                        setPendingStatus(null);
-                        setStatusPickerDate(new Date());
-                      }
+                      if (!open) resetStatusPopover();
+                      else setIsStatusPopoverOpen(true);
                     }}>
                       <PopoverTrigger asChild>
                         <button
@@ -1593,7 +1596,7 @@ export default function InventoryDetail() {
                                 Date for {getStatusLabel(pendingStatus || "")}
                               </span>
                               <button
-                                onClick={() => setStatusPickerStep("select")}
+                                onClick={() => { setStatusPickerStep("select"); setPendingStatus(null); }}
                                 className="text-xs text-slate-400 hover:text-slate-600"
                                 data-testid="button-status-date-back"
                               >
@@ -1620,7 +1623,7 @@ export default function InventoryDetail() {
                                 size="sm"
                                 variant="outline"
                                 className="flex-1"
-                                onClick={() => setIsStatusPopoverOpen(false)}
+                                onClick={resetStatusPopover}
                                 data-testid="button-status-date-cancel"
                               >
                                 Cancel
