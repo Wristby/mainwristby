@@ -37,7 +37,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { Separator } from "@/components/ui/separator";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -163,6 +163,8 @@ export default function InventoryDetail() {
   const EXPENSE_CATEGORIES = settings.expense_categories;
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [showSaleDetails, setShowSaleDetails] = useState(false);
+  const [scrollToSaleOnOpen, setScrollToSaleOnOpen] = useState(false);
+  const salesSectionRef = useRef<HTMLDivElement>(null);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
   const [showShippingDetails, setShowShippingDetails] = useState(false);
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
@@ -369,6 +371,9 @@ export default function InventoryDetail() {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isStatusPopoverOpen, setIsStatusPopoverOpen] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
+  const [statusPickerStep, setStatusPickerStep] = useState<"select" | "date">("select");
+  const [statusPickerDate, setStatusPickerDate] = useState<Date | undefined>(new Date());
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (item) {
@@ -377,6 +382,18 @@ export default function InventoryDetail() {
       setNotesValue(item.notes || "");
     }
   }, [item]);
+
+  useEffect(() => {
+    if (isEditOpen && scrollToSaleOnOpen && salesSectionRef.current) {
+      const timer = setTimeout(() => {
+        salesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+    if (!isEditOpen) {
+      setScrollToSaleOnOpen(false);
+    }
+  }, [isEditOpen, scrollToSaleOnOpen]);
 
   const handleSaveDescription = async () => {
     setIsSavingDescription(true);
@@ -460,14 +477,41 @@ export default function InventoryDetail() {
     }
   };
 
-  const handleQuickStatusChange = async (newStatus: string) => {
-    if (isSavingStatus || newStatus === item?.status) {
+  const DATE_STATUSES = ["incoming", "received"];
+
+  const handleQuickStatusChange = (newStatus: string) => {
+    if (isSavingStatus) return;
+    if (newStatus === item?.status) {
       setIsStatusPopoverOpen(false);
       return;
     }
+    if (newStatus === "sold") {
+      setIsStatusPopoverOpen(false);
+      setShowSaleDetails(true);
+      setScrollToSaleOnOpen(true);
+      setIsEditOpen(true);
+      return;
+    }
+    if (DATE_STATUSES.includes(newStatus)) {
+      setPendingStatus(newStatus);
+      setStatusPickerDate(new Date());
+      setStatusPickerStep("date");
+      return;
+    }
+    saveStatus(newStatus, undefined);
+  };
+
+  const handleConfirmStatusWithDate = () => {
+    if (!pendingStatus) return;
+    saveStatus(pendingStatus, statusPickerDate);
+  };
+
+  const saveStatus = async (newStatus: string, date: Date | undefined) => {
     setIsSavingStatus(true);
     try {
-      await apiRequest("PUT", `/api/inventory/${id}`, { status: newStatus });
+      const payload: Record<string, unknown> = { status: newStatus };
+      if (date) payload.purchaseDate = date.toISOString();
+      await apiRequest("PUT", `/api/inventory/${id}`, payload);
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
       setIsStatusPopoverOpen(false);
@@ -886,7 +930,7 @@ export default function InventoryDetail() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-4" ref={salesSectionRef}>
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                     <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
                     <div className="flex items-center space-x-2">
@@ -1490,7 +1534,14 @@ export default function InventoryDetail() {
                 <div>
                   <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current State</Label>
                   <div className="mt-2 flex">
-                    <Popover open={isStatusPopoverOpen} onOpenChange={setIsStatusPopoverOpen}>
+                    <Popover open={isStatusPopoverOpen} onOpenChange={(open) => {
+                      setIsStatusPopoverOpen(open);
+                      if (!open) {
+                        setStatusPickerStep("select");
+                        setPendingStatus(null);
+                        setStatusPickerDate(new Date());
+                      }
+                    }}>
                       <PopoverTrigger asChild>
                         <button
                           data-testid="button-status-badge"
@@ -1511,27 +1562,72 @@ export default function InventoryDetail() {
                           )}
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-44 p-1" align="start">
-                        {[
-                          { value: "incoming", label: "Incoming" },
-                          { value: "in_stock", label: "Listed" },
-                          { value: "servicing", label: "In Service" },
-                          { value: "received", label: "Received" },
-                          { value: "sold", label: "Sold" },
-                        ].map((option) => (
-                          <button
-                            key={option.value}
-                            data-testid={`status-option-${option.value}`}
-                            onClick={() => handleQuickStatusChange(option.value)}
-                            className={cn(
-                              "w-full flex items-center justify-between px-3 py-2 text-sm rounded-md hover:bg-slate-50 transition-colors",
-                              item.status === option.value ? "font-medium text-emerald-600" : "text-slate-700"
-                            )}
-                          >
-                            {option.label}
-                            {item.status === option.value && <Check className="w-3.5 h-3.5" />}
-                          </button>
-                        ))}
+                      <PopoverContent className={statusPickerStep === "date" ? "w-auto p-2" : "w-44 p-1"} align="start">
+                        {statusPickerStep === "select" ? (
+                          <>
+                            {[
+                              { value: "incoming", label: "Incoming" },
+                              { value: "in_stock", label: "Listed" },
+                              { value: "servicing", label: "In Service" },
+                              { value: "received", label: "Received" },
+                              { value: "sold", label: "Sold" },
+                            ].map((option) => (
+                              <button
+                                key={option.value}
+                                data-testid={`status-option-${option.value}`}
+                                onClick={() => handleQuickStatusChange(option.value)}
+                                className={cn(
+                                  "w-full flex items-center justify-between px-3 py-2 text-sm rounded-md hover:bg-slate-50 transition-colors",
+                                  item.status === option.value ? "font-medium text-emerald-600" : "text-slate-700"
+                                )}
+                              >
+                                {option.label}
+                                {item.status === option.value && <Check className="w-3.5 h-3.5" />}
+                              </button>
+                            ))}
+                          </>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                Date for {getStatusLabel(pendingStatus || "")}
+                              </span>
+                              <button
+                                onClick={() => setStatusPickerStep("select")}
+                                className="text-xs text-slate-400 hover:text-slate-600"
+                                data-testid="button-status-date-back"
+                              >
+                                ← Back
+                              </button>
+                            </div>
+                            <Calendar
+                              mode="single"
+                              selected={statusPickerDate}
+                              onSelect={(date) => setStatusPickerDate(date ?? new Date())}
+                              initialFocus
+                            />
+                            <div className="flex gap-2 px-1">
+                              <Button
+                                size="sm"
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={handleConfirmStatusWithDate}
+                                disabled={isSavingStatus}
+                                data-testid="button-status-date-confirm"
+                              >
+                                {isSavingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Confirm"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => setIsStatusPopoverOpen(false)}
+                                data-testid="button-status-date-cancel"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </PopoverContent>
                     </Popover>
                   </div>
