@@ -1721,6 +1721,39 @@ export default function InventoryDetail() {
                   </div>
                 )}
 
+                {(item as any).serviceStartDate && (() => {
+                  const startDate = startOfDay(new Date((item as any).serviceStartDate));
+                  if ((item as any).dateReturnedFromService) {
+                    const endDate = startOfDay(new Date((item as any).dateReturnedFromService));
+                    const days = Math.max(0, differenceInDays(endDate, startDate));
+                    return (
+                      <div>
+                        <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Service Duration</Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full" data-testid="text-service-duration">
+                            <Wrench className="w-3.5 h-3.5 text-slate-500" />
+                            {days} {days === 1 ? 'day' : 'days'} total
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  } else if (item.status === 'servicing') {
+                    const days = Math.max(0, differenceInDays(startOfDay(new Date()), startDate));
+                    return (
+                      <div>
+                        <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Service Duration</Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200" data-testid="text-service-duration">
+                            <Wrench className="w-3.5 h-3.5 text-amber-500" />
+                            In service for {days} {days === 1 ? 'day' : 'days'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {(item.soldDate || (item as any).dateSold) && (
                   <div>
                     <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Sold</Label>
