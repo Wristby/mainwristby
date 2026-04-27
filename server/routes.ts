@@ -508,7 +508,8 @@ Papers/Cards: {{papers}}`,
     "Polish Fee (EUR)", "Target Sell Price (EUR)", "Sale Price (EUR)", "Sold Date",
     "Platform Fees (EUR)", "Shipping Fee (EUR)", "Insurance Fee (EUR)", "Margin %",
     "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed", "Hold Time (Days)",
-    "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes"
+    "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes",
+    "Service Start Date"
   ],
   financial_export_columns: [
     "Description", "Amount (EUR)", "Category", "Date", "Recurring", "Watch Reference"
@@ -530,6 +531,14 @@ async function seedSettings() {
   for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
     if (!(key in existing)) {
       await storage.upsertSetting(key, value);
+    }
+  }
+
+  // Migration: append "Service Start Date" to existing inventory_export_columns if missing
+  if ("inventory_export_columns" in existing) {
+    const cols = existing["inventory_export_columns"] as string[];
+    if (Array.isArray(cols) && !cols.includes("Service Start Date")) {
+      await storage.upsertSetting("inventory_export_columns", [...cols, "Service Start Date"]);
     }
   }
 }

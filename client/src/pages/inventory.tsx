@@ -457,7 +457,8 @@ export default function Inventory() {
       "Polish Fee (EUR)", "Target Sell Price (EUR)", "Sale Price (EUR)", "Sold Date",
       "Platform Fees (EUR)", "Shipping Fee (EUR)", "Insurance Fee (EUR)", "Margin %",
       "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed", "Hold Time (Days)",
-      "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes"
+      "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes",
+      "Service Start Date"
     ];
     const enabledCols = settings.inventory_export_columns as string[];
     const colIndices = allHeaders.map((h, i) => ({ header: h, index: i })).filter(c => !enabledCols.length || enabledCols.includes(c.header));
@@ -516,7 +517,8 @@ export default function Inventory() {
         `"${item.trackingNumber || ""}"`,
         `"${item.gdriveLink || ""}"`,
         profit,
-        `"${(item.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`
+        `"${(item.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`,
+        item.serviceStartDate ? format(new Date(item.serviceStartDate), "yyyy-MM-dd") : ""
       ];
       return colIndices.map(c => allValues[c.index]);
     });

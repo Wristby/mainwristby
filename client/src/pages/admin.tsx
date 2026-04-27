@@ -239,7 +239,8 @@ const ALL_INVENTORY_COLUMNS = [
   "Polish Fee (EUR)", "Target Sell Price (EUR)", "Sale Price (EUR)", "Sold Date",
   "Platform Fees (EUR)", "Shipping Fee (EUR)", "Insurance Fee (EUR)", "Margin %",
   "Sold To", "Sold Platform", "Purchase Date", "Date Received", "Date Listed", "Hold Time (Days)",
-  "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes"
+  "Shipping Partner", "Tracking Number", "Google Drive Link", "Net Profit (EUR)", "Notes",
+  "Service Start Date"
 ];
 
 const ALL_FINANCIAL_COLUMNS = [
