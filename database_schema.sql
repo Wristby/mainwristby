@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS inventory (
     -- Service & Preparation Costs (stored in cents)
     service_fee INTEGER DEFAULT 0,
     polish_fee INTEGER DEFAULT 0,
+    service_start_date TIMESTAMP,
     date_sent_to_service TIMESTAMP,
     date_returned_from_service TIMESTAMP,
     service_notes TEXT,

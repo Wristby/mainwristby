@@ -120,6 +120,7 @@ const editFormSchema = z.object({
   soldTo: z.string().optional().nullable(),
   dateSold: z.string().optional().nullable(),
   
+  serviceStartDate: z.string().optional().nullable(),
   dateSentToService: z.string().optional().nullable(),
   dateReturnedFromService: z.string().optional().nullable(),
   serviceFee: z.coerce.number().optional().default(0),
@@ -261,6 +262,7 @@ export default function InventoryDetail() {
       insuranceFee: 0,
       soldTo: "",
       dateSold: "",
+      serviceStartDate: "",
       dateSentToService: "",
       dateReturnedFromService: "",
       serviceFee: 0,
@@ -307,7 +309,7 @@ export default function InventoryDetail() {
   useEffect(() => {
     if (item) {
       const hasSaleData = (item as any).salePrice > 0 || item.soldDate || (item as any).dateSold;
-      const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).dateSentToService;
+      const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).dateSentToService || (item as any).serviceStartDate;
       const hasShippingData = item.shippingPartner || item.trackingNumber;
       setShowSaleDetails(hasSaleData);
       setShowServiceDetails(hasServiceData);
@@ -341,6 +343,7 @@ export default function InventoryDetail() {
         insuranceFee: ((item as any).insuranceFee || 0) / 100,
         soldTo: (item as any).soldTo || "",
         dateSold: (item.soldDate || (item as any).dateSold) ? new Date((item.soldDate || (item as any).dateSold)).toISOString() : "",
+        serviceStartDate: (item as any).serviceStartDate ? new Date((item as any).serviceStartDate).toISOString() : "",
         dateSentToService: (item as any).dateSentToService ? new Date((item as any).dateSentToService).toISOString() : "",
         dateReturnedFromService: (item as any).dateReturnedFromService ? new Date((item as any).dateReturnedFromService).toISOString() : "",
         serviceFee: ((item as any).serviceFee || 0) / 100,
@@ -358,6 +361,7 @@ export default function InventoryDetail() {
   const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
   const [isDateListedOpen, setIsDateListedOpen] = useState(false);
   const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
+  const [isDateServiceStartOpen, setIsDateServiceStartOpen] = useState(false);
   const [isDateSentOpen, setIsDateSentOpen] = useState(false);
   const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
 
@@ -477,7 +481,7 @@ export default function InventoryDetail() {
     }
   };
 
-  const DATE_STATUSES = ["incoming", "received"];
+  const DATE_STATUSES = ["incoming", "received", "servicing"];
 
   const resetStatusPopover = () => {
     setStatusPickerStep("select");
@@ -518,7 +522,13 @@ export default function InventoryDetail() {
     setIsSavingStatus(true);
     try {
       const payload: Record<string, unknown> = { status: newStatus };
-      if (date) payload.purchaseDate = date.toISOString();
+      if (date) {
+        if (newStatus === "servicing") {
+          payload.serviceStartDate = date.toISOString();
+        } else {
+          payload.purchaseDate = date.toISOString();
+        }
+      }
       await apiRequest("PUT", `/api/inventory/${id}`, payload);
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
@@ -575,6 +585,7 @@ export default function InventoryDetail() {
       purchaseDate: data.purchaseDate || null,
       dateListed: data.dateListed || null,
       soldDate: data.dateSold || (finalStatus === 'sold' ? new Date().toISOString() : null),
+      serviceStartDate: data.serviceStartDate || null,
       dateSentToService: data.dateSentToService || null,
       dateReturnedFromService: data.dateReturnedFromService || null,
       serviceNotes: data.serviceNotes || null,
@@ -1053,6 +1064,20 @@ export default function InventoryDetail() {
                   {showServiceDetails && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Service Start Date</Label>
+                          <Popover open={isDateServiceStartOpen} onOpenChange={setIsDateServiceStartOpen}>
+                            <PopoverTrigger asChild>
+                              <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("serviceStartDate") && "text-muted-foreground")} data-testid="button-service-start-date">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {form.watch("serviceStartDate") ? format(new Date(form.watch("serviceStartDate")!), "PPP") : <span>Pick a date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0 bg-white border-slate-200">
+                              <Calendar mode="single" selected={form.watch("serviceStartDate") ? new Date(form.watch("serviceStartDate")!) : undefined} onSelect={(date) => { form.setValue("serviceStartDate", date ? date.toISOString() : null); if (date) form.setValue("status", "servicing"); setIsDateServiceStartOpen(false); }} initialFocus />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                         <div className="space-y-2">
                           <Label>Date Sent to Service</Label>
                           <Popover open={isDateSentOpen} onOpenChange={setIsDateSentOpen}>
@@ -1666,6 +1691,16 @@ export default function InventoryDetail() {
                   </div>
                 )}
                 
+                {(item as any).serviceStartDate && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Service Start</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <Wrench className="w-4 h-4" />
+                      <span className="text-sm font-medium" data-testid="text-service-start-date">{format(new Date((item as any).serviceStartDate), 'M/d/yyyy')}</span>
+                    </div>
+                  </div>
+                )}
+
                 {(item as any).dateSentToService && (
                   <div>
                     <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Sent to Service</Label>
