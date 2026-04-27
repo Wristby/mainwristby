@@ -137,6 +137,15 @@ const formatCurrency = (val: number) => {
   }).format(val / 100);
 };
 
+const getServiceDurationDays = (item: any) => {
+  const start = item.serviceStartDate ? new Date(item.serviceStartDate) : null;
+  if (!start || Number.isNaN(start.getTime())) return null;
+  const end = item.dateReturnedFromService || item.status !== "servicing" ? item.dateReturnedFromService : null;
+  const effectiveEnd = end ? new Date(end) : new Date();
+  if (Number.isNaN(effectiveEnd.getTime())) return null;
+  return Math.max(0, differenceInDays(effectiveEnd, start));
+};
+
 export default function Inventory() {
   const [search, setSearch] = useState("");
   const [location, setLocation] = useLocation();
@@ -1394,10 +1403,16 @@ export default function Inventory() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredInventory.map((item) => (
+              filteredInventory.map((item) => {
+                const serviceDurationDays = getServiceDurationDays(item);
+                const isLongService = item.status === "servicing" && serviceDurationDays !== null && serviceDurationDays > 30;
+                return (
                 <TableRow 
                   key={item.id} 
-                  className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                  className={cn(
+                    "hover:bg-slate-50/50 transition-colors group cursor-pointer",
+                    isLongService && "bg-amber-50/50"
+                  )}
                   onClick={() => setLocation(`/inventory/${item.id}`)}
                 >
                   <TableCell className="font-mono text-xs text-slate-500">#{item.id}</TableCell>
@@ -1413,6 +1428,14 @@ export default function Inventory() {
                       <span className="font-medium text-slate-900">{formatCurrency(item.purchasePrice)}</span>
                       {item.purchaseDate && (
                         <span className="text-xs text-slate-400">{format(new Date(item.purchaseDate), "MMM d, yyyy")}</span>
+                      )}
+                      {item.status === "servicing" && serviceDurationDays !== null && (
+                        <span className={cn(
+                          "mt-1 inline-flex w-fit rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                          isLongService ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"
+                        )}>
+                          {`In service for ${serviceDurationDays} days`}
+                        </span>
                       )}
                     </div>
                   </TableCell>
@@ -1463,7 +1486,8 @@ export default function Inventory() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>
