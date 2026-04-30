@@ -105,7 +105,7 @@ function ModelPicker({
           <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[420px] p-0 max-h-[60vh] overflow-hidden" align="start">
+      <PopoverContent className="w-[min(600px,90vw)] p-0 overflow-hidden" align="start">
         <div className="border-b border-slate-200 p-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -118,14 +118,14 @@ function ModelPicker({
             />
           </div>
         </div>
-        <ScrollArea className="h-[min(60vh-72px,480px)]">
+        <ScrollArea className="max-h-[480px]">
           <div className="p-2">
             {grouped.map((group) => (
               <div key={group.provider} className="mb-3 last:mb-0">
                 <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
                   {group.provider}
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {group.items.map((model) => (
                     <button
                       key={model.model}
@@ -138,14 +138,13 @@ function ModelPicker({
                       className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-slate-50"
                       data-testid={`button-ai-model-${model.model.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
                     >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-slate-900">{model.name}</div>
-                        <div className="truncate text-xs text-slate-400">{model.model}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-slate-900">{model.name}</div>
+                        <div className="text-xs text-slate-400">{model.model}</div>
                       </div>
-                      <div className="ml-4 flex items-center gap-2 text-xs text-slate-400">
-                        {selected?.model === model.model && <Check className="h-4 w-4 text-emerald-600" />}
-                        <span>{model.provider}</span>
-                      </div>
+                      {selected?.model === model.model && (
+                        <Check className="ml-3 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                      )}
                     </button>
                   ))}
                 </div>
