@@ -105,7 +105,7 @@ function ModelPicker({
           <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[420px] p-0" align="start">
+      <PopoverContent className="w-[420px] p-0 max-h-[60vh] overflow-hidden" align="start">
         <div className="border-b border-slate-200 p-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -118,7 +118,7 @@ function ModelPicker({
             />
           </div>
         </div>
-        <ScrollArea className="max-h-[320px]">
+        <ScrollArea className="h-[min(60vh-72px,480px)]">
           <div className="p-2">
             {grouped.map((group) => (
               <div key={group.provider} className="mb-3 last:mb-0">
