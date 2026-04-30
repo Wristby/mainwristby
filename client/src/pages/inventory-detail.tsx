@@ -481,7 +481,7 @@ export default function InventoryDetail() {
     }
   };
 
-  const DATE_STATUSES = ["incoming", "received", "servicing"];
+  const DATE_STATUSES = ["incoming", "received", "servicing", "in_stock"];
 
   const resetStatusPopover = () => {
     setStatusPickerStep("select");
@@ -525,6 +525,8 @@ export default function InventoryDetail() {
       if (date) {
         if (newStatus === "servicing") {
           payload.serviceStartDate = date.toISOString();
+        } else if (newStatus === "in_stock") {
+          payload.dateListed = date.toISOString();
         } else {
           payload.purchaseDate = date.toISOString();
         }
