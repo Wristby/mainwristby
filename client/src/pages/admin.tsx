@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Settings,
@@ -30,7 +31,9 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  GripVertical
+  GripVertical,
+  Search,
+  Check
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -56,6 +59,102 @@ function CollapsibleSection({ title, icon: Icon, children, defaultOpen = true }:
       </CardHeader>
       {open && <CardContent>{children}</CardContent>}
     </Card>
+  );
+}
+
+const MODEL_GROUP_ORDER = ["OpenAI", "Anthropic", "Google", "Cohere", "Mistral", "Meta", "Other"];
+
+function getModelProviderLabel(model: string, name: string) {
+  const text = `${name} ${model}`.toLowerCase();
+  if (text.includes("openai") || text.includes("gpt")) return "OpenAI";
+  if (text.includes("claude") || text.includes("anthropic")) return "Anthropic";
+  if (text.includes("gemini") || text.includes("google")) return "Google";
+  if (text.includes("cohere")) return "Cohere";
+  if (text.includes("mistral")) return "Mistral";
+  if (text.includes("llama") || text.includes("meta")) return "Meta";
+  return "Other";
+}
+
+function ModelPicker({
+  value,
+  models,
+  onChange,
+}: {
+  value: string;
+  models: { name: string; model: string; provider: string }[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = models.find((m) => m.model === value);
+
+  const grouped = MODEL_GROUP_ORDER.map((provider) => ({
+    provider,
+    items: models.filter((m) => m.provider === provider && `${m.name} ${m.model}`.toLowerCase().includes(query.toLowerCase())),
+  })).filter((group) => group.items.length > 0);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="w-full justify-between bg-white border-slate-200 font-normal"
+          data-testid="button-ai-model-picker"
+        >
+          <span className="truncate">{selected ? selected.name : value}</span>
+          <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[420px] p-0" align="start">
+        <div className="border-b border-slate-200 p-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search models..."
+              className="pl-9 bg-white border-slate-200"
+              data-testid="input-search-ai-models"
+            />
+          </div>
+        </div>
+        <ScrollArea className="max-h-[320px]">
+          <div className="p-2">
+            {grouped.map((group) => (
+              <div key={group.provider} className="mb-3 last:mb-0">
+                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  {group.provider}
+                </div>
+                <div className="space-y-1">
+                  {group.items.map((model) => (
+                    <button
+                      key={model.model}
+                      type="button"
+                      onClick={() => {
+                        onChange(model.model);
+                        setOpen(false);
+                        setQuery("");
+                      }}
+                      className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-slate-50"
+                      data-testid={`button-ai-model-${model.model.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-900">{model.name}</div>
+                        <div className="truncate text-xs text-slate-400">{model.model}</div>
+                      </div>
+                      <div className="ml-4 flex items-center gap-2 text-xs text-slate-400">
+                        {selected?.model === model.model && <Check className="h-4 w-4 text-emerald-600" />}
+                        <span>{model.provider}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -380,22 +479,15 @@ export default function Admin() {
             <div>
               <Label className="text-sm font-semibold text-slate-700">AI Model</Label>
               <p className="text-xs text-slate-400 mt-1 mb-2">Applies to all AI features (Listing Description &amp; Movement Specs)</p>
-              <Select
+              <ModelPicker
                 value={settings.ai_model}
-                onValueChange={(v) => saveSetting("ai_model", v)}
-              >
-                <SelectTrigger className="bg-white border-slate-200 mt-1" data-testid="select-ai-model">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-64">
-                  <SelectItem value={settings.ai_model}>{settings.ai_model}</SelectItem>
-                  {aiModels?.models
-                    ?.filter(m => m.model !== settings.ai_model)
-                    .map(m => (
-                      <SelectItem key={m.model} value={m.model}>{m.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+                models={(aiModels?.models || []).map((m) => ({
+                  name: m.name,
+                  model: m.model,
+                  provider: getModelProviderLabel(m.model, m.name),
+                }))}
+                onChange={(v) => saveSetting("ai_model", v)}
+              />
             </div>
             <div>
               <Label className="text-sm font-semibold text-slate-700">Listing Description Prompt</Label>
