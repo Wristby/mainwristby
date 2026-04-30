@@ -477,7 +477,7 @@ export default function Admin() {
           <div className="space-y-6">
             <div>
               <Label className="text-sm font-semibold text-slate-700">AI Model</Label>
-              <p className="text-xs text-slate-400 mt-1 mb-2">Applies to all AI features (Listing Description &amp; Movement Specs)</p>
+              <p className="text-xs text-slate-400 mt-1 mb-2">Applies to all AI features (Listing Description, Movement Specs &amp; Instagram Caption)</p>
               <ModelPicker
                 value={settings.ai_model}
                 models={(aiModels?.models || []).map((m) => ({
@@ -506,6 +506,16 @@ export default function Admin() {
               <PromptEditor
                 value={settings.ai_movement_prompt_template}
                 onSave={(v) => saveSetting("ai_movement_prompt_template", v)}
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-slate-700">Instagram Caption Prompt</Label>
+              <p className="text-xs text-slate-400 mt-1 mb-2">
+                Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}
+              </p>
+              <PromptEditor
+                value={settings.ai_instagram_prompt_template}
+                onSave={(v) => saveSetting("ai_instagram_prompt_template", v)}
               />
             </div>
           </div>

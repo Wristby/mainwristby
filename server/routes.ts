@@ -374,6 +374,76 @@ Papers/Cards: {{papers}}`;
     }
   });
 
+  // AI — Generate Instagram Caption
+  app.post("/api/ai/generate-caption", isAuthenticated, async (req, res) => {
+    const apiKey = process.env.STRAICO_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ message: "AI generation is not configured. Please add your STRAICO_API_KEY." });
+    }
+
+    const { brand, model, referenceNumber, year, condition } = req.body;
+    if (!brand || !model) {
+      return res.status(400).json({ message: "Brand and model are required." });
+    }
+
+    const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
+    const promptTemplate = await storage.getSetting("ai_instagram_prompt_template") || DEFAULT_INSTAGRAM_PROMPT;
+
+    const prompt = (promptTemplate as string)
+      .replace(/\{\{brand\}\}/g, brand)
+      .replace(/\{\{model\}\}/g, model)
+      .replace(/\{\{referenceNumber\}\}/g, referenceNumber || "Not specified")
+      .replace(/\{\{year\}\}/g, year || "Not specified")
+      .replace(/\{\{condition\}\}/g, condition || "Not specified");
+
+    try {
+      const response = await fetch("https://api.straico.com/v1/prompt/completion", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          models: [aiModel],
+          message: prompt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(502).json({ message: `Straico API error: ${errText}` });
+      }
+
+      interface StraicoChatResponse {
+        data?: {
+          completions?: Record<string, {
+            completion?: {
+              choices?: Array<{ message?: { content?: string } }>;
+            };
+          }>;
+        };
+      }
+      const data = await response.json() as StraicoChatResponse;
+
+      let caption = "";
+      const completions = data?.data?.completions;
+      if (completions && typeof completions === "object") {
+        const modelKey = Object.keys(completions)[0];
+        if (modelKey) {
+          caption = completions[modelKey]?.completion?.choices?.[0]?.message?.content || "";
+        }
+      }
+
+      if (!caption) {
+        return res.status(502).json({ message: "No caption returned from AI." });
+      }
+
+      res.json({ caption });
+    } catch (err: any) {
+      res.status(502).json({ message: `Failed to reach AI service: ${err.message}` });
+    }
+  });
+
   // Seed Data & Settings
   await seedDatabase();
   await seedSettings();
@@ -460,6 +530,14 @@ Return ONLY a valid JSON object (no markdown, no explanation, no code fences) wi
   "beat_error": "the acceptable beat error, e.g. ≤ 0.5 ms, or N/A"
 }`;
 
+const DEFAULT_INSTAGRAM_PROMPT = `You are a luxury watch dealer with a strong social media presence. Write a punchy, engaging Instagram caption (max 150 words) for the watch below. Use a confident, aspirational tone that appeals to collectors and enthusiasts. End with 5–8 relevant hashtags.
+
+Brand: {{brand}}
+Model: {{model}}
+Reference: {{referenceNumber}}
+Year: {{year}}
+Condition: {{condition}}`;
+
 const DEFAULT_SETTINGS: Record<string, any> = {
   chrono24_commission: 6.5,
   watch_register_fee: 600,
@@ -492,6 +570,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   ],
   ai_model: "openai/gpt-4o-mini",
   ai_movement_prompt_template: DEFAULT_MOVEMENT_PROMPT,
+  ai_instagram_prompt_template: DEFAULT_INSTAGRAM_PROMPT,
   ai_prompt_template: `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
 
 Brand: {{brand}}

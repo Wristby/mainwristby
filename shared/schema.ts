@@ -88,6 +88,9 @@ export const inventory = pgTable("inventory", {
   // Listing Description (AI-generated or manual)
   description: text("description"),
 
+  // Instagram Caption (AI-generated or manual)
+  instagramCaption: text("instagram_caption"),
+
   // Movement Specs (AI-fetched and cached)
   movementSpecs: jsonb("movement_specs"),
 

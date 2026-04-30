@@ -368,6 +368,9 @@ export default function InventoryDetail() {
   const [descriptionValue, setDescriptionValue] = useState((item as any)?.description || "");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [captionValue, setCaptionValue] = useState("");
+  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
+  const [isSavingCaption, setIsSavingCaption] = useState(false);
   const [movementSpecs, setMovementSpecs] = useState<Record<string, string> | null>(null);
   const [isLookingUpSpecs, setIsLookingUpSpecs] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -382,6 +385,7 @@ export default function InventoryDetail() {
   useEffect(() => {
     if (item) {
       setDescriptionValue((item as any).description || "");
+      setCaptionValue((item as any).instagramCaption || "");
       setMovementSpecs((item as any).movementSpecs || null);
       setNotesValue(item.notes || "");
     }
@@ -435,6 +439,43 @@ export default function InventoryDetail() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateCaption = async () => {
+    if (!item) return;
+    setIsGeneratingCaption(true);
+    try {
+      const result = await apiRequest("POST", "/api/ai/generate-caption", {
+        brand: item.brand,
+        model: item.model,
+        referenceNumber: item.referenceNumber,
+        year: item.year,
+        condition: item.condition,
+      });
+      const data = await result.json();
+      if (data.caption) {
+        setCaptionValue(data.caption);
+      } else {
+        toast({ title: "Error", description: data.message || "No caption generated.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsGeneratingCaption(false);
+    }
+  };
+
+  const handleSaveCaption = async () => {
+    setIsSavingCaption(true);
+    try {
+      await apiRequest("PUT", `/api/inventory/${id}`, { instagramCaption: captionValue });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      toast({ title: "Saved", description: "Instagram caption saved." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingCaption(false);
     }
   };
 
@@ -1845,65 +1886,6 @@ export default function InventoryDetail() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg text-slate-900">Listing Description</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleGenerateDescription}
-                  disabled={isGenerating}
-                  data-testid="button-generate-description"
-                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
-                >
-                  {isGenerating ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  {isGenerating ? "Generating..." : "Generate"}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Textarea
-                value={descriptionValue}
-                onChange={(e) => setDescriptionValue(e.target.value)}
-                placeholder="Write or generate a listing description for this watch..."
-                className="bg-white border-slate-200 min-h-[160px] text-sm text-slate-700 resize-y"
-                data-testid="textarea-listing-description"
-              />
-              <div className="flex items-center justify-between gap-2">
-                {descriptionValue && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      navigator.clipboard.writeText(descriptionValue);
-                      toast({ title: "Copied", description: "Description copied to clipboard." });
-                    }}
-                    className="text-slate-500 hover:text-slate-700 gap-1.5 text-xs"
-                    data-testid="button-copy-description"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    Copy
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  onClick={handleSaveDescription}
-                  disabled={isSavingDescription}
-                  data-testid="button-save-description"
-                  className="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white"
-                >
-                  {isSavingDescription ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
-                  Save
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Movement Specs Card */}
           <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-movement-specs">
             <CardHeader className="pb-3">
@@ -1963,6 +1945,126 @@ export default function InventoryDetail() {
                   Look up the caliber, lift angle, amplitude, and beat error targets for this reference.
                 </p>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Listing Description Card */}
+          <Card className="border-slate-200 bg-white shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg text-slate-900">Listing Description</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleGenerateDescription}
+                  disabled={isGenerating}
+                  data-testid="button-generate-description"
+                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  {isGenerating ? "Generating..." : "Generate"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                value={descriptionValue}
+                onChange={(e) => setDescriptionValue(e.target.value)}
+                placeholder="Write or generate a listing description for this watch..."
+                className="bg-white border-slate-200 min-h-[160px] text-sm text-slate-700 resize-y"
+                data-testid="textarea-listing-description"
+              />
+              <div className="flex items-center justify-between gap-2">
+                {descriptionValue && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      navigator.clipboard.writeText(descriptionValue);
+                      toast({ title: "Copied", description: "Description copied to clipboard." });
+                    }}
+                    className="text-slate-500 hover:text-slate-700 gap-1.5 text-xs"
+                    data-testid="button-copy-description"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleSaveDescription}
+                  disabled={isSavingDescription}
+                  data-testid="button-save-description"
+                  className="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {isSavingDescription ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+                  Save
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Instagram Caption Card */}
+          <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-instagram-caption">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg text-slate-900">Instagram Caption</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleGenerateCaption}
+                  disabled={isGeneratingCaption}
+                  data-testid="button-generate-caption"
+                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                >
+                  {isGeneratingCaption ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  {isGeneratingCaption ? "Generating..." : "Generate"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                value={captionValue}
+                onChange={(e) => setCaptionValue(e.target.value)}
+                placeholder="Write or generate an Instagram caption for this watch..."
+                className="bg-white border-slate-200 min-h-[140px] text-sm text-slate-700 resize-y"
+                data-testid="textarea-instagram-caption"
+              />
+              <div className="flex items-center justify-between gap-2">
+                {captionValue && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      navigator.clipboard.writeText(captionValue);
+                      toast({ title: "Copied", description: "Caption copied to clipboard." });
+                    }}
+                    className="text-slate-500 hover:text-slate-700 gap-1.5 text-xs"
+                    data-testid="button-copy-caption"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleSaveCaption}
+                  disabled={isSavingCaption}
+                  data-testid="button-save-caption"
+                  className="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {isSavingCaption ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+                  Save
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
