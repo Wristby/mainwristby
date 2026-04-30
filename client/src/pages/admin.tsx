@@ -118,7 +118,7 @@ function ModelPicker({
             />
           </div>
         </div>
-        <ScrollArea className="max-h-[480px]">
+        <ScrollArea className="h-[420px]">
           <div className="p-2">
             {grouped.map((group) => (
               <div key={group.provider} className="mb-3 last:mb-0">
