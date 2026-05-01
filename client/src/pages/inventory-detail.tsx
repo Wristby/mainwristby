@@ -907,7 +907,7 @@ export default function InventoryDetail() {
                     <div className="space-y-2">
                       <Label>Purchase Price (COGS) *</Label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">€</span>
                         <Input 
                           type="text" 
                           {...form.register("purchasePrice", { setValueAs: parsePriceInput })}
@@ -1015,7 +1015,7 @@ export default function InventoryDetail() {
                             const parsed = parsePriceInput(val);
                             form.setValue("listPrice", parsed > 0 ? parseFloat(parsed.toFixed(2)) : null);
                           }}
-                          className="pl-7 bg-white border-slate-200"
+                          className="pl-8 bg-white border-slate-200"
                           data-testid="edit-input-list-price"
                           placeholder="0,00"
                         />
