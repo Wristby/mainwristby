@@ -1443,7 +1443,7 @@ export default function Inventory() {
                     </div>
                   </TableCell>
                   <TableCell className="text-slate-700" data-testid={`text-list-price-${item.id}`}>
-                    {(item as any).listPrice > 0 ? formatCurrency((item as any).listPrice) : <span className="text-slate-300">—</span>}
+                    {item.listPrice != null && item.listPrice > 0 ? formatCurrency(item.listPrice) : <span className="text-slate-300">—</span>}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="bg-slate-50 font-normal">

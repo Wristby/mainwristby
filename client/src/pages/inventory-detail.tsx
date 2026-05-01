@@ -354,7 +354,7 @@ export default function InventoryDetail() {
         shippingPartner: item.shippingPartner || "",
         trackingNumber: item.trackingNumber || "",
         targetSellPrice: (item.targetSellPrice || 0) / 100,
-        listPrice: (item as any).listPrice ? (item as any).listPrice / 100 : null,
+        listPrice: item.listPrice ? item.listPrice / 100 : null,
         notes: item.notes || "",
       });
     }
@@ -456,7 +456,7 @@ export default function InventoryDetail() {
         referenceNumber: item.referenceNumber,
         year: item.year,
         condition: item.condition,
-        listPrice: (item as any).listPrice ?? null,
+        listPrice: item.listPrice ?? null,
       });
       const data = await result.json();
       if (data.caption) {
@@ -1781,11 +1781,11 @@ export default function InventoryDetail() {
                     </div>
                   </div>
                 )}
-                {(item as any).listPrice > 0 && (
+                {item.listPrice != null && item.listPrice > 0 && (
                   <div>
                     <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Price Listed At</Label>
                     <div className="flex items-center gap-2 mt-1 text-slate-600">
-                      <span className="text-sm font-medium" data-testid="text-list-price">{formatCurrency((item as any).listPrice)}</span>
+                      <span className="text-sm font-medium" data-testid="text-list-price">{formatCurrency(item.listPrice)}</span>
                     </div>
                   </div>
                 )}
