@@ -1389,6 +1389,12 @@ export default function InventoryDetail() {
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">COGS</p>
                   <p className="text-xl font-bold text-slate-900">{formatCurrency(item.purchasePrice)}</p>
                 </div>
+                {item.listPrice != null && item.listPrice > 0 && (
+                  <div className="p-4 bg-violet-50/50 rounded-xl border border-violet-100">
+                    <p className="text-xs font-medium text-violet-500 uppercase tracking-wider mb-1">Price Listed At</p>
+                    <p className="text-xl font-bold text-violet-700">{formatCurrency(item.listPrice)}</p>
+                  </div>
+                )}
                 <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
                   <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider mb-1">Sale Price</p>
                   <p className="text-xl font-bold text-emerald-600">{formatCurrency(salePrice)}</p>
