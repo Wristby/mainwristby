@@ -1005,7 +1005,7 @@ export default function InventoryDetail() {
                     <div className="space-y-2">
                       <Label>Price Listed At</Label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">€</span>
                         <Input
                           type="text"
                           {...form.register("listPrice", { setValueAs: (v) => v === "" || v === null ? null : parsePriceInput(v) })}
@@ -1015,7 +1015,7 @@ export default function InventoryDetail() {
                             const parsed = parsePriceInput(val);
                             form.setValue("listPrice", parsed > 0 ? parseFloat(parsed.toFixed(2)) : null);
                           }}
-                          className="pl-8 bg-white border-slate-200"
+                          className="pl-7 bg-white border-slate-200"
                           data-testid="edit-input-list-price"
                           placeholder="0,00"
                         />
@@ -1720,7 +1720,7 @@ export default function InventoryDetail() {
                               <div className="px-1 space-y-1">
                                 <label className="text-xs font-medium text-slate-500">Price Listed At (optional)</label>
                                 <div className="relative">
-                                  <span className="absolute left-3 top-2 text-slate-400 text-sm">€</span>
+                                  <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400 text-sm">€</span>
                                   <input
                                     type="text"
                                     value={statusPickerListPrice}
