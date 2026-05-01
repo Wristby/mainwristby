@@ -316,7 +316,11 @@ export default function InventoryDetail() {
       setShowSaleDetails(hasSaleData);
       setShowServiceDetails(hasServiceData);
       setShowShippingDetails(!!hasShippingData);
-      
+    }
+  }, [item]);
+
+  useEffect(() => {
+    if (isEditOpen && item) {
       form.reset({
         brand: item.brand,
         model: item.model,
@@ -358,7 +362,7 @@ export default function InventoryDetail() {
         notes: item.notes || "",
       });
     }
-  }, [item, form.reset]);
+  }, [isEditOpen]);
 
   const [isPurchaseDateOpen, setIsPurchaseDateOpen] = useState(false);
   const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
