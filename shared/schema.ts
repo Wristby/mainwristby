@@ -85,6 +85,9 @@ export const inventory = pgTable("inventory", {
   gdriveLink: text("gdrive_link"),
   notes: text("notes"),
   
+  // Price Listed At (asking price when listed, stored in cents)
+  listPrice: integer("list_price"),
+
   // Listing Description (AI-generated or manual)
   description: text("description"),
 

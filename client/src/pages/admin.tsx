@@ -511,7 +511,7 @@ export default function Admin() {
             <div>
               <Label className="text-sm font-semibold text-slate-700">Instagram Caption Prompt</Label>
               <p className="text-xs text-slate-400 mt-1 mb-2">
-                Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}
+                Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}, {"{{listPrice}}"}
               </p>
               <PromptEditor
                 value={settings.ai_instagram_prompt_template}

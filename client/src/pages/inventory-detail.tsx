@@ -130,6 +130,7 @@ const editFormSchema = z.object({
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
   targetSellPrice: z.coerce.number().optional().default(0),
+  listPrice: z.coerce.number().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
@@ -271,6 +272,7 @@ export default function InventoryDetail() {
       shippingPartner: "",
       trackingNumber: "",
       targetSellPrice: 0,
+      listPrice: null,
       notes: "",
     },
   });
@@ -352,6 +354,7 @@ export default function InventoryDetail() {
         shippingPartner: item.shippingPartner || "",
         trackingNumber: item.trackingNumber || "",
         targetSellPrice: (item.targetSellPrice || 0) / 100,
+        listPrice: (item as any).listPrice ? (item as any).listPrice / 100 : null,
         notes: item.notes || "",
       });
     }
@@ -381,6 +384,7 @@ export default function InventoryDetail() {
   const [statusPickerStep, setStatusPickerStep] = useState<"select" | "date">("select");
   const [statusPickerDate, setStatusPickerDate] = useState<Date | undefined>(new Date());
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [statusPickerListPrice, setStatusPickerListPrice] = useState<string>("");
 
   useEffect(() => {
     if (item) {
@@ -452,6 +456,7 @@ export default function InventoryDetail() {
         referenceNumber: item.referenceNumber,
         year: item.year,
         condition: item.condition,
+        listPrice: (item as any).listPrice ?? null,
       });
       const data = await result.json();
       if (data.caption) {
@@ -528,6 +533,7 @@ export default function InventoryDetail() {
     setStatusPickerStep("select");
     setPendingStatus(null);
     setStatusPickerDate(new Date());
+    setStatusPickerListPrice("");
     setIsStatusPopoverOpen(false);
   };
 
@@ -556,10 +562,10 @@ export default function InventoryDetail() {
 
   const handleConfirmStatusWithDate = () => {
     if (!pendingStatus) return;
-    saveStatus(pendingStatus, statusPickerDate);
+    saveStatus(pendingStatus, statusPickerDate, pendingStatus === "in_stock" ? statusPickerListPrice : "");
   };
 
-  const saveStatus = async (newStatus: string, date: Date | undefined) => {
+  const saveStatus = async (newStatus: string, date: Date | undefined, listPriceStr?: string) => {
     setIsSavingStatus(true);
     try {
       const payload: Record<string, unknown> = { status: newStatus };
@@ -570,6 +576,12 @@ export default function InventoryDetail() {
           payload.dateListed = date.toISOString();
         } else {
           payload.purchaseDate = date.toISOString();
+        }
+      }
+      if (newStatus === "in_stock" && listPriceStr && listPriceStr.trim() !== "") {
+        const parsed = parseFloat(listPriceStr.replace(",", "."));
+        if (!isNaN(parsed) && parsed > 0) {
+          payload.listPrice = Math.round(parsed * 100);
         }
       }
       await apiRequest("PUT", `/api/inventory/${id}`, payload);
@@ -624,6 +636,7 @@ export default function InventoryDetail() {
       shippingFee: Math.round(Number(data.shippingFee) * 100),
       insuranceFee: Math.round(Number(data.insuranceFee) * 100),
       targetSellPrice: Math.round(Number(data.targetSellPrice) * 100),
+      listPrice: data.listPrice != null && !isNaN(Number(data.listPrice)) && Number(data.listPrice) > 0 ? Math.round(Number(data.listPrice) * 100) : null,
       dateReceived: data.dateReceived || null,
       purchaseDate: data.purchaseDate || null,
       dateListed: data.dateListed || null,
@@ -988,6 +1001,25 @@ export default function InventoryDetail() {
                           <Calendar mode="single" selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined} onSelect={(date) => { form.setValue("dateListed", date ? date.toISOString() : null); if (date) form.setValue("status", "in_stock"); setIsDateListedOpen(false); }} initialFocus />
                         </PopoverContent>
                       </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Price Listed At</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
+                        <Input
+                          type="text"
+                          {...form.register("listPrice", { setValueAs: (v) => v === "" || v === null ? null : parsePriceInput(v) })}
+                          onBlur={(e) => {
+                            const val = e.target.value;
+                            if (val === "" || val === null) { form.setValue("listPrice", null); return; }
+                            const parsed = parsePriceInput(val);
+                            form.setValue("listPrice", parsed > 0 ? parseFloat(parsed.toFixed(2)) : null);
+                          }}
+                          className="pl-7 bg-white border-slate-200"
+                          data-testid="edit-input-list-price"
+                          placeholder="0,00"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1678,6 +1710,22 @@ export default function InventoryDetail() {
                               onSelect={(date) => setStatusPickerDate(date ?? new Date())}
                               initialFocus
                             />
+                            {pendingStatus === "in_stock" && (
+                              <div className="px-1 space-y-1">
+                                <label className="text-xs font-medium text-slate-500">Price Listed At (optional)</label>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-2 text-slate-400 text-sm">€</span>
+                                  <input
+                                    type="text"
+                                    value={statusPickerListPrice}
+                                    onChange={(e) => setStatusPickerListPrice(e.target.value)}
+                                    placeholder="0,00"
+                                    className="w-full pl-7 pr-3 py-1.5 text-sm border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    data-testid="input-status-list-price"
+                                  />
+                                </div>
+                              </div>
+                            )}
                             <div className="flex gap-2 px-1">
                               <Button
                                 size="sm"
@@ -1730,6 +1778,14 @@ export default function InventoryDetail() {
                     <div className="flex items-center gap-2 mt-1 text-slate-600">
                       <CalendarIcon className="w-4 h-4" />
                       <span className="text-sm font-medium">{format(new Date(item.dateListed), 'M/d/yyyy')}</span>
+                    </div>
+                  </div>
+                )}
+                {(item as any).listPrice > 0 && (
+                  <div>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Price Listed At</Label>
+                    <div className="flex items-center gap-2 mt-1 text-slate-600">
+                      <span className="text-sm font-medium" data-testid="text-list-price">{formatCurrency((item as any).listPrice)}</span>
                     </div>
                   </div>
                 )}

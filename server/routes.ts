@@ -381,7 +381,7 @@ Papers/Cards: {{papers}}`;
       return res.status(503).json({ message: "AI generation is not configured. Please add your STRAICO_API_KEY." });
     }
 
-    const { brand, model, referenceNumber, year, condition } = req.body;
+    const { brand, model, referenceNumber, year, condition, listPrice } = req.body;
     if (!brand || !model) {
       return res.status(400).json({ message: "Brand and model are required." });
     }
@@ -389,12 +389,17 @@ Papers/Cards: {{papers}}`;
     const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
     const promptTemplate = await storage.getSetting("ai_instagram_prompt_template") || DEFAULT_INSTAGRAM_PROMPT;
 
+    const listPriceFormatted = listPrice && listPrice > 0
+      ? `€${(listPrice / 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : "Not specified";
+
     const prompt = (promptTemplate as string)
       .replace(/\{\{brand\}\}/g, brand)
       .replace(/\{\{model\}\}/g, model)
       .replace(/\{\{referenceNumber\}\}/g, referenceNumber || "Not specified")
       .replace(/\{\{year\}\}/g, year || "Not specified")
-      .replace(/\{\{condition\}\}/g, condition || "Not specified");
+      .replace(/\{\{condition\}\}/g, condition || "Not specified")
+      .replace(/\{\{listPrice\}\}/g, listPriceFormatted);
 
     try {
       const response = await fetch("https://api.straico.com/v1/prompt/completion", {
@@ -536,7 +541,8 @@ Brand: {{brand}}
 Model: {{model}}
 Reference: {{referenceNumber}}
 Year: {{year}}
-Condition: {{condition}}`;
+Condition: {{condition}}
+Listing Price: {{listPrice}}`;
 
 const DEFAULT_SETTINGS: Record<string, any> = {
   chrono24_commission: 6.5,

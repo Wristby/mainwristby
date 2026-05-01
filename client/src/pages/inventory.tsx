@@ -1376,6 +1376,7 @@ export default function Inventory() {
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('purchasePrice')}>
                 <div className="flex items-center">COGS <SortIcon field="purchasePrice" /></div>
               </TableHead>
+              <TableHead>Listed At</TableHead>
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('holdTime')}>
                 <div className="flex items-center">Since Received <SortIcon field="holdTime" /></div>
               </TableHead>
@@ -1388,7 +1389,7 @@ export default function Inventory() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={7} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2 text-slate-500">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Loading inventory...
@@ -1397,7 +1398,7 @@ export default function Inventory() {
               </TableRow>
             ) : filteredInventory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={7} className="h-24 text-center">
                   <div className="flex flex-col items-center justify-center gap-1 text-slate-500">
                     <AlertTriangle className="h-5 w-5 text-amber-500" />
                     <p>No watches found matching your search.</p>
@@ -1440,6 +1441,9 @@ export default function Inventory() {
                         </span>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-slate-700" data-testid={`text-list-price-${item.id}`}>
+                    {(item as any).listPrice > 0 ? formatCurrency((item as any).listPrice) : <span className="text-slate-300">—</span>}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="bg-slate-50 font-normal">
