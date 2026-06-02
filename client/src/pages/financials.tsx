@@ -279,7 +279,7 @@ export default function Financials() {
 
     return { 
       totalRevenue, 
-      totalExpenses: filteredExpenseTotal, 
+      totalExpenses: allExpensesTotal, 
       totalCogs,
       grossProfit,
       netProfit, 
@@ -307,7 +307,8 @@ export default function Financials() {
                           (item.platformFees || 0) + 
                           (item.shippingFee || 0) + 
                           (item.insuranceFee || 0) +
-                          (item.watchRegister ? settings.watch_register_fee : 0);
+                          (item.watchRegister ? settings.watch_register_fee : 0) +
+                          (item.importFee || 0);
       months[month].expenses += itemExpenses;
     });
 
