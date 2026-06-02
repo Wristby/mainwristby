@@ -131,6 +131,7 @@ const editFormSchema = z.object({
   trackingNumber: z.string().optional().nullable(),
   targetSellPrice: z.coerce.number().optional().default(0),
   listPrice: z.coerce.number().optional().nullable(),
+  linkCount: z.coerce.number().int().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
@@ -359,6 +360,7 @@ export default function InventoryDetail() {
         trackingNumber: item.trackingNumber || "",
         targetSellPrice: (item.targetSellPrice || 0) / 100,
         listPrice: item.listPrice ? item.listPrice / 100 : null,
+        linkCount: (item as any).linkCount ?? null,
         notes: item.notes || "",
       });
     }
@@ -641,6 +643,7 @@ export default function InventoryDetail() {
       insuranceFee: Math.round(Number(data.insuranceFee) * 100),
       targetSellPrice: Math.round(Number(data.targetSellPrice) * 100),
       listPrice: data.listPrice != null && !isNaN(Number(data.listPrice)) && Number(data.listPrice) > 0 ? Math.round(Number(data.listPrice) * 100) : null,
+      linkCount: data.linkCount != null && !isNaN(Number(data.linkCount)) && Number(data.linkCount) > 0 ? Math.round(Number(data.linkCount)) : null,
       dateReceived: data.dateReceived || null,
       purchaseDate: data.purchaseDate || null,
       dateListed: data.dateListed || null,
@@ -830,6 +833,10 @@ export default function InventoryDetail() {
                     <div className="space-y-2">
                       <Label>Year</Label>
                       <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("year")} className="bg-white border-slate-200" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Link Count</Label>
+                      <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("linkCount")} placeholder="e.g. 18" className="bg-white border-slate-200" data-testid="edit-input-link-count" />
                     </div>
                     <div className="space-y-2">
                       <Label>Condition</Label>
@@ -1315,6 +1322,10 @@ export default function InventoryDetail() {
                 <div>
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Condition</p>
                   <p className="text-slate-900 font-medium mt-1">{item.condition}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Link Count</p>
+                  <p className="text-slate-900 font-medium mt-1">{(item as any).linkCount ?? 'N/A'}</p>
                 </div>
                 {item.gdriveLink && (
                   <div className="col-span-2">

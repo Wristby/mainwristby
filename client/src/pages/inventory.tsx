@@ -83,6 +83,7 @@ const createFormSchema = z.object({
   serialNumber: z.string().optional().nullable(),
   internalSerial: z.string().optional().nullable(),
   year: z.coerce.number().optional().nullable(),
+  linkCount: z.coerce.number().int().optional().nullable(),
   
   purchasedFrom: z.string().min(1, "Purchase channel is required"),
   paidWith: z.string().min(1, "Paid with is required"),
@@ -709,6 +710,18 @@ export default function Inventory() {
                       pattern="[0-9]*"
                       {...form.register("year")} 
                       className="bg-white border-slate-200" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Link Count</Label>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      {...form.register("linkCount")}
+                      placeholder="e.g. 18"
+                      className="bg-white border-slate-200"
+                      data-testid="input-link-count"
                     />
                   </div>
                   <div className="space-y-2">

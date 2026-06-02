@@ -811,6 +811,23 @@ export default function Analytics() {
             <CardContent className="pt-5">
               <div className="flex items-start justify-between">
                 <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Profit</p>
+                  <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums">
+                    {formatCurrency(totalGrossMargin)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">Revenue minus COGS</p>
+                </div>
+                <div className="p-2 bg-emerald-50 rounded-full">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-slate-200">
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide">Average Profit Per Watch</p>
                   <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums">
                     {formatCurrency(avgProfitPerWatch)}

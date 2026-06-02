@@ -88,6 +88,9 @@ export const inventory = pgTable("inventory", {
   // Price Listed At (asking price when listed, stored in cents)
   listPrice: integer("list_price"),
 
+  // Link Count (number of bracelet links)
+  linkCount: integer("link_count"),
+
   // Listing Description (AI-generated or manual)
   description: text("description"),
 
