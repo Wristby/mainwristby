@@ -716,6 +716,17 @@ export default function InventoryDetail() {
         startOfDay(typeof item.dateReceived === 'string' ? parseISO(item.dateReceived) : new Date(item.dateReceived))
       )) 
     : 0;
+
+  const daysInService = (() => {
+    const sent = item.dateSentToService;
+    const returned = item.dateReturnedFromService;
+    if (!sent) return null;
+    const start = startOfDay(typeof sent === 'string' ? parseISO(sent) : new Date(sent));
+    const end = returned
+      ? startOfDay(typeof returned === 'string' ? parseISO(returned) : new Date(returned))
+      : startOfDay(new Date());
+    return Math.max(0, differenceInDays(end, start));
+  })();
   const calcHistoricalProfit = (h: any) => {
     const revenue = h.salePrice || 0;
     const cost = h.purchasePrice +
@@ -1349,10 +1360,23 @@ export default function InventoryDetail() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+              <div className="grid grid-cols-3 gap-4 pt-2 border-t border-slate-100">
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Hold Time</p>
                   <p className="text-xl font-bold text-slate-900 tabular-nums">{holdTime} days</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Days In Service</p>
+                  <p className="text-xl font-bold text-slate-900 tabular-nums">
+                    {daysInService !== null ? (
+                      <>
+                        {daysInService} days
+                        {!item.dateReturnedFromService && item.dateSentToService && (
+                          <span className="ml-2 text-xs font-normal text-amber-500">ongoing</span>
+                        )}
+                      </>
+                    ) : "—"}
+                  </p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Days Listed</p>
