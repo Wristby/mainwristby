@@ -51,7 +51,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 
-const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
+const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
 const COUNTRIES = [
   "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
@@ -182,6 +182,7 @@ export default function Inventory() {
   const SOLD_ON_OPTIONS = settings.sales_platforms;
   const SHIPPING_PARTNERS = settings.shipping_partners;
   const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
+  const PAID_WITH_OPTIONS = settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT;
   const createMutation = useCreateInventory();
   const quickAddClientMutation = useCreateClient();
 

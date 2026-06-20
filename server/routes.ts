@@ -562,6 +562,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   sales_platforms: ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"],
   shipping_partners: ["DHL", "FedEx", "UPS"],
   purchase_channels: ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"],
+  paid_with_methods: ["Credit", "Debit", "Wire"],
   expense_categories: [
     { value: "marketing", label: "Marketing" },
     { value: "rent_storage", label: "Rent/Storage" },

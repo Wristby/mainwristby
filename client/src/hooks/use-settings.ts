@@ -13,6 +13,7 @@ export interface AppSettings {
   sales_platforms: string[];
   shipping_partners: string[];
   purchase_channels: string[];
+  paid_with_methods: string[];
   expense_categories: { value: string; label: string }[];
   ai_model: string;
   ai_prompt_template: string;
@@ -41,6 +42,7 @@ const DEFAULTS: AppSettings = {
   sales_platforms: ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"],
   shipping_partners: ["DHL", "FedEx", "UPS"],
   purchase_channels: ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"],
+  paid_with_methods: ["Credit", "Debit", "Wire"],
   expense_categories: [
     { value: "marketing", label: "Marketing" },
     { value: "rent_storage", label: "Rent/Storage" },

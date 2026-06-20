@@ -466,6 +466,12 @@ export default function Admin() {
               label="Purchase Channels"
             />
             <Separator />
+            <EditableList
+              items={settings.paid_with_methods}
+              onSave={(items) => saveSetting("paid_with_methods", items)}
+              label="Payment Methods (Paid With)"
+            />
+            <Separator />
             <EditableCategoryList
               items={settings.expense_categories}
               onSave={(items) => saveSetting("expense_categories", items)}
