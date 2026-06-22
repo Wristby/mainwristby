@@ -228,10 +228,10 @@ export default function Financials() {
     };
 
     const soldItems = inventory.filter(i => i.status === 'sold');
-    const activeItems = inventory.filter(i => i.status !== 'sold');
     
     const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
-    const totalCogs = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    // COGS = sum of purchase prices of sold watches only
+    const totalCogs = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
     
     const totalServicePolishFees = soldItems.reduce((sum, item) => 
       sum + (item.serviceFee || 0) + (item.polishFee || 0), 0);
@@ -246,13 +246,13 @@ export default function Financials() {
     const totalImportFees = soldItems.reduce((sum, item) => 
       sum + (item.importFee || 0), 0);
 
+    // All watch-level costs on sold items (fees on top of purchase price)
     const totalWatchFees = totalServicePolishFees + totalPlatformFees + totalShippingInsurance + totalWatchRegisterFees + totalImportFees;
     
-    const filteredExpenseTotal = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
     const allExpensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
     
-    // Gross profit = Revenue - COGS - Sold Item Fees
-    const grossProfit = totalRevenue - soldItems.reduce((sum, item) => sum + item.purchasePrice, 0) - totalWatchFees;
+    // Gross profit = Revenue - COGS of sold items - all sold item fees
+    const grossProfit = totalRevenue - totalCogs - totalWatchFees;
     
     // Net profit = Gross profit - general business expenses
     const netProfit = grossProfit - allExpensesTotal;
@@ -286,7 +286,7 @@ export default function Financials() {
       avgRoi,
       soldCount: soldItems.length
     };
-  }, [inventory, expenses, filteredExpenses]);
+  }, [inventory, expenses]);
 
   const monthlyData = useMemo(() => {
     if (!inventory || !expenses) return [];
@@ -671,7 +671,7 @@ export default function Financials() {
                 <DollarSign className="w-4 h-4 text-orange-600" />
               </div>
             </div>
-            <p className="text-xs text-slate-500 uppercase tracking-wide">Capital Deployed</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide">Sold COGS</p>
             <p className="text-2xl font-bold text-orange-600 mt-1 tabular-nums">{formatCurrency(metrics.totalCogs)}</p>
           </CardContent>
         </Card>
@@ -951,13 +951,13 @@ export default function Financials() {
 
               <div className="space-y-0 divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
                 <div className="flex justify-between items-center px-4 py-3 bg-slate-50">
-                  <span className="text-sm text-slate-600">Gross Profit</span>
+                  <span className="text-sm text-slate-600">Gross Profit <span className="text-xs text-slate-400">(after COGS &amp; watch fees)</span></span>
                   <span className={`text-sm font-semibold tabular-nums ${grossProfit >= 0 ? "text-slate-900" : "text-red-600"}`}>
                     {formatCurrency(grossProfit)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center px-4 py-3">
-                  <span className="text-sm text-slate-600">Total Deductible Expenses</span>
+                  <span className="text-sm text-slate-600">Business Expenses</span>
                   <span className="text-sm font-semibold tabular-nums text-red-500">
                     -{formatCurrency(allExpenses > 0 ? allExpenses : 0)}
                   </span>
