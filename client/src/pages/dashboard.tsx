@@ -25,7 +25,7 @@ import {
   ExternalLink,
   ShoppingBag
 } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, startOfDay } from "date-fns";
 import { Link } from "wouter";
 import type { InventoryItem, DashboardStats } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -384,10 +384,10 @@ export default function Dashboard() {
     .sort((a, b) => b.daysHeld - a.daysHeld);
 
   const agingListedInventory = activeInventory
-    .filter((item) => item.status === "in_stock")
+    .filter((item) => item.status === "in_stock" && item.dateListed)
     .map((item) => ({
       ...item,
-      daysHeld: item.dateReceived ? differenceInDays(today, new Date(item.dateReceived)) : 0,
+      daysHeld: differenceInDays(today, startOfDay(new Date(item.dateListed!))),
     }))
     .filter((item) => item.daysHeld > settings.aging_threshold_days)
     .sort((a, b) => b.daysHeld - a.daysHeld);
