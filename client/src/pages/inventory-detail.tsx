@@ -741,7 +741,7 @@ export default function InventoryDetail() {
   };
 
   const historicals = (allInventory || [])
-    .filter((h) => h.referenceNumber === item.referenceNumber && h.status === "sold" && h.id !== item.id)
+    .filter((h) => h.referenceNumber === item.referenceNumber && h.status === "sold")
     .map((h) => {
       const soldDateStr = (h as any).soldDate || (h as any).dateSold;
       const daysToSell =
@@ -2178,7 +2178,7 @@ export default function InventoryDetail() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg text-slate-900">Historicals</CardTitle>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400">{historicals.length} previous {historicals.length === 1 ? "sale" : "sales"} of this reference</span>
+                <span className="text-xs text-slate-400">{historicals.length} {historicals.length === 1 ? "sale" : "sales"} of this reference</span>
                 <Badge
                   variant="outline"
                   className={cn(
@@ -2220,9 +2220,16 @@ export default function InventoryDetail() {
                       data-testid={`row-historical-${h.id}`}
                     >
                       <td className="px-6 py-3">
-                        <span className="font-medium text-slate-900 hover:text-emerald-600 transition-colors">
-                          {h.brand} {h.model}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900 hover:text-emerald-600 transition-colors">
+                            {h.brand} {h.model}
+                          </span>
+                          {h.id === item.id && (
+                            <Badge className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-emerald-200 font-medium">
+                              This watch
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-400 mt-0.5">#{h.id}</p>
                       </td>
                       <td className="px-4 py-3 text-slate-500">
