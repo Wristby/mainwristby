@@ -44,7 +44,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { cn, parsePriceInput } from "@/lib/utils";
 import { useSettings } from "@/hooks/use-settings";
 
-const PAID_WITH_OPTIONS = ["Credit", "Debit", "Wire"];
+const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
 const COUNTRIES = [
   "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
@@ -922,7 +922,7 @@ export default function InventoryDetail() {
                       <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
                         <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Payment" /></SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {PAID_WITH_OPTIONS.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                          {(settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT).map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
