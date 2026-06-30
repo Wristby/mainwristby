@@ -383,6 +383,15 @@ export default function Dashboard() {
     .filter((item) => item.daysHeld > settings.aging_threshold_days)
     .sort((a, b) => b.daysHeld - a.daysHeld);
 
+  const agingListedInventory = activeInventory
+    .filter((item) => item.status === "in_stock")
+    .map((item) => ({
+      ...item,
+      daysHeld: item.dateReceived ? differenceInDays(today, new Date(item.dateReceived)) : 0,
+    }))
+    .filter((item) => item.daysHeld > settings.aging_threshold_days)
+    .sort((a, b) => b.daysHeld - a.daysHeld);
+
   // Inventory status counts
   const statusCounts = {
     incoming: inventory?.filter((i) => i.status === "incoming").length || 0,
@@ -793,6 +802,43 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
+          )}
+          {isSectionVisible("aging_listed_inventory") && (
+            <Card className="bg-white border-slate-200">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                  <div>
+                    <CardTitle className="text-slate-900 text-lg">Aging Listed Inventory</CardTitle>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200">
+                  {agingListedInventory.length} watches
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {agingListedInventory.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">No aging listed inventory.</div>
+                ) : (
+                  agingListedInventory.slice(0, 5).map((item) => (
+                    <Link key={item.id} href={`/inventory/${item.id}`}>
+                      <div className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors">
+                        <div className="flex items-center gap-3">
+                          <Watch className="h-5 w-5 text-slate-400" />
+                          <div>
+                            <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
+                            <p className="text-xs text-slate-500">{formatCurrency(item.purchasePrice)}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-amber-600">{item.daysHeld} days</p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </CardContent>
+            </Card>
           )}
           {isSectionVisible("aging_inventory") && (
             <Card className="bg-white border-slate-200">

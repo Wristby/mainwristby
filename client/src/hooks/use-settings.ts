@@ -67,8 +67,9 @@ const DEFAULTS: AppSettings = {
     monthly_profit_goal: { visible: true, order: 2 },
     quick_estimate: { visible: true, order: 3 },
     inventory_status: { visible: true, order: 4 },
-    aging_inventory: { visible: true, order: 5 },
-    recent_additions: { visible: true, order: 6 },
+    aging_listed_inventory: { visible: true, order: 5 },
+    aging_inventory: { visible: true, order: 6 },
+    recent_additions: { visible: true, order: 7 },
   },
 };
 
