@@ -1,13 +1,13 @@
 import { useInventory } from "@/hooks/use-inventory";
 import { useSettings } from "@/hooks/use-settings";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { api } from "@shared/routes";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Popover,
@@ -117,7 +117,7 @@ export default function Payments() {
     mutationFn: ({ id, data }: { id: number; data: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null } }) =>
       apiRequest("PATCH", `/api/inventory/${id}/credit`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -588,7 +588,7 @@ export default function Payments() {
                         </Popover>
                       </TableCell>
 
-                      {/* Paid Off Checkbox — credit only */}
+                      {/* Paid Off — credit only */}
                       <TableCell className="text-center">
                         {credit ? (
                           <Tooltip>
@@ -598,6 +598,7 @@ export default function Payments() {
                                   <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                                 ) : isPaidOff ? (
                                   <button
+                                    type="button"
                                     onClick={() => handleTogglePaid(item)}
                                     className="text-emerald-500 hover:text-slate-400 transition-colors"
                                     data-testid={`button-paid-toggle-${item.id}`}
@@ -605,11 +606,12 @@ export default function Payments() {
                                     <CheckCircle2 className="w-5 h-5" />
                                   </button>
                                 ) : (
-                                  <Checkbox
-                                    checked={false}
-                                    onCheckedChange={() => handleTogglePaid(item)}
-                                    className="border-slate-300 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
-                                    data-testid={`checkbox-paid-${item.id}`}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTogglePaid(item)}
+                                    className="w-4 h-4 rounded border-2 border-slate-300 hover:border-emerald-500 flex items-center justify-center transition-colors bg-white"
+                                    data-testid={`button-paid-${item.id}`}
+                                    aria-label="Mark as paid off"
                                   />
                                 )}
                               </div>
