@@ -1,5 +1,4 @@
 import { useInventory } from "@/hooks/use-inventory";
-import { useSettings } from "@/hooks/use-settings";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -49,7 +48,7 @@ import {
   X,
 } from "lucide-react";
 import { useState, useMemo } from "react";
-import { format, differenceInDays, parseISO, startOfDay } from "date-fns";
+import { format, differenceInDays, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { InventoryItem } from "@shared/schema";
@@ -79,21 +78,17 @@ function isCredit(method: string | null | undefined): boolean {
   return CREDIT_METHOD_KEYWORDS.some((k) => method.toLowerCase().includes(k));
 }
 
-function getUrgency(item: InventoryItem & { creditPaid?: boolean; creditDueDate?: string | Date | null }): "none" | "green" | "yellow" | "red" {
+function getUrgency(item: InventoryItem): "none" | "green" | "yellow" | "red" {
   if (!isCredit(item.paidWith)) return "none";
   if (item.creditPaid) return "none";
   if (!item.creditDueDate) return "green";
-  const due = startOfDay(new Date(item.creditDueDate));
+  const due = startOfDay(new Date(item.creditDueDate as string | Date));
   const today = startOfDay(new Date());
   const diff = differenceInDays(due, today);
   if (diff < 0) return "red";
   if (diff <= 7) return "yellow";
   return "green";
 }
-
-const URGENCY_COLORS: Record<string, string> = {
-  BAR_COLORS: "",
-};
 
 const METHOD_COLORS = [
   "#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4", "#84cc16",
@@ -103,7 +98,6 @@ type FilterType = "all" | "credit" | "debit_wire" | "unpaid_credit";
 
 export default function Payments() {
   const { data: inventory, isLoading } = useInventory();
-  const { settings } = useSettings();
   const { toast } = useToast();
 
   const [filter, setFilter] = useState<FilterType>("all");
@@ -171,7 +165,7 @@ export default function Payments() {
 
     if (filter === "credit") items = items.filter((i) => isCredit(i.paidWith));
     else if (filter === "debit_wire") items = items.filter((i) => !isCredit(i.paidWith));
-    else if (filter === "unpaid_credit") items = items.filter((i) => isCredit(i.paidWith) && !i.creditPaid && i.status !== "sold");
+    else if (filter === "unpaid_credit") items = items.filter((i) => isCredit(i.paidWith) && !i.creditPaid);
 
     if (search.trim()) {
       const term = search.toLowerCase();

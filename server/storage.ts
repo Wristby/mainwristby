@@ -136,6 +136,7 @@ export class DatabaseStorage implements IStorage {
     if ("creditDueDate" in updates) payload.creditDueDate = updates.creditDueDate ? new Date(updates.creditDueDate) : null;
     if ("creditNotes" in updates) payload.creditNotes = updates.creditNotes ?? null;
     const [item] = await db.update(inventory).set(payload).where(eq(inventory.id, id)).returning();
+    if (!item) throw new Error("Item not found");
     return item;
   }
 
