@@ -110,6 +110,22 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/inventory/:id/credit", isAuthenticated, async (req, res) => {
+    const schema = z.object({
+      creditPaid: z.boolean().optional(),
+      creditDueDate: z.string().nullable().optional(),
+      creditNotes: z.string().nullable().optional(),
+    });
+    try {
+      const input = schema.parse(req.body);
+      const item = await storage.updateCreditInfo(Number(req.params.id), input);
+      res.json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(404).json({ message: "Item not found" });
+    }
+  });
+
   // Expenses
   app.get(api.expenses.list.path, isAuthenticated, async (req, res) => {
     const expenses = await storage.getExpenses();

@@ -33,6 +33,7 @@ export interface IStorage {
   createInventoryItem(item: InsertInventory): Promise<InventoryItem>;
   updateInventoryItem(id: number, updates: UpdateInventoryRequest): Promise<InventoryItem>;
   updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem>;
+  updateCreditInfo(id: number, updates: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null }): Promise<InventoryItem>;
   deleteInventoryItem(id: number): Promise<void>;
 
   // Expenses
@@ -126,6 +127,15 @@ export class DatabaseStorage implements IStorage {
 
   async updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem> {
     const [item] = await db.update(inventory).set({ movementSpecs: specs }).where(eq(inventory.id, id)).returning();
+    return item;
+  }
+
+  async updateCreditInfo(id: number, updates: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null }): Promise<InventoryItem> {
+    const payload: Record<string, any> = {};
+    if (updates.creditPaid !== undefined) payload.creditPaid = updates.creditPaid;
+    if ("creditDueDate" in updates) payload.creditDueDate = updates.creditDueDate ? new Date(updates.creditDueDate) : null;
+    if ("creditNotes" in updates) payload.creditNotes = updates.creditNotes ?? null;
+    const [item] = await db.update(inventory).set(payload).where(eq(inventory.id, id)).returning();
     return item;
   }
 

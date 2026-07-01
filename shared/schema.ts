@@ -106,6 +106,11 @@ export const inventory = pgTable("inventory", {
   dateShipped: timestamp("date_shipped"),
   soldPlatform: text("sold_platform"),
   
+  // Credit Payment Tracking
+  creditPaid: boolean("credit_paid").default(false),
+  creditDueDate: timestamp("credit_due_date"),
+  creditNotes: text("credit_notes"),
+
   // Relations
   clientId: integer("client_id").references(() => clients.id),
   buyerId: integer("buyer_id").references(() => clients.id),
