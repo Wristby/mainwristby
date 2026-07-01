@@ -147,7 +147,7 @@ export default function Payments() {
   );
 
   const unpaidCreditItems = useMemo(
-    () => creditItems.filter((i) => !i.creditPaid && i.status !== "sold"),
+    () => creditItems.filter((i) => !i.creditPaid),
     [creditItems]
   );
 
