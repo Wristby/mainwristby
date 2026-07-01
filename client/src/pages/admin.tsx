@@ -33,7 +33,8 @@ import {
   EyeOff,
   GripVertical,
   Search,
-  Check
+  Check,
+  CreditCard,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -231,6 +232,108 @@ function EditableList({ items, onSave, label }: {
       {isDirty && (
         <Button onClick={() => { onSave(list); setIsDirty(false); }} className="bg-emerald-600 hover:bg-emerald-500 text-white" size="sm" data-testid={`button-save-${label.toLowerCase().replace(/\s+/g, '-')}`}>
           <Save className="w-4 h-4 mr-1" /> Save {label}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function EditablePaymentMethodList({ items, onSave }: {
+  items: { name: string; isCredit: boolean }[];
+  onSave: (items: { name: string; isCredit: boolean }[]) => void;
+}) {
+  const [list, setList] = useState<{ name: string; isCredit: boolean }[]>(items);
+  const [newItem, setNewItem] = useState("");
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    setList(items);
+    setIsDirty(false);
+  }, [items]);
+
+  const addItem = () => {
+    if (newItem.trim() && !list.find((i) => i.name === newItem.trim())) {
+      const updated = [...list, { name: newItem.trim(), isCredit: false }];
+      setList(updated);
+      setNewItem("");
+      setIsDirty(true);
+    }
+  };
+
+  const removeItem = (index: number) => {
+    setList(list.filter((_, i) => i !== index));
+    setIsDirty(true);
+  };
+
+  const moveItem = (index: number, direction: "up" | "down") => {
+    const newList = [...list];
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newList.length) return;
+    [newList[index], newList[targetIndex]] = [newList[targetIndex], newList[index]];
+    setList(newList);
+    setIsDirty(true);
+  };
+
+  const toggleCredit = (index: number) => {
+    const newList = list.map((item, i) =>
+      i === index ? { ...item, isCredit: !item.isCredit } : item
+    );
+    setList(newList);
+    setIsDirty(true);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label className="text-sm font-semibold text-slate-700">Payment Methods (Paid With)</Label>
+        <p className="text-xs text-slate-400 mt-0.5">Toggle <span className="font-medium text-blue-600">Credit</span> to mark methods that are credit card payments — this enables urgency tracking and the credit filter on the Payments page.</p>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={newItem}
+          onChange={(e) => setNewItem(e.target.value)}
+          placeholder="Add new payment method..."
+          className="bg-white border-slate-200"
+          data-testid="input-add-payment-methods-(paid-with)"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
+        />
+        <Button onClick={addItem} size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white" data-testid="button-add-payment-methods-(paid-with)">
+          <Plus className="w-4 h-4" />
+        </Button>
+      </div>
+      <div className="space-y-1 max-h-64 overflow-y-auto">
+        {list.map((item, index) => (
+          <div key={`${item.name}-${index}`} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100 group">
+            <GripVertical className="w-3 h-3 text-slate-300" />
+            <span className="flex-1 text-sm text-slate-700">{item.name}</span>
+            <button
+              type="button"
+              onClick={() => toggleCredit(index)}
+              data-testid={`toggle-credit-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+              className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                item.isCredit
+                  ? "bg-blue-50 border-blue-200 text-blue-700"
+                  : "bg-slate-100 border-slate-200 text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <CreditCard className="w-3 h-3" />
+              Credit
+            </button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => moveItem(index, "up")} disabled={index === 0}>
+              <ArrowUp className="w-3 h-3" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => moveItem(index, "down")} disabled={index === list.length - 1}>
+              <ArrowDown className="w-3 h-3" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-600 hover:bg-red-50 transition-opacity" onClick={() => removeItem(index)}>
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      {isDirty && (
+        <Button onClick={() => { onSave(list); setIsDirty(false); }} className="bg-emerald-600 hover:bg-emerald-500 text-white" size="sm" data-testid="button-save-payment-methods-(paid-with)">
+          <Save className="w-4 h-4 mr-1" /> Save Payment Methods
         </Button>
       )}
     </div>
@@ -467,10 +570,9 @@ export default function Admin() {
               label="Purchase Channels"
             />
             <Separator />
-            <EditableList
+            <EditablePaymentMethodList
               items={settings.paid_with_methods}
               onSave={(items) => saveSetting("paid_with_methods", items)}
-              label="Payment Methods (Paid With)"
             />
             <Separator />
             <EditableCategoryList

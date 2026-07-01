@@ -922,7 +922,7 @@ export default function InventoryDetail() {
                       <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
                         <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Payment" /></SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {(settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT).map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                          {(settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT.map(n => ({ name: n, isCredit: false }))).map((opt) => <SelectItem key={opt.name} value={opt.name}>{opt.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>

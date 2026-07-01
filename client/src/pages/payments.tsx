@@ -1,4 +1,5 @@
 import { useInventory } from "@/hooks/use-inventory";
+import { useSettings } from "@/hooks/use-settings";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -71,15 +72,13 @@ const formatCurrency = (val: number) =>
     maximumFractionDigits: 2,
   }).format(val / 100);
 
-const CREDIT_METHOD_KEYWORDS = ["credit", "credit card", "cc", "amex", "visa", "mastercard"];
-
-function isCredit(method: string | null | undefined): boolean {
+function isCredit(method: string | null | undefined, creditNames: Set<string>): boolean {
   if (!method) return false;
-  return CREDIT_METHOD_KEYWORDS.some((k) => method.toLowerCase().includes(k));
+  return creditNames.has(method);
 }
 
-function getUrgency(item: InventoryItem): "none" | "green" | "yellow" | "red" {
-  if (!isCredit(item.paidWith)) return "none";
+function getUrgency(item: InventoryItem, creditNames: Set<string>): "none" | "green" | "yellow" | "red" {
+  if (!isCredit(item.paidWith, creditNames)) return "none";
   if (item.creditPaid) return "none";
   if (!item.creditDueDate) return "green";
   const due = startOfDay(new Date(item.creditDueDate as string | Date));
@@ -98,7 +97,14 @@ type FilterType = "all" | "credit" | "debit_wire" | "unpaid_credit";
 
 export default function Payments() {
   const { data: inventory, isLoading } = useInventory();
+  const { settings } = useSettings();
   const { toast } = useToast();
+
+  const creditNames = useMemo(() => {
+    const methods = settings?.paid_with_methods;
+    if (!methods?.length) return new Set<string>();
+    return new Set(methods.filter((m) => m.isCredit).map((m) => m.name));
+  }, [settings?.paid_with_methods]);
 
   const [filter, setFilter] = useState<FilterType>("all");
   const [search, setSearch] = useState("");
@@ -136,8 +142,8 @@ export default function Payments() {
   }, [itemsWithPayment]);
 
   const creditItems = useMemo(
-    () => itemsWithPayment.filter((i) => isCredit(i.paidWith)),
-    [itemsWithPayment]
+    () => itemsWithPayment.filter((i) => isCredit(i.paidWith, creditNames)),
+    [itemsWithPayment, creditNames]
   );
 
   const unpaidCreditItems = useMemo(
@@ -163,9 +169,9 @@ export default function Payments() {
   const filteredItems = useMemo(() => {
     let items = itemsWithPayment;
 
-    if (filter === "credit") items = items.filter((i) => isCredit(i.paidWith));
-    else if (filter === "debit_wire") items = items.filter((i) => !isCredit(i.paidWith));
-    else if (filter === "unpaid_credit") items = items.filter((i) => isCredit(i.paidWith) && !i.creditPaid);
+    if (filter === "credit") items = items.filter((i) => isCredit(i.paidWith, creditNames));
+    else if (filter === "debit_wire") items = items.filter((i) => !isCredit(i.paidWith, creditNames));
+    else if (filter === "unpaid_credit") items = items.filter((i) => isCredit(i.paidWith, creditNames) && !i.creditPaid);
 
     if (search.trim()) {
       const term = search.toLowerCase();
@@ -192,11 +198,11 @@ export default function Payments() {
 
     // Paid-off credit items sink to the bottom
     return sorted.sort((a, b) => {
-      const aPaid = isCredit(a.paidWith) && a.creditPaid ? 1 : 0;
-      const bPaid = isCredit(b.paidWith) && b.creditPaid ? 1 : 0;
+      const aPaid = isCredit(a.paidWith, creditNames) && a.creditPaid ? 1 : 0;
+      const bPaid = isCredit(b.paidWith, creditNames) && b.creditPaid ? 1 : 0;
       return aPaid - bPaid;
     });
-  }, [itemsWithPayment, filter, search, sortBy]);
+  }, [itemsWithPayment, filter, search, sortBy, creditNames]);
 
   const handleTogglePaid = (item: InventoryItem) => {
     creditMutation.mutate({ id: item.id, data: { creditPaid: !item.creditPaid } });
@@ -225,7 +231,7 @@ export default function Payments() {
   }
 
   const urgencyBorderClass = (item: InventoryItem) => {
-    const u = getUrgency(item);
+    const u = getUrgency(item, creditNames);
     if (u === "red") return "border-l-4 border-l-red-400";
     if (u === "yellow") return "border-l-4 border-l-amber-400";
     return "";
@@ -395,8 +401,8 @@ export default function Payments() {
                 </TableRow>
               ) : (
                 filteredItems.map((item) => {
-                  const credit = isCredit(item.paidWith);
-                  const urgency = getUrgency(item);
+                  const credit = isCredit(item.paidWith, creditNames);
+                  const urgency = getUrgency(item, creditNames);
                   const isPaidOff = credit && item.creditPaid;
                   const isMutating = creditMutation.isPending && creditMutation.variables?.id === item.id;
 

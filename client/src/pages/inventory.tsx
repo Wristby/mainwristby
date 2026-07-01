@@ -182,7 +182,7 @@ export default function Inventory() {
   const SOLD_ON_OPTIONS = settings.sales_platforms;
   const SHIPPING_PARTNERS = settings.shipping_partners;
   const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
-  const PAID_WITH_OPTIONS = settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT;
+  const PAID_WITH_OPTIONS = (settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT.map(n => ({ name: n, isCredit: false }))).map(opt => opt.name);
   const createMutation = useCreateInventory();
   const quickAddClientMutation = useCreateClient();
 

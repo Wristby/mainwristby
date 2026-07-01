@@ -13,7 +13,7 @@ export interface AppSettings {
   sales_platforms: string[];
   shipping_partners: string[];
   purchase_channels: string[];
-  paid_with_methods: string[];
+  paid_with_methods: { name: string; isCredit: boolean }[];
   expense_categories: { value: string; label: string }[];
   ai_model: string;
   ai_prompt_template: string;
@@ -42,7 +42,11 @@ const DEFAULTS: AppSettings = {
   sales_platforms: ["Chrono24", "Facebook Marketplace", "OLX", "Reddit", "Website"],
   shipping_partners: ["DHL", "FedEx", "UPS"],
   purchase_channels: ["Dealer", "Chrono24", "Reddit", "eBay", "Private Purchase", "Other"],
-  paid_with_methods: ["Credit", "Debit", "Wire"],
+  paid_with_methods: [
+    { name: "Credit", isCredit: true },
+    { name: "Debit", isCredit: false },
+    { name: "Wire", isCredit: false },
+  ],
   expense_categories: [
     { value: "marketing", label: "Marketing" },
     { value: "rent_storage", label: "Rent/Storage" },
@@ -118,7 +122,18 @@ export function useSettings() {
     }
   }, [query.data]);
 
-  const merged: AppSettings = { ...DEFAULTS, ...(query.data || {}) };
+  const rawMerged = { ...DEFAULTS, ...(query.data || {}) };
+
+  const normalizedPaidWith: { name: string; isCredit: boolean }[] = (
+    rawMerged.paid_with_methods as unknown[]
+  ).map((entry) => {
+    if (typeof entry === "string") {
+      return { name: entry, isCredit: /credit|cc|amex|visa|mastercard/i.test(entry) };
+    }
+    return entry as { name: string; isCredit: boolean };
+  });
+
+  const merged: AppSettings = { ...rawMerged, paid_with_methods: normalizedPaidWith };
 
   return {
     ...query,
