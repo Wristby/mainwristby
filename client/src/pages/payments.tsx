@@ -3,7 +3,7 @@ import { useSettings } from "@/hooks/use-settings";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
 import { useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { RowLink } from "@/components/row-link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -411,7 +411,7 @@ export default function Payments() {
                       key={item.id}
                       data-testid={`row-payment-${item.id}`}
                       className={cn(
-                        "border-b border-slate-100 transition-colors",
+                        "relative group cursor-pointer border-b border-slate-100 transition-colors",
                         isPaidOff ? "opacity-50 bg-slate-50" : "bg-white hover:bg-slate-50/60",
                         urgency === "red" && !isPaidOff && "bg-red-50/30 hover:bg-red-50/50",
                         urgency === "yellow" && !isPaidOff && "bg-amber-50/30 hover:bg-amber-50/50"
@@ -419,14 +419,16 @@ export default function Payments() {
                     >
                       {/* Watch */}
                       <TableCell className="pl-4 py-3">
-                        <Link href={`/inventory/${item.id}`}>
-                          <div className="flex items-center gap-1.5 group cursor-pointer">
-                            <span className="font-semibold text-slate-900 group-hover:text-emerald-600 transition-colors">
-                              {item.brand} {item.model}
-                            </span>
-                            <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-emerald-500 transition-colors" />
-                          </div>
-                        </Link>
+                        <RowLink
+                          href={`/inventory/${item.id}`}
+                          label={`Open ${item.brand} ${item.model}`}
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-900 group-hover:text-emerald-600 transition-colors">
+                            {item.brand} {item.model}
+                          </span>
+                          <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                        </div>
                         <p className="text-xs text-slate-400 mt-0.5">Ref: {item.referenceNumber}</p>
                       </TableCell>
 
@@ -457,7 +459,7 @@ export default function Payments() {
                       </TableCell>
 
                       {/* Due Date — editable for credit only */}
-                      <TableCell>
+                      <TableCell className="relative z-10">
                         {credit ? (
                           <Popover open={openCalendar === item.id} onOpenChange={(o) => setOpenCalendar(o ? item.id : null)}>
                             <PopoverTrigger asChild>
@@ -528,7 +530,7 @@ export default function Payments() {
                       </TableCell>
 
                       {/* Notes */}
-                      <TableCell>
+                      <TableCell className="relative z-10">
                         <Popover
                           open={editingNotes === item.id}
                           onOpenChange={(o) => {
@@ -589,7 +591,7 @@ export default function Payments() {
                       </TableCell>
 
                       {/* Paid Off — credit only */}
-                      <TableCell className="text-center">
+                      <TableCell className="relative z-10 text-center">
                         {credit ? (
                           <Tooltip>
                             <TooltipTrigger asChild>

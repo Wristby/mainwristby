@@ -36,6 +36,7 @@ import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
+import { RowLink } from "@/components/row-link";
 import { Separator } from "@/components/ui/separator";
 import { useState, useEffect, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
@@ -2261,20 +2262,16 @@ export default function InventoryDetail() {
                   {historicals.map((h) => (
                     <tr
                       key={h.id}
-                      className="hover:bg-slate-50 transition-colors cursor-pointer"
-                      onClick={() => navigate(`/inventory/${h.id}`)}
-                      role="link"
-                      tabIndex={0}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigate(`/inventory/${h.id}`); }}
+                      className="relative group hover:bg-slate-50 transition-colors cursor-pointer"
                       data-testid={`row-historical-${h.id}`}
                     >
                       <td className="px-6 py-3">
-                        <Link
+                        <RowLink
                           href={`/inventory/${h.id}`}
-                          className="flex items-center gap-2 w-fit"
-                          aria-label={`Open ${h.brand} ${h.model}`}
-                        >
-                          <span className="font-medium text-slate-900 hover:text-emerald-600 transition-colors">
+                          label={`Open ${h.brand} ${h.model}`}
+                        />
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900 group-hover:text-emerald-600 transition-colors">
                             {h.brand} {h.model}
                           </span>
                           {h.id === item.id && (
@@ -2282,7 +2279,7 @@ export default function InventoryDetail() {
                               This watch
                             </Badge>
                           )}
-                        </Link>
+                        </div>
                         <p className="text-xs text-slate-400 mt-0.5">#{h.id}</p>
                       </td>
                       <td className="px-4 py-3 text-slate-500">

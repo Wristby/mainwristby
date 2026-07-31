@@ -37,6 +37,7 @@ import { insertInventorySchema, insertClientSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
+import { RowLink } from "@/components/row-link";
 import { differenceInDays, format } from "date-fns";
 import {
   Tooltip,
@@ -149,7 +150,7 @@ const getServiceDurationDays = (item: any) => {
 
 export default function Inventory() {
   const [search, setSearch] = useState("");
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
@@ -1428,30 +1429,23 @@ export default function Inventory() {
                 <TableRow 
                   key={item.id} 
                   className={cn(
-                    "hover:bg-slate-50/50 transition-colors group cursor-pointer",
+                    "relative hover:bg-slate-50/50 transition-colors group cursor-pointer",
                     isLongService && "bg-amber-50/50"
                   )}
-                  onClick={() => setLocation(`/inventory/${item.id}`)}
                 >
                   <TableCell className="font-mono text-xs text-slate-500">
-                    <Link
+                    <RowLink
                       href={`/inventory/${item.id}`}
-                      className="inline-block hover:text-emerald-600 transition-colors"
-                      aria-label={`Open ${item.brand} ${item.model}`}
-                    >
-                      #{item.id}
-                    </Link>
+                      label={`Open ${item.brand} ${item.model}`}
+                    />
+                    #{item.id}
                   </TableCell>
                   <TableCell>
-                    <Link
-                      href={`/inventory/${item.id}`}
-                      className="flex flex-col w-fit"
-                      aria-label={`Open ${item.brand} ${item.model}`}
-                    >
-                      <span className="font-semibold text-slate-900 hover:text-emerald-600 transition-colors">{item.brand}</span>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-slate-900 group-hover:text-emerald-600 transition-colors">{item.brand}</span>
                       <span className="text-sm text-slate-500">{item.model}</span>
                       <span className="text-xs text-slate-400 mt-0.5">{item.referenceNumber}</span>
-                    </Link>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
@@ -1483,7 +1477,7 @@ export default function Inventory() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="relative z-10 flex justify-end gap-2">
                       {item.gdriveLink && (
                         <TooltipProvider delayDuration={0}>
                           <Tooltip>

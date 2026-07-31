@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Phone, Mail, Globe, User, Star, ArrowLeft, Watch, History, TrendingUp, ExternalLink, Pencil, Check, Trash2 } from "lucide-react";
 import { Link } from "wouter";
+import { RowLink } from "@/components/row-link";
 import {
   Table,
   TableBody,
@@ -506,16 +507,16 @@ export default function ClientDetail() {
                   </TableRow>
                 ) : (
                   clientPurchases.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-slate-50 transition-colors">
+                    <TableRow key={item.id} className="relative group cursor-pointer hover:bg-slate-50 transition-colors">
                       <TableCell>
-                        <Link
+                        <RowLink
                           href={`/inventory/${item.id}`}
-                          className="flex flex-col w-fit"
-                          aria-label={`Open ${item.brand} ${item.model}`}
-                        >
-                          <span className="font-medium text-slate-900 hover:text-emerald-600 transition-colors">{item.brand}</span>
+                          label={`Open ${item.brand} ${item.model}`}
+                        />
+                        <div className="flex flex-col">
+                          <span className="font-medium text-slate-900 group-hover:text-emerald-600 transition-colors">{item.brand}</span>
                           <span className="text-sm text-slate-500">{item.model}</span>
-                        </Link>
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm text-slate-500">{item.referenceNumber}</TableCell>
                       <TableCell className="font-medium text-slate-900">{formatCurrency(item.purchasePrice)}</TableCell>
@@ -525,11 +526,13 @@ export default function ClientDetail() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/inventory/${item.id}`}>
-                          <Button size="icon" variant="ghost">
-                            <ExternalLink className="w-4 h-4 text-slate-400" />
-                          </Button>
-                        </Link>
+                        <div className="relative z-10 inline-flex">
+                          <Link href={`/inventory/${item.id}`}>
+                            <Button size="icon" variant="ghost">
+                              <ExternalLink className="w-4 h-4 text-slate-400" />
+                            </Button>
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
