@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
-const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-lite";
+const DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest";
 
 type GeminiGenerateResponse = {
   candidates?: Array<{

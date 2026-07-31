@@ -59,7 +59,7 @@ const DEFAULTS: AppSettings = {
     { value: "platform_fees", label: "Platform Fees" },
     { value: "other", label: "Other" },
   ],
-  ai_model: "gemini-2.0-flash-lite",
+  ai_model: "gemini-flash-lite-latest",
   ai_prompt_template: "",
   ai_movement_prompt_template: "",
   ai_instagram_prompt_template: "",
