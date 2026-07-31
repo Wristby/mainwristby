@@ -48,7 +48,7 @@ The Admin page (`/admin`) provides centralized configuration management:
 - **Monthly Profit Goal**: Target profit tracked on dashboard
 - **Aging Threshold**: Days before inventory is flagged as aging
 - **Dropdown Lists**: Watch brands, sales platforms, shipping partners, purchase channels, expense categories — all editable with add/remove/reorder
-- **AI Settings**: Model selection (fetched from Straico API), prompt template with placeholders
+- **AI Settings**: Gemini model selection and prompt templates with placeholders
 - **Data Export Columns**: Toggle which columns appear in inventory/financial exports
 - **Dashboard Customization**: Toggle visibility and reorder dashboard sections
 

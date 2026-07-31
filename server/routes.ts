@@ -5,6 +5,39 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
+const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-lite";
+
+type GeminiGenerateResponse = {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+  }>;
+};
+
+async function generateGeminiText(apiKey: string, model: string, prompt: string): Promise<string> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (response.status === 429) {
+      throw new Error("Gemini quota is unavailable for the selected model. Check the Google AI Studio project quota or billing configuration, then try again.");
+    }
+    throw new Error(`Gemini API error: ${errorText}`);
+  }
+
+  const data = await response.json() as GeminiGenerateResponse;
+  return data.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || "")
+    .join("")
+    .trim() || "";
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -190,33 +223,25 @@ export async function registerRoutes(
   });
 
   app.get("/api/ai/models", isAuthenticated, async (req, res) => {
-    const apiKey = process.env.STRAICO_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.json({ models: [] });
     }
     try {
-      const response = await fetch("https://api.straico.com/v1/models", {
-        headers: { "Authorization": `Bearer ${apiKey}` },
-      });
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
       if (!response.ok) {
         return res.json({ models: [] });
       }
-      type StraicoModel = { name?: string; model?: string; pricing?: Record<string, unknown> };
-      type StraicoModelsResponse = {
-        data?: StraicoModel[] | Record<string, StraicoModel[]>;
-      };
-      const data = await response.json() as StraicoModelsResponse;
-      const raw = data?.data;
-      let allModels: StraicoModel[] = [];
-      if (Array.isArray(raw)) {
-        allModels = raw;
-      } else if (raw && typeof raw === "object") {
-        allModels = Object.values(raw).flat();
-      }
-      const chatModels = allModels
-        .filter((m) => m.name && m.model)
-        .map((m) => ({ name: m.name, model: m.model, pricing: m.pricing }));
-      res.json({ models: chatModels });
+      const data = await response.json() as { models?: Array<{ name?: string; displayName?: string; supportedGenerationMethods?: string[] }> };
+      const models = (data.models || [])
+        .filter((model) => model.name?.startsWith("models/") && model.supportedGenerationMethods?.includes("generateContent"))
+        .map((model) => ({
+          name: model.displayName || model.name!.replace("models/", ""),
+          model: model.name!.replace("models/", ""),
+          provider: "Google",
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      res.json({ models });
     } catch {
       res.json({ models: [] });
     }
@@ -224,9 +249,9 @@ export async function registerRoutes(
 
   // AI — Generate Listing Description
   app.post("/api/ai/generate-description", isAuthenticated, async (req, res) => {
-    const apiKey = process.env.STRAICO_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(503).json({ message: "AI generation is not configured. Please add your STRAICO_API_KEY." });
+      return res.status(503).json({ message: "AI generation is not configured. Please add your GEMINI_API_KEY." });
     }
 
     const { brand, model, referenceNumber, year, condition, box, papers } = req.body;
@@ -234,7 +259,7 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Brand and model are required." });
     }
 
-    const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
+    const aiModel = await storage.getSetting("ai_model") || DEFAULT_GEMINI_MODEL;
     const promptTemplate = await storage.getSetting("ai_prompt_template") || `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
 
 Brand: {{brand}}
@@ -255,42 +280,7 @@ Papers/Cards: {{papers}}`;
       .replace(/\{\{papers\}\}/g, papers ? "Yes" : "No");
 
     try {
-      const response = await fetch("https://api.straico.com/v1/prompt/completion", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          models: [aiModel],
-          message: prompt,
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        return res.status(502).json({ message: `Straico API error: ${errText}` });
-      }
-
-      interface StraicoChatResponse {
-        data?: {
-          completions?: Record<string, {
-            completion?: {
-              choices?: Array<{ message?: { content?: string } }>;
-            };
-          }>;
-        };
-      }
-      const data = await response.json() as StraicoChatResponse;
-
-      let description = "";
-      const completions = data?.data?.completions;
-      if (completions && typeof completions === "object") {
-        const modelKey = Object.keys(completions)[0];
-        if (modelKey) {
-          description = completions[modelKey]?.completion?.choices?.[0]?.message?.content || "";
-        }
-      }
+      const description = await generateGeminiText(apiKey, aiModel, prompt);
 
       if (!description) {
         return res.status(502).json({ message: "No description returned from AI." });
@@ -304,9 +294,9 @@ Papers/Cards: {{papers}}`;
 
   // AI — Movement Specs Lookup
   app.post("/api/ai/movement-specs", isAuthenticated, async (req, res) => {
-    const apiKey = process.env.STRAICO_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(503).json({ message: "AI is not configured. Please add your STRAICO_API_KEY." });
+      return res.status(503).json({ message: "AI is not configured. Please add your GEMINI_API_KEY." });
     }
 
     const { brand, referenceNumber, inventoryId } = req.body;
@@ -321,42 +311,10 @@ Papers/Cards: {{papers}}`;
       .replace(/\{\{referenceNumber\}\}/g, referenceNumber);
 
     // Use the same admin-configured model as the listing description
-    const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
+    const aiModel = await storage.getSetting("ai_model") || DEFAULT_GEMINI_MODEL;
 
     try {
-      const response = await fetch("https://api.straico.com/v1/prompt/completion", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ models: [aiModel], message: prompt }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        return res.status(502).json({ message: `Straico API error: ${errText}` });
-      }
-
-      interface StraicoChatResponse {
-        data?: {
-          completions?: Record<string, {
-            completion?: {
-              choices?: Array<{ message?: { content?: string } }>;
-            };
-          }>;
-        };
-      }
-      const data = await response.json() as StraicoChatResponse;
-
-      let rawText = "";
-      const completions = data?.data?.completions;
-      if (completions && typeof completions === "object") {
-        const modelKey = Object.keys(completions)[0];
-        if (modelKey) {
-          rawText = completions[modelKey]?.completion?.choices?.[0]?.message?.content || "";
-        }
-      }
+      const rawText = await generateGeminiText(apiKey, aiModel, prompt);
 
       if (!rawText) {
         return res.status(502).json({ message: "No response returned from AI." });
@@ -392,9 +350,9 @@ Papers/Cards: {{papers}}`;
 
   // AI — Generate Instagram Caption
   app.post("/api/ai/generate-caption", isAuthenticated, async (req, res) => {
-    const apiKey = process.env.STRAICO_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(503).json({ message: "AI generation is not configured. Please add your STRAICO_API_KEY." });
+      return res.status(503).json({ message: "AI generation is not configured. Please add your GEMINI_API_KEY." });
     }
 
     const { brand, model, referenceNumber, year, condition, listPrice } = req.body;
@@ -402,7 +360,7 @@ Papers/Cards: {{papers}}`;
       return res.status(400).json({ message: "Brand and model are required." });
     }
 
-    const aiModel = await storage.getSetting("ai_model") || "openai/gpt-4o-mini";
+    const aiModel = await storage.getSetting("ai_model") || DEFAULT_GEMINI_MODEL;
     const promptTemplate = await storage.getSetting("ai_instagram_prompt_template") || DEFAULT_INSTAGRAM_PROMPT;
 
     const listPriceFormatted = listPrice && listPrice > 0
@@ -418,42 +376,7 @@ Papers/Cards: {{papers}}`;
       .replace(/\{\{listPrice\}\}/g, listPriceFormatted);
 
     try {
-      const response = await fetch("https://api.straico.com/v1/prompt/completion", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          models: [aiModel],
-          message: prompt,
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        return res.status(502).json({ message: `Straico API error: ${errText}` });
-      }
-
-      interface StraicoChatResponse {
-        data?: {
-          completions?: Record<string, {
-            completion?: {
-              choices?: Array<{ message?: { content?: string } }>;
-            };
-          }>;
-        };
-      }
-      const data = await response.json() as StraicoChatResponse;
-
-      let caption = "";
-      const completions = data?.data?.completions;
-      if (completions && typeof completions === "object") {
-        const modelKey = Object.keys(completions)[0];
-        if (modelKey) {
-          caption = completions[modelKey]?.completion?.choices?.[0]?.message?.content || "";
-        }
-      }
+      const caption = await generateGeminiText(apiKey, aiModel, prompt);
 
       if (!caption) {
         return res.status(502).json({ message: "No caption returned from AI." });
@@ -591,7 +514,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
     { value: "platform_fees", label: "Platform Fees" },
     { value: "other", label: "Other" },
   ],
-  ai_model: "openai/gpt-4o-mini",
+  ai_model: DEFAULT_GEMINI_MODEL,
   ai_movement_prompt_template: DEFAULT_MOVEMENT_PROMPT,
   ai_instagram_prompt_template: DEFAULT_INSTAGRAM_PROMPT,
   ai_prompt_template: `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.

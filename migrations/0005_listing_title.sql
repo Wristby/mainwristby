@@ -1,0 +1,1 @@
+ALTER TABLE "inventory" ADD COLUMN "listing_title" text;

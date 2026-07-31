@@ -91,7 +91,8 @@ export const inventory = pgTable("inventory", {
   // Link Count (number of bracelet links)
   linkCount: integer("link_count"),
 
-  // Listing Description (AI-generated or manual)
+  // Listing copy (AI-generated or manual)
+  listingTitle: text("listing_title"),
   description: text("description"),
 
   // Instagram Caption (AI-generated or manual)

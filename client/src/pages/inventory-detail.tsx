@@ -376,6 +376,8 @@ export default function InventoryDetail() {
 
   const [descriptionValue, setDescriptionValue] = useState((item as any)?.description || "");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const [listingTitleValue, setListingTitleValue] = useState("");
+  const [isSavingListingTitle, setIsSavingListingTitle] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [captionValue, setCaptionValue] = useState("");
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
@@ -395,6 +397,7 @@ export default function InventoryDetail() {
   useEffect(() => {
     if (item) {
       setDescriptionValue((item as any).description || "");
+      setListingTitleValue((item as any).listingTitle || "");
       setCaptionValue((item as any).instagramCaption || "");
       setMovementSpecs((item as any).movementSpecs || null);
       setNotesValue(item.notes || "");
@@ -423,6 +426,19 @@ export default function InventoryDetail() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsSavingDescription(false);
+    }
+  };
+
+  const handleSaveListingTitle = async () => {
+    setIsSavingListingTitle(true);
+    try {
+      await apiRequest("PUT", `/api/inventory/${id}`, { listingTitle: listingTitleValue });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      toast({ title: "Saved", description: "Listing title saved." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSavingListingTitle(false);
     }
   };
 
@@ -2051,6 +2067,34 @@ export default function InventoryDetail() {
                   Look up the caliber, lift angle, amplitude, and beat error targets for this reference.
                 </p>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Listing Title Card */}
+          <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-listing-title">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg text-slate-900">Listing Title</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                value={listingTitleValue}
+                onChange={(e) => setListingTitleValue(e.target.value)}
+                placeholder="Enter a title for this watch listing..."
+                className="bg-white border-slate-200 text-sm text-slate-700"
+                data-testid="input-listing-title"
+              />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={handleSaveListingTitle}
+                  disabled={isSavingListingTitle}
+                  data-testid="button-save-listing-title"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  {isSavingListingTitle ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+                  Save
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
