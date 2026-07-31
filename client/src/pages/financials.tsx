@@ -240,8 +240,10 @@ export default function Financials() {
     const totalShippingInsurance = soldItems.reduce((sum, item) => 
       sum + (item.shippingFee || 0) + (item.insuranceFee || 0), 0);
     
-    const totalWatchRegisterFees = soldItems.reduce((sum, item) => 
-      sum + (item.watchRegister ? settings.watch_register_fee : 0), 0);
+    const totalWatchRegisterFees = soldItems.reduce((sum, item) => {
+      const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
+      return sum + (item.watchRegister ? wrFee : 0);
+    }, 0);
     
     const totalImportFees = soldItems.reduce((sum, item) => 
       sum + (item.importFee || 0), 0);
@@ -262,12 +264,13 @@ export default function Financials() {
     soldItems.forEach(item => {
       if (item.purchasePrice > 0 && (item.salePrice || (item as any).soldPrice)) {
         const salePrice = item.salePrice || (item as any).soldPrice || 0;
+        const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
         const itemExpenses = (item.serviceFee || 0) + 
                             (item.polishFee || 0) + 
                             (item.platformFees || 0) + 
                             (item.shippingFee || 0) + 
                             (item.insuranceFee || 0) +
-                            (item.watchRegister ? settings.watch_register_fee : 0) +
+                            (item.watchRegister ? wrFee : 0) +
                             (item.importFee || 0);
         const profit = salePrice - item.purchasePrice - itemExpenses;
         const roi = (profit / item.purchasePrice) * 100;
@@ -302,12 +305,13 @@ export default function Financials() {
       const month = monthNames[new Date((item.soldDate || item.dateSold)!).getMonth()];
       months[month].revenue += item.salePrice || 0;
       months[month].cogs += item.purchasePrice;
+      const mWrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
       const itemExpenses = (item.serviceFee || 0) + 
                           (item.polishFee || 0) + 
                           (item.platformFees || 0) + 
                           (item.shippingFee || 0) + 
                           (item.insuranceFee || 0) +
-                          (item.watchRegister ? settings.watch_register_fee : 0) +
+                          (item.watchRegister ? mWrFee : 0) +
                           (item.importFee || 0);
       months[month].expenses += itemExpenses;
     });
@@ -408,9 +412,11 @@ export default function Financials() {
     // Calculate filtered net profit
     const filteredRevenue = filteredSoldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
     const filteredCogs = filteredSoldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-    const filteredWatchFees = filteredSoldItems.reduce((sum, item) => 
-      sum + (item.serviceFee || 0) + (item.polishFee || 0) + (item.platformFees || 0) + 
-      (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? settings.watch_register_fee : 0) + (item.importFee || 0), 0);
+    const filteredWatchFees = filteredSoldItems.reduce((sum, item) => {
+      const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
+      return sum + (item.serviceFee || 0) + (item.polishFee || 0) + (item.platformFees || 0) + 
+        (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? wrFee : 0) + (item.importFee || 0);
+    }, 0);
     const filteredExpenseTotal = filteredExpensesForPeriod.reduce((sum, e) => sum + e.amount, 0);
     
     const filteredNetProfit = filteredRevenue - filteredCogs - filteredWatchFees - filteredExpenseTotal;

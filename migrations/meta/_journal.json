@@ -29,6 +29,13 @@
       "when": 1782896362342,
       "tag": "0003_same_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1753920000000,
+      "tag": "0004_watch_register_fee_snapshot",
+      "breakpoints": true
     }
   ]
 }

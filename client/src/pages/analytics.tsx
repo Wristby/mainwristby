@@ -204,12 +204,13 @@ export default function Analytics() {
 
   // Helper to calculate total fees for an item
   const getItemFees = (item: InventoryItem) => {
+    const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
     return (item.serviceFee || 0) + 
            (item.polishFee || 0) + 
            (item.platformFees || 0) + 
            (item.shippingFee || 0) + 
            (item.insuranceFee || 0) +
-           (item.watchRegister ? settings.watch_register_fee : 0);
+           (item.watchRegister ? wrFee : 0);
   };
 
   const triggerDownload = (filename: string, csvContent: string) => {

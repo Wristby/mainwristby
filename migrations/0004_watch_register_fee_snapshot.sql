@@ -1,0 +1,1 @@
+ALTER TABLE "inventory" ADD COLUMN "watch_register_fee_snapshot" integer;

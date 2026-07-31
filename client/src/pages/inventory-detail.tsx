@@ -689,6 +689,10 @@ export default function InventoryDetail() {
     }
   };
 
+  // Use the fee that was snapshotted when this item was created; fall back to
+  // the current admin-panel value only for old items that have no snapshot.
+  const effectiveWrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
+
   const totalCosts = item.purchasePrice + 
     ((item as any).importFee || 0) + 
     ((item as any).serviceFee || 0) + 
@@ -696,7 +700,7 @@ export default function InventoryDetail() {
     ((item as any).platformFees || 0) + 
     ((item as any).shippingFee || 0) + 
     ((item as any).insuranceFee || 0) +
-    ((item as any).watchRegister ? settings.watch_register_fee : 0);
+    ((item as any).watchRegister ? effectiveWrFee : 0);
   
   const salePrice = (item as any).salePrice || 0;
   const profit = salePrice > 0 ? salePrice - totalCosts : 0;
@@ -729,6 +733,7 @@ export default function InventoryDetail() {
   })();
   const calcHistoricalProfit = (h: any) => {
     const revenue = h.salePrice || 0;
+    const hWrFee = h.watchRegisterFeeSnapshot ?? settings.watch_register_fee;
     const cost = h.purchasePrice +
       (h.importFee || 0) +
       (h.serviceFee || 0) +
@@ -736,7 +741,7 @@ export default function InventoryDetail() {
       (h.platformFees || 0) +
       (h.shippingFee || 0) +
       (h.insuranceFee || 0) +
-      (h.watchRegister ? settings.watch_register_fee : 0);
+      (h.watchRegister ? hWrFee : 0);
     return revenue - cost;
   };
 
@@ -1469,12 +1474,12 @@ export default function InventoryDetail() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Watch Register</span>
-                      <span className="font-medium">{formatCurrency((item as any).watchRegister ? settings.watch_register_fee : 0)}</span>
+                      <span className="font-medium">{formatCurrency((item as any).watchRegister ? effectiveWrFee : 0)}</span>
                     </div>
                     <Separator className="my-3" />
                     <div className="flex justify-between text-sm font-bold">
                       <span className="text-slate-700">Total Sourcing</span>
-                      <span className="text-slate-900">{formatCurrency(item.purchasePrice + ((item as any).importFee || 0) + ((item as any).watchRegister ? settings.watch_register_fee : 0))}</span>
+                      <span className="text-slate-900">{formatCurrency(item.purchasePrice + ((item as any).importFee || 0) + ((item as any).watchRegister ? effectiveWrFee : 0))}</span>
                     </div>
                   </div>
                 </div>

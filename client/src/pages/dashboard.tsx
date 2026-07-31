@@ -422,6 +422,7 @@ export default function Dashboard() {
 
   const calcProfit = (item: InventoryItem) => {
     const revenue = item.salePrice || 0;
+    const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
     const totalCost = item.purchasePrice + 
                       (item.importFee || 0) + 
                       (item.serviceFee || 0) + 
@@ -429,7 +430,7 @@ export default function Dashboard() {
                       (item.platformFees || 0) + 
                       (item.shippingFee || 0) + 
                       (item.insuranceFee || 0) +
-                      (item.watchRegister ? settings.watch_register_fee : 0);
+                      (item.watchRegister ? wrFee : 0);
     return revenue - totalCost;
   };
 

@@ -112,7 +112,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createInventoryItem(insertItem: InsertInventory): Promise<InventoryItem> {
-    const [item] = await db.insert(inventory).values(insertItem).returning();
+    // Snapshot the current watch_register_fee so future admin-panel changes
+    // don't retroactively affect this item's cost calculations.
+    const currentFee = await this.getSetting("watch_register_fee") || 600;
+    const itemWithSnapshot = { ...insertItem, watchRegisterFeeSnapshot: currentFee };
+    const [item] = await db.insert(inventory).values(itemWithSnapshot).returning();
     // Sync watch fees to expenses
     await this.syncWatchFeesToExpenses(item);
     return item;
@@ -144,7 +148,8 @@ export class DatabaseStorage implements IStorage {
   private async syncWatchFeesToExpenses(item: InventoryItem): Promise<void> {
     const watchRef = `${item.brand} ${item.model} - Ref#${item.referenceNumber}`;
     const feeDate = item.purchaseDate || new Date();
-    const watchRegisterFee = await this.getSetting("watch_register_fee") || 600;
+    // Use per-item snapshot if available, otherwise fall back to current setting
+    const watchRegisterFee = (item as any).watchRegisterFeeSnapshot ?? await this.getSetting("watch_register_fee") ?? 600;
 
     for (const feeType of FEE_TYPES) {
       let feeValue: number;
@@ -241,7 +246,7 @@ export class DatabaseStorage implements IStorage {
 
   // Stats
   async getDashboardStats(): Promise<DashboardStats> {
-    const wrFee = await this.getSetting("watch_register_fee") || 600;
+    const currentWrFee = await this.getSetting("watch_register_fee") || 600;
     const allInventory = await db.select().from(inventory);
     
     const activeInventory = allInventory.filter(i => i.status !== 'sold');
@@ -249,6 +254,7 @@ export class DatabaseStorage implements IStorage {
     
     const totalInventoryValue = activeInventory.reduce((sum, item) => {
       const basePrice = item.purchasePrice || 0;
+      const wrFee = (item as any).watchRegisterFeeSnapshot ?? currentWrFee;
       const watchRegisterFee = item.watchRegister ? wrFee : 0;
       return sum + basePrice + watchRegisterFee;
     }, 0);
@@ -261,6 +267,7 @@ export class DatabaseStorage implements IStorage {
       const importFee = item.importFee || 0;
       const serviceFee = (item as any).serviceFee || 0;
       const polishFee = (item as any).polishFee || 0;
+      const wrFee = (item as any).watchRegisterFeeSnapshot ?? currentWrFee;
       const watchRegisterFee = item.watchRegister ? wrFee : 0;
       const platformFees = item.platformFees || 0;
       const shippingFee = item.shippingFee || 0;

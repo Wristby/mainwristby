@@ -106,6 +106,10 @@ export const inventory = pgTable("inventory", {
   dateShipped: timestamp("date_shipped"),
   soldPlatform: text("sold_platform"),
   
+  // Fee snapshot — captures the watch_register_fee at the time of item creation
+  // so that admin-panel changes only affect future items, not existing ones.
+  watchRegisterFeeSnapshot: integer("watch_register_fee_snapshot"),
+
   // Credit Payment Tracking
   creditPaid: boolean("credit_paid").default(false),
   creditDueDate: timestamp("credit_due_date"),

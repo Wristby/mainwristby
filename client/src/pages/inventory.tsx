@@ -476,7 +476,8 @@ export default function Inventory() {
       const shippingFee = item.shippingFee ? item.shippingFee / 100 : 0;
       const insuranceFee = item.insuranceFee ? item.insuranceFee / 100 : 0;
       const targetSellPrice = item.targetSellPrice ? item.targetSellPrice / 100 : 0;
-      const watchRegisterCost = item.watchRegister ? settings.watch_register_fee / 100 : 0;
+      const wrFeeSnapshot = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
+      const watchRegisterCost = item.watchRegister ? wrFeeSnapshot / 100 : 0;
       
       const totalCosts = purchasePrice + importFee + serviceFee + polishFee + watchRegisterCost + platformFees + shippingFee + insuranceFee;
       const profit = salePrice > 0 ? salePrice - totalCosts : 0;
