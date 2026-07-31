@@ -1433,13 +1433,25 @@ export default function Inventory() {
                   )}
                   onClick={() => setLocation(`/inventory/${item.id}`)}
                 >
-                  <TableCell className="font-mono text-xs text-slate-500">#{item.id}</TableCell>
+                  <TableCell className="font-mono text-xs text-slate-500">
+                    <Link
+                      href={`/inventory/${item.id}`}
+                      className="inline-block hover:text-emerald-600 transition-colors"
+                      aria-label={`Open ${item.brand} ${item.model}`}
+                    >
+                      #{item.id}
+                    </Link>
+                  </TableCell>
                   <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-slate-900">{item.brand}</span>
+                    <Link
+                      href={`/inventory/${item.id}`}
+                      className="flex flex-col w-fit"
+                      aria-label={`Open ${item.brand} ${item.model}`}
+                    >
+                      <span className="font-semibold text-slate-900 hover:text-emerald-600 transition-colors">{item.brand}</span>
                       <span className="text-sm text-slate-500">{item.model}</span>
                       <span className="text-xs text-slate-400 mt-0.5">{item.referenceNumber}</span>
-                    </div>
+                    </Link>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">

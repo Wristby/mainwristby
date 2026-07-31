@@ -508,10 +508,14 @@ export default function ClientDetail() {
                   clientPurchases.map((item) => (
                     <TableRow key={item.id} className="hover:bg-slate-50 transition-colors">
                       <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-slate-900">{item.brand}</span>
+                        <Link
+                          href={`/inventory/${item.id}`}
+                          className="flex flex-col w-fit"
+                          aria-label={`Open ${item.brand} ${item.model}`}
+                        >
+                          <span className="font-medium text-slate-900 hover:text-emerald-600 transition-colors">{item.brand}</span>
                           <span className="text-sm text-slate-500">{item.model}</span>
-                        </div>
+                        </Link>
                       </TableCell>
                       <TableCell className="text-sm text-slate-500">{item.referenceNumber}</TableCell>
                       <TableCell className="font-medium text-slate-900">{formatCurrency(item.purchasePrice)}</TableCell>

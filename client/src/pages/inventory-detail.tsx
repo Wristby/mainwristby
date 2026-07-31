@@ -2269,7 +2269,11 @@ export default function InventoryDetail() {
                       data-testid={`row-historical-${h.id}`}
                     >
                       <td className="px-6 py-3">
-                        <div className="flex items-center gap-2">
+                        <Link
+                          href={`/inventory/${h.id}`}
+                          className="flex items-center gap-2 w-fit"
+                          aria-label={`Open ${h.brand} ${h.model}`}
+                        >
                           <span className="font-medium text-slate-900 hover:text-emerald-600 transition-colors">
                             {h.brand} {h.model}
                           </span>
@@ -2278,7 +2282,7 @@ export default function InventoryDetail() {
                               This watch
                             </Badge>
                           )}
-                        </div>
+                        </Link>
                         <p className="text-xs text-slate-400 mt-0.5">#{h.id}</p>
                       </td>
                       <td className="px-4 py-3 text-slate-500">
