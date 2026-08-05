@@ -1,0 +1,1 @@
+- [Gemini model name normalization](gemini-model-normalization.md) — 400 "unexpected model name format" = dirty model string, not API key; server sanitizes via normalizeGeminiModel()

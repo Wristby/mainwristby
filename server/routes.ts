@@ -13,9 +13,32 @@ type GeminiGenerateResponse = {
   }>;
 };
 
+/**
+ * Clean a stored model identifier before sending it to Gemini.
+ *
+ * The api_model setting historically arrives with junk around it (literal
+ * quotes from migrated values, a human-readable display name with spaces,
+ * a "models/" prefix, or whitespace). Google rejects any of those with
+ * 400 "unexpected model name format", so sanitize and fall back to the
+ * known-good default when the value is not a clean identifier.
+ */
+function normalizeGeminiModel(model: string): string {
+  const cleaned = String(model ?? "")
+    .trim()
+    .replace(/^["']+|["']+$/g, "") // strip wrapping quotes
+    .replace(/^models\//, "")       // strip API prefix
+    .trim();
+
+  if (/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(cleaned)) {
+    return cleaned;
+  }
+  return DEFAULT_GEMINI_MODEL;
+}
+
 async function generateGeminiText(apiKey: string, model: string, prompt: string): Promise<string> {
+  const safeModel = normalizeGeminiModel(model);
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
