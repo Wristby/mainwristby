@@ -36,29 +36,43 @@ function normalizeGeminiModel(model: string): string {
 }
 
 async function generateGeminiText(apiKey: string, model: string, prompt: string): Promise<string> {
-  const safeModel = normalizeGeminiModel(model);
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-    },
-  );
+  // Try the requested model first. If Google rejects it with quota (429) or a
+  // missing/retired model (404) — e.g. gemini-2.0-flash-lite is quota-locked
+  // on the free tier for some keys and gemini-2.5-flash-lite was removed from
+  // the API — automatically retry with the known-good default model instead of
+  // erroring, so AI generation still works no matter what the admin has stored.
+  const attempted = new Set<string>();
+  for (const candidate of [normalizeGeminiModel(model), DEFAULT_GEMINI_MODEL]) {
+    const safeModel = normalizeGeminiModel(candidate);
+    if (attempted.has(safeModel)) continue;
+    attempted.add(safeModel);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    if (response.status === 429) {
-      throw new Error("Gemini quota is unavailable for the selected model. Check the Google AI Studio project quota or billing configuration, then try again.");
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      // Quota-exhausted or model unavailable → try the next candidate instead of failing
+      if (response.status === 429 || response.status === 404) {
+        continue;
+      }
+      throw new Error(`Gemini API error: ${errorText}`);
     }
-    throw new Error(`Gemini API error: ${errorText}`);
+
+    const data = await response.json() as GeminiGenerateResponse;
+    return data.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text || "")
+      .join("")
+      .trim() || "";
   }
 
-  const data = await response.json() as GeminiGenerateResponse;
-  return data.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join("")
-    .trim() || "";
+  throw new Error("Gemini quota is unavailable for the selected model. Check the Google AI Studio project quota or billing configuration, then try again.");
 }
 
 export async function registerRoutes(
@@ -256,6 +270,10 @@ export async function registerRoutes(
         return res.json({ models: [] });
       }
       const data = await response.json() as { models?: Array<{ name?: string; displayName?: string; supportedGenerationMethods?: string[] }> };
+      // Models that are unusable on the free tier of Gemini — verified with the
+      // project's API key: gemini-2.0-flash-lite returns HTTP 429 (no free quota)
+      // and gemini-2.5-flash-lite returns HTTP 404 (removed from the API).
+      const BLOCKED_MODEL_IDS = new Set(["gemini-2.0-flash-lite", "gemini-2.5-flash-lite"]);
       const models = (data.models || [])
         .filter((model) => model.name?.startsWith("models/") && model.supportedGenerationMethods?.includes("generateContent"))
         .map((model) => ({
@@ -263,6 +281,7 @@ export async function registerRoutes(
           model: model.name!.replace("models/", ""),
           provider: "Google",
         }))
+        .filter((model) => !BLOCKED_MODEL_IDS.has(model.model))
         .sort((a, b) => a.name.localeCompare(b.name));
       res.json({ models });
     } catch {
