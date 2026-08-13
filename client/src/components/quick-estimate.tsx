@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calculator, TrendingUp, Percent, Wallet } from "lucide-react";
-import { useSettings } from "@/hooks/use-settings";
+import { useSettings, type QuickEstimatePlatformFee } from "@/hooks/use-settings";
 
 export function QuickEstimate() {
   const { settings } = useSettings();
   const [buyPrice, setBuyPrice] = useState<string>("");
   const [serviceCost, setServiceCost] = useState<string>("");
   const [salePrice, setSalePrice] = useState<string>("");
-  const [platform, setPlatform] = useState<string>("none");
+  const [platformId, setPlatformId] = useState<string>("none");
   const [watchRegister, setWatchRegister] = useState(false);
   const [shipping, setShipping] = useState<string>("");
+
+  const platformFees: QuickEstimatePlatformFee[] = settings.quick_estimate_platform_fees;
+
+  const selectedPlatform = platformFees.find((p) => p.id === platformId) ?? null;
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat("de-DE", {
@@ -26,19 +30,31 @@ export function QuickEstimate() {
     }).format(val);
   };
 
+  const formatPlatformFeeLabel = (fee: QuickEstimatePlatformFee) => {
+    if (fee.type === "percentage") {
+      return `${fee.label} (${fee.amount}%)`;
+    }
+    return `${fee.label} (€${(fee.amount / 100).toLocaleString("de-DE")})`;
+  };
+
   const calculate = useMemo(() => {
     const buy = parseFloat(buyPrice || "0");
     const service = parseFloat(serviceCost || "0");
     const sale = parseFloat(salePrice || "0");
     const ship = parseFloat(shipping || "0");
-    
+
     let platformFee = 0;
-    if (platform === "chrono24") {
-      platformFee = sale * (settings.chrono24_commission / 100);
+    if (selectedPlatform) {
+      if (selectedPlatform.type === "percentage") {
+        platformFee = sale * (selectedPlatform.amount / 100);
+      } else {
+        // flat fee stored in cents
+        platformFee = selectedPlatform.amount / 100;
+      }
     }
 
     const wrFee = watchRegister ? settings.watch_register_fee / 100 : 0;
-    
+
     const totalCost = buy + service + platformFee + ship + wrFee;
     const netProfit = sale > 0 ? sale - totalCost : 0;
     const margin = sale > 0 ? (netProfit / sale) * 100 : 0;
@@ -48,9 +64,15 @@ export function QuickEstimate() {
       netProfit,
       margin,
       roi,
-      platformFee
+      platformFee,
     };
-  }, [buyPrice, serviceCost, salePrice, platform, watchRegister, shipping, settings.chrono24_commission, settings.watch_register_fee]);
+  }, [buyPrice, serviceCost, salePrice, platformId, watchRegister, shipping, selectedPlatform, settings.watch_register_fee]);
+
+  const platformFeeLabel = selectedPlatform
+    ? selectedPlatform.type === "percentage"
+      ? `${selectedPlatform.label} Fee (${selectedPlatform.amount}%)`
+      : `${selectedPlatform.label} Fee (flat)`
+    : "Platform Fee";
 
   return (
     <Card className="bg-white border-slate-200 text-slate-900 shadow-sm">
@@ -64,12 +86,12 @@ export function QuickEstimate() {
         <div className="space-y-3">
           <div className="bg-slate-50 p-3 rounded-lg space-y-2 border border-slate-100">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cost Basis</p>
-            
+
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Buy Price</span>
               <div className="relative w-24">
                 <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
-                <Input 
+                <Input
                   value={buyPrice}
                   onChange={(e) => setBuyPrice(e.target.value)}
                   className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900"
@@ -81,7 +103,7 @@ export function QuickEstimate() {
               <span className="text-sm text-slate-600">Service Cost</span>
               <div className="relative w-24">
                 <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
-                <Input 
+                <Input
                   value={serviceCost}
                   onChange={(e) => setServiceCost(e.target.value)}
                   className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900"
@@ -93,7 +115,7 @@ export function QuickEstimate() {
               <span className="text-sm text-slate-600">Shipping Cost</span>
               <div className="relative w-24">
                 <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
-                <Input 
+                <Input
                   value={shipping}
                   onChange={(e) => setShipping(e.target.value)}
                   className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900"
@@ -105,7 +127,7 @@ export function QuickEstimate() {
               <span className="text-sm font-medium text-slate-700">Sale Price</span>
               <div className="relative w-24">
                 <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
-                <Input 
+                <Input
                   value={salePrice}
                   onChange={(e) => setSalePrice(e.target.value)}
                   className="h-7 pl-5 text-right bg-white border-slate-200 text-xs text-slate-900 font-medium"
@@ -114,45 +136,49 @@ export function QuickEstimate() {
             </div>
 
             <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/50 mt-1">
-              <Checkbox 
-                id="wr" 
-                checked={watchRegister} 
+              <Checkbox
+                id="wr"
+                checked={watchRegister}
                 onCheckedChange={(checked) => setWatchRegister(!!checked)}
                 className="h-4 w-4 border-slate-300 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
               />
-              <Label htmlFor="wr" className="text-xs text-slate-600 cursor-pointer">Watch Register Fee (€{(settings.watch_register_fee / 100).toLocaleString("de-DE")})</Label>
+              <Label htmlFor="wr" className="text-xs text-slate-600 cursor-pointer">
+                Watch Register Fee (€{(settings.watch_register_fee / 100).toLocaleString("de-DE")})
+              </Label>
             </div>
           </div>
 
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-slate-500 uppercase">Platform Fee</Label>
-            <Select value={platform} onValueChange={setPlatform}>
+            <Select value={platformId} onValueChange={setPlatformId}>
               <SelectTrigger className="bg-white border-slate-200 text-slate-900">
                 <SelectValue placeholder="Select platform" />
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 text-slate-900">
                 <SelectItem value="none">None (Direct Sale)</SelectItem>
-                <SelectItem value="chrono24">Chrono24 ({settings.chrono24_commission}%)</SelectItem>
+                {platformFees.map((fee) => (
+                  <SelectItem key={fee.id} value={fee.id}>
+                    {formatPlatformFeeLabel(fee)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </div>
 
         <div className="bg-slate-50 rounded-xl p-4 space-y-3 mt-4 border border-slate-100">
-          {platform !== "none" && (
+          {selectedPlatform && (
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Percent className="w-4 h-4 text-red-500" />
-                <span className="text-sm font-medium text-slate-600">
-                  {platform === "chrono24" ? `Chrono24 Fee (${settings.chrono24_commission}%)` : "Platform Fee"}
-                </span>
+                <span className="text-sm font-medium text-slate-600">{platformFeeLabel}</span>
               </div>
               <span className="text-lg font-bold text-red-500 tabular-nums">
                 -{formatCurrency(calculate.platformFee)}
               </span>
             </div>
           )}
-          <div className={platform !== "none" ? "flex justify-between items-center border-t border-slate-200 pt-2" : "flex justify-between items-center"}>
+          <div className={selectedPlatform ? "flex justify-between items-center border-t border-slate-200 pt-2" : "flex justify-between items-center"}>
             <div className="flex items-center gap-2">
               <Wallet className="w-4 h-4 text-emerald-600" />
               <span className="text-sm font-medium text-slate-600">Net Profit</span>

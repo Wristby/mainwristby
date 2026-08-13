@@ -2,9 +2,18 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
+export type QuickEstimatePlatformFee = {
+  id: string;
+  label: string;
+  type: "percentage" | "flat";
+  // Percentage points for percentage fees; euro cents for flat fees.
+  amount: number;
+};
+
 export interface AppSettings {
   chrono24_commission: number;
   watch_register_fee: number;
+  quick_estimate_platform_fees: QuickEstimatePlatformFee[];
   default_tax_rate: number;
   default_margin_rate: number;
   monthly_profit_goal: number;
@@ -27,6 +36,10 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   chrono24_commission: 6.5,
   watch_register_fee: 600,
+  quick_estimate_platform_fees: [
+    { id: "chrono24", label: "Chrono24", type: "percentage", amount: 6.5 },
+    { id: "wristler", label: "Wristler", type: "percentage", amount: 3 },
+  ],
   default_tax_rate: 36.97,
   default_margin_rate: 12.5,
   monthly_profit_goal: 200000,
@@ -124,6 +137,27 @@ export function useSettings() {
 
   const rawMerged = { ...DEFAULTS, ...(query.data || {}) };
 
+  const fallbackPlatformFees = DEFAULTS.quick_estimate_platform_fees.map((fee) =>
+    fee.id === "chrono24" && typeof rawMerged.chrono24_commission === "number"
+      ? { ...fee, amount: rawMerged.chrono24_commission }
+      : fee
+  );
+  const normalizedPlatformFees = Array.isArray(rawMerged.quick_estimate_platform_fees)
+    ? rawMerged.quick_estimate_platform_fees
+        .filter((entry): entry is QuickEstimatePlatformFee =>
+          !!entry &&
+          typeof entry === "object" &&
+          typeof entry.id === "string" &&
+          typeof entry.label === "string" &&
+          (entry.type === "percentage" || entry.type === "flat") &&
+          typeof entry.amount === "number" &&
+          Number.isFinite(entry.amount) &&
+          entry.amount >= 0
+        )
+        .map((entry) => ({ ...entry, label: entry.label.trim() }))
+        .filter((entry) => entry.label.length > 0)
+    : fallbackPlatformFees;
+
   const normalizedPaidWith: { name: string; isCredit: boolean }[] = (
     rawMerged.paid_with_methods as unknown[]
   ).map((entry) => {
@@ -133,7 +167,11 @@ export function useSettings() {
     return entry as { name: string; isCredit: boolean };
   });
 
-  const merged: AppSettings = { ...rawMerged, paid_with_methods: normalizedPaidWith };
+  const merged: AppSettings = {
+    ...rawMerged,
+    quick_estimate_platform_fees: normalizedPlatformFees.length > 0 ? normalizedPlatformFees : fallbackPlatformFees,
+    paid_with_methods: normalizedPaidWith,
+  };
 
   return {
     ...query,

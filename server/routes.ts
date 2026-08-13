@@ -255,7 +255,15 @@ export async function registerRoutes(
     if (value === undefined) {
       return res.status(400).json({ message: "Value is required" });
     }
-    const result = await storage.upsertSetting(key, value);
+    let settingValue = value;
+    if (key === "quick_estimate_platform_fees") {
+      const parsed = quickEstimatePlatformFeesSchema.safeParse(value);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid platform fee settings." });
+      }
+      settingValue = parsed.data;
+    }
+    const result = await storage.upsertSetting(key, settingValue);
     res.json(result);
   });
 
@@ -525,6 +533,42 @@ Year: {{year}}
 Condition: {{condition}}
 Listing Price: {{listPrice}}`;
 
+const DEFAULT_QUICK_ESTIMATE_PLATFORM_FEES = [
+  { id: "chrono24", label: "Chrono24", type: "percentage", amount: 6.5 },
+  { id: "wristler", label: "Wristler", type: "percentage", amount: 3 },
+] as const;
+
+const quickEstimatePlatformFeesSchema = z.array(
+  z.discriminatedUnion("type", [
+    z.object({
+      id: z.string().trim().min(1).max(100),
+      label: z.string().trim().min(1).max(100),
+      type: z.literal("percentage"),
+      amount: z.number().finite().min(0).max(100),
+    }),
+    z.object({
+      id: z.string().trim().min(1).max(100),
+      label: z.string().trim().min(1).max(100),
+      type: z.literal("flat"),
+      amount: z.number().int().nonnegative(),
+    }),
+  ])
+).superRefine((fees, ctx) => {
+  const ids = new Set<string>();
+  const labels = new Set<string>();
+  fees.forEach((fee, index) => {
+    const normalizedLabel = fee.label.trim().toLowerCase();
+    if (ids.has(fee.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, "id"], message: "Platform IDs must be unique." });
+    }
+    if (labels.has(normalizedLabel)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, "label"], message: "Platform labels must be unique." });
+    }
+    ids.add(fee.id);
+    labels.add(normalizedLabel);
+  });
+});
+
 const DEFAULT_SETTINGS: Record<string, any> = {
   chrono24_commission: 6.5,
   watch_register_fee: 600,
@@ -600,6 +644,16 @@ async function seedSettings() {
     if (!(key in existing)) {
       await storage.upsertSetting(key, value);
     }
+  }
+
+  if (!("quick_estimate_platform_fees" in existing)) {
+    const legacyChrono24Rate = typeof existing.chrono24_commission === "number"
+      ? existing.chrono24_commission
+      : DEFAULT_SETTINGS.chrono24_commission;
+    await storage.upsertSetting("quick_estimate_platform_fees", [
+      { ...DEFAULT_QUICK_ESTIMATE_PLATFORM_FEES[0], amount: legacyChrono24Rate },
+      DEFAULT_QUICK_ESTIMATE_PLATFORM_FEES[1],
+    ]);
   }
 
   // Migration: append "Service Start Date" to existing inventory_export_columns if missing

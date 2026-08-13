@@ -35,7 +35,10 @@ import {
   Search,
   Check,
   CreditCard,
+  Calculator,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { QuickEstimatePlatformFee } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
 
 function CollapsibleSection({ title, icon: Icon, children, defaultOpen = true }: {
@@ -422,6 +425,212 @@ function EditableCategoryList({ items, onSave }: {
   );
 }
 
+function QuickEstimateFeeEditor({
+  fees,
+  watchRegisterFee,
+  onSaveFees,
+  onSaveWatchRegisterFee,
+}: {
+  fees: QuickEstimatePlatformFee[];
+  watchRegisterFee: number; // in cents
+  onSaveFees: (fees: QuickEstimatePlatformFee[]) => void;
+  onSaveWatchRegisterFee: (cents: number) => void;
+}) {
+  const [list, setList] = useState<QuickEstimatePlatformFee[]>(fees);
+  const [isDirty, setIsDirty] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newType, setNewType] = useState<"percentage" | "flat">("percentage");
+  const [newAmount, setNewAmount] = useState("");
+  const [addError, setAddError] = useState("");
+
+  useEffect(() => {
+    setList(fees);
+    setIsDirty(false);
+  }, [fees]);
+
+  const generateId = (label: string) =>
+    label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") +
+    "_" +
+    Math.random().toString(36).slice(2, 6);
+
+  const addEntry = () => {
+    setAddError("");
+    const trimmedLabel = newLabel.trim();
+    if (!trimmedLabel) {
+      setAddError("Platform name is required.");
+      return;
+    }
+    if (list.some((f) => f.label.toLowerCase() === trimmedLabel.toLowerCase())) {
+      setAddError("A platform with this name already exists.");
+      return;
+    }
+    const parsed = parseFloat(newAmount);
+    if (isNaN(parsed) || parsed < 0) {
+      setAddError("Enter a valid non-negative amount.");
+      return;
+    }
+    if (newType === "percentage" && parsed > 100) {
+      setAddError("Percentage cannot exceed 100%.");
+      return;
+    }
+    const amount = newType === "flat" ? Math.round(parsed * 100) : parsed;
+    const entry: QuickEstimatePlatformFee = {
+      id: generateId(trimmedLabel),
+      label: trimmedLabel,
+      type: newType,
+      amount,
+    };
+    const updated = [...list, entry];
+    setList(updated);
+    setNewLabel("");
+    setNewAmount("");
+    setAddError("");
+    setIsDirty(true);
+  };
+
+  const removeEntry = (id: string) => {
+    setList(list.filter((f) => f.id !== id));
+    setIsDirty(true);
+  };
+
+  const updateAmount = (id: string, raw: string) => {
+    const parsed = parseFloat(raw);
+    if (isNaN(parsed) || parsed < 0) return;
+    setList(list.map((f) => {
+      if (f.id !== id) return f;
+      const amount = f.type === "flat" ? Math.round(parsed * 100) : parsed;
+      return { ...f, amount };
+    }));
+    setIsDirty(true);
+  };
+
+  const formatDisplayAmount = (fee: QuickEstimatePlatformFee) => {
+    if (fee.type === "percentage") return fee.amount.toString();
+    return (fee.amount / 100).toFixed(2);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Watch Register Fee */}
+      <NumberSetting
+        label="Watch Register Fee (EUR)"
+        value={watchRegisterFee / 100}
+        onSave={(v) => onSaveWatchRegisterFee(Math.round(v * 100))}
+        prefix="€"
+        step={0.5}
+        testId="qe-watch-register-fee"
+      />
+
+      <Separator />
+
+      {/* Platform fee list */}
+      <div className="space-y-3">
+        <div>
+          <Label className="text-sm font-semibold text-slate-700">Platform Fees</Label>
+          <p className="text-xs text-slate-400 mt-0.5">
+            These platforms appear in the Quick Estimate calculator on the Dashboard. Set a percentage or flat fee per platform.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {list.map((fee) => (
+            <div
+              key={fee.id}
+              className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100 group"
+            >
+              <GripVertical className="w-3 h-3 text-slate-300 flex-shrink-0" />
+              <span className="flex-1 text-sm font-medium text-slate-700 truncate">{fee.label}</span>
+              <span className="text-xs text-slate-400 flex-shrink-0">
+                {fee.type === "percentage" ? "%" : "flat €"}
+              </span>
+              <div className="relative w-20 flex-shrink-0">
+                <Input
+                  type="number"
+                  defaultValue={formatDisplayAmount(fee)}
+                  min={0}
+                  max={fee.type === "percentage" ? 100 : undefined}
+                  step={fee.type === "percentage" ? 0.1 : 0.01}
+                  onBlur={(e) => updateAmount(fee.id, e.target.value)}
+                  className="h-7 text-right bg-white border-slate-200 text-xs text-slate-900 pr-1"
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-600 hover:bg-red-50 transition-opacity flex-shrink-0"
+                onClick={() => removeEntry(fee.id)}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          ))}
+
+          {list.length === 0 && (
+            <p className="text-xs text-slate-400 italic px-1">No platforms configured. Add one below.</p>
+          )}
+        </div>
+
+        {/* Add new platform */}
+        <div className="space-y-2 pt-1">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Add Platform</p>
+          <div className="flex gap-2 flex-wrap">
+            <Input
+              value={newLabel}
+              onChange={(e) => { setNewLabel(e.target.value); setAddError(""); }}
+              placeholder="Platform name"
+              className="bg-white border-slate-200 flex-1 min-w-32"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEntry(); } }}
+            />
+            <Select value={newType} onValueChange={(v) => setNewType(v as "percentage" | "flat")}>
+              <SelectTrigger className="bg-white border-slate-200 w-32 flex-shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-slate-200">
+                <SelectItem value="percentage">% of sale</SelectItem>
+                <SelectItem value="flat">Flat (€)</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="relative flex-shrink-0 w-24">
+              {newType === "flat" && (
+                <span className="absolute left-2 top-1.5 text-xs text-slate-400">€</span>
+              )}
+              <Input
+                type="number"
+                value={newAmount}
+                onChange={(e) => { setNewAmount(e.target.value); setAddError(""); }}
+                placeholder={newType === "percentage" ? "e.g. 3" : "e.g. 25"}
+                min={0}
+                max={newType === "percentage" ? 100 : undefined}
+                step={newType === "percentage" ? 0.1 : 0.01}
+                className={`bg-white border-slate-200 text-right ${newType === "flat" ? "pl-5" : ""}`}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEntry(); } }}
+              />
+            </div>
+            <Button
+              onClick={addEntry}
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white flex-shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+          {addError && <p className="text-xs text-red-500">{addError}</p>}
+        </div>
+
+        {isDirty && (
+          <Button
+            onClick={() => { onSaveFees(list); setIsDirty(false); }}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white"
+            size="sm"
+          >
+            <Save className="w-4 h-4 mr-1" /> Save Platform Fees
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const DASHBOARD_SECTION_LABELS: Record<string, string> = {
   kpi_cards: "KPI Cards",
   quick_actions: "Quick Actions",
@@ -580,6 +789,15 @@ export default function Admin() {
               onSave={(items) => saveSetting("expense_categories", items)}
             />
           </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Quick Estimate" icon={Calculator}>
+          <QuickEstimateFeeEditor
+            fees={settings.quick_estimate_platform_fees}
+            watchRegisterFee={settings.watch_register_fee}
+            onSaveFees={(fees) => saveSetting("quick_estimate_platform_fees", fees)}
+            onSaveWatchRegisterFee={(cents) => saveSetting("watch_register_fee", cents)}
+          />
         </CollapsibleSection>
 
         <CollapsibleSection title="AI Settings" icon={Sparkles}>
