@@ -413,7 +413,7 @@ export default function Financials() {
 
   // Calculate filtered net profit and profit per day for the selected period
   const profitPerDayData = useMemo(() => {
-    if (!inventory || !expenses) return { profitPerDay: 0, daysInPeriod: 0, periodLabel: "All Time", filteredNetProfit: 0 };
+    if (!inventory || !expenses) return { profitPerDay: 0, daysInPeriod: 0, periodLabel: "All Time", filteredNetProfit: 0, filteredGrossProfit: 0, filteredExpenseTotal: 0, filteredVatAmount: 0, filteredNetAfterVat: 0 };
     
     const today = new Date();
     const currentYear = getYear(today);
@@ -447,7 +447,8 @@ export default function Financials() {
     }, 0);
     const filteredExpenseTotal = filteredExpensesForPeriod.reduce((sum, e) => sum + e.amount, 0);
     
-    const filteredNetProfit = filteredRevenue - filteredCogs - filteredWatchFees - filteredExpenseTotal;
+    const filteredGrossProfit = filteredRevenue - filteredCogs - filteredWatchFees;
+    const filteredNetProfit = filteredGrossProfit - filteredExpenseTotal;
 
     // VAT: period-filtered (same logic as all-time metrics, but scoped to filteredSoldItems)
     const filteredVatAgg = aggregateVat(
@@ -513,6 +514,8 @@ export default function Financials() {
       daysInPeriod,
       periodLabel,
       filteredNetProfit,
+      filteredGrossProfit,
+      filteredExpenseTotal,
       filteredVatAmount,
       filteredNetAfterVat,
     };
@@ -939,14 +942,15 @@ export default function Financials() {
 
       {/* Tax Estimate */}
       {(() => {
-        const grossProfit = metrics.grossProfit;
-        const allExpenses = grossProfit - metrics.netProfit;
-        const taxableIncome = metrics.netProfit;
+        const grossProfit = profitPerDayData.filteredGrossProfit;
+        const allExpenses = profitPerDayData.filteredExpenseTotal;
+        const taxableIncome = profitPerDayData.filteredNetProfit;
         const estimatedTax = taxableIncome > 0 ? (taxableIncome * taxRate) / 100 : 0;
         const afterTaxIncome = taxableIncome - estimatedTax;
         const vatAmount = profitPerDayData.filteredVatAmount;
         const netAfterVat = profitPerDayData.filteredNetAfterVat;
         const vatRate_ = settings.vat_rate;
+        const periodLabel = profitPerDayData.periodLabel;
 
         return (
           <Card className="border-slate-200 bg-white">
@@ -955,6 +959,9 @@ export default function Financials() {
                 <div className="flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-slate-500" />
                   <h3 className="text-lg font-semibold text-slate-900">Tax Estimate</h3>
+                  <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-200 text-xs font-normal">
+                    {periodLabel}
+                  </Badge>
                 </div>
                 <div className="flex items-center gap-2">
                   {isEditingTaxRate ? (
