@@ -44,6 +44,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn, parsePriceInput } from "@/lib/utils";
 import { useSettings } from "@/hooks/use-settings";
+import { QuickEstimate } from "@/components/quick-estimate";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -1409,6 +1410,8 @@ export default function InventoryDetail() {
               </div>
             </CardContent>
           </Card>
+
+          <QuickEstimate initialBuyPriceCents={item.purchasePrice} />
 
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-4">

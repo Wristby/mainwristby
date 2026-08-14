@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,14 +8,29 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Calculator, TrendingUp, Percent, Wallet } from "lucide-react";
 import { useSettings, type QuickEstimatePlatformFee } from "@/hooks/use-settings";
 
-export function QuickEstimate() {
+type QuickEstimateProps = {
+  /** Optional saved COGS value in cents, used to prefill the estimate's Buy Price. */
+  initialBuyPriceCents?: number;
+};
+
+export function QuickEstimate({ initialBuyPriceCents }: QuickEstimateProps) {
   const { settings } = useSettings();
-  const [buyPrice, setBuyPrice] = useState<string>("");
+  const [buyPrice, setBuyPrice] = useState<string>(() =>
+    initialBuyPriceCents !== undefined && Number.isFinite(initialBuyPriceCents)
+      ? (initialBuyPriceCents / 100).toFixed(2)
+      : ""
+  );
   const [serviceCost, setServiceCost] = useState<string>("");
   const [salePrice, setSalePrice] = useState<string>("");
   const [platformId, setPlatformId] = useState<string>("none");
   const [watchRegister, setWatchRegister] = useState(false);
   const [shipping, setShipping] = useState<string>("");
+
+  useEffect(() => {
+    if (initialBuyPriceCents !== undefined && Number.isFinite(initialBuyPriceCents)) {
+      setBuyPrice((initialBuyPriceCents / 100).toFixed(2));
+    }
+  }, [initialBuyPriceCents]);
 
   const platformFees: QuickEstimatePlatformFee[] = settings.quick_estimate_platform_fees;
 
@@ -207,7 +222,7 @@ export function QuickEstimate() {
           </div>
         </div>
 
-        <Button className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 rounded-xl mt-2 shadow-sm transition-all active:scale-[0.98]">
+        <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 rounded-xl mt-2 shadow-sm transition-all active:scale-[0.98]">
           Calculate Estimate
         </Button>
       </CardContent>
