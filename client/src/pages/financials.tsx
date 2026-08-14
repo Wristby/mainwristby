@@ -217,108 +217,6 @@ export default function Financials() {
     });
   }, [expenses, search, categoryFilter, monthFilter, yearFilter]);
 
-  const metrics = useMemo(() => {
-    if (!inventory || !expenses) return { 
-      totalRevenue: 0, 
-      totalExpenses: 0, 
-      totalCogs: 0,
-      grossProfit: 0,
-      netProfit: 0, 
-      vatAmount: 0,
-      netAfterVat: 0,
-      avgRoi: 0,
-      soldCount: 0
-    };
-
-    const soldItems = inventory.filter(i => i.status === 'sold');
-    
-    const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
-    // COGS = sum of purchase prices of sold watches only
-    const totalCogs = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-    
-    const totalServicePolishFees = soldItems.reduce((sum, item) => 
-      sum + (item.serviceFee || 0) + (item.polishFee || 0), 0);
-    
-    const totalPlatformFees = soldItems.reduce((sum, item) => sum + (item.platformFees || 0), 0);
-    const totalShippingInsurance = soldItems.reduce((sum, item) => 
-      sum + (item.shippingFee || 0) + (item.insuranceFee || 0), 0);
-    
-    const totalWatchRegisterFees = soldItems.reduce((sum, item) => {
-      const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-      return sum + (item.watchRegister ? wrFee : 0);
-    }, 0);
-    
-    const totalImportFees = soldItems.reduce((sum, item) => 
-      sum + (item.importFee || 0), 0);
-
-    // All watch-level costs on sold items (fees on top of purchase price)
-    const totalWatchFees = totalServicePolishFees + totalPlatformFees + totalShippingInsurance + totalWatchRegisterFees + totalImportFees;
-    
-    const allExpensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
-    
-    // Gross profit = Revenue - COGS of sold items - all sold item fees
-    const grossProfit = totalRevenue - totalCogs - totalWatchFees;
-    
-    // Net profit = Gross profit - general business expenses
-    const netProfit = grossProfit - allExpensesTotal;
-    
-    let totalRoi = 0;
-    let roiCount = 0;
-    soldItems.forEach(item => {
-      if (item.purchasePrice > 0 && (item.salePrice || (item as any).soldPrice)) {
-        const salePrice = item.salePrice || (item as any).soldPrice || 0;
-        const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-        const itemExpenses = (item.serviceFee || 0) + 
-                            (item.polishFee || 0) + 
-                            (item.platformFees || 0) + 
-                            (item.shippingFee || 0) + 
-                            (item.insuranceFee || 0) +
-                            (item.watchRegister ? wrFee : 0) +
-                            (item.importFee || 0);
-        const profit = salePrice - item.purchasePrice - itemExpenses;
-        const roi = (profit / item.purchasePrice) * 100;
-        totalRoi += roi;
-        roiCount++;
-      }
-    });
-    const avgRoi = roiCount > 0 ? Math.round(totalRoi / roiCount) : 0;
-
-    // VAT: use shared aggregateVat helper (rounds per-watch before summing)
-    const vatAgg = aggregateVat(
-      soldItems.map((item) => {
-        const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-        const itemFees =
-          (item.serviceFee || 0) +
-          (item.polishFee || 0) +
-          (item.platformFees || 0) +
-          (item.shippingFee || 0) +
-          (item.insuranceFee || 0) +
-          (item.watchRegister ? wrFee : 0) +
-          (item.importFee || 0);
-        return {
-          salePrice: item.salePrice || 0,
-          totalCosts: item.purchasePrice + itemFees,
-          vatRate: settings.vat_rate,
-        };
-      })
-    );
-    const totalVatAmount = vatAgg.vatAmount;
-    // Net After VAT keeps business expenses deducted (netProfit base)
-    const netAfterVat = netProfit - totalVatAmount;
-
-    return { 
-      totalRevenue, 
-      totalExpenses: allExpensesTotal, 
-      totalCogs,
-      grossProfit,
-      netProfit, 
-      vatAmount: totalVatAmount,
-      netAfterVat,
-      avgRoi,
-      soldCount: soldItems.length
-    };
-  }, [inventory, expenses, settings.vat_rate, settings.watch_register_fee]);
-
   const monthlyData = useMemo(() => {
     if (!inventory || !expenses) return [];
     
@@ -413,14 +311,17 @@ export default function Financials() {
 
   // Calculate filtered net profit and profit per day for the selected period
   const profitPerDayData = useMemo(() => {
-    if (!inventory || !expenses) return { profitPerDay: 0, daysInPeriod: 0, periodLabel: "All Time", filteredNetProfit: 0, filteredGrossProfit: 0, filteredExpenseTotal: 0, filteredVatAmount: 0, filteredNetAfterVat: 0 };
+    if (!inventory || !expenses) return { profitPerDay: 0, daysInPeriod: 0, periodLabel: "All Time", filteredRevenue: 0, filteredCogs: 0, filteredNetProfit: 0, filteredGrossProfit: 0, filteredExpenseTotal: 0, filteredVatAmount: 0, filteredNetAfterVat: 0 };
     
     const today = new Date();
     const currentYear = getYear(today);
     
-    // Filter sold items by the selected period
+    // Filter sold items by the selected period.
+    // When both filters are "all", include every sold item (even those without a recorded sale date).
+    // Only require a date when at least one period filter is active.
     const filteredSoldItems = inventory.filter(item => {
       if (item.status !== 'sold') return false;
+      if (monthFilter === "all" && yearFilter === "all") return true;
       const soldDate = item.soldDate || item.dateSold;
       if (!soldDate) return false;
       const date = new Date(soldDate);
@@ -513,6 +414,8 @@ export default function Financials() {
       profitPerDay,
       daysInPeriod,
       periodLabel,
+      filteredRevenue,
+      filteredCogs,
       filteredNetProfit,
       filteredGrossProfit,
       filteredExpenseTotal,
@@ -709,7 +612,7 @@ export default function Financials() {
               </div>
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Total Revenue</p>
-            <p className="text-2xl font-bold text-emerald-600 mt-1 tabular-nums">{formatCurrency(metrics.totalRevenue)}</p>
+            <p className="text-2xl font-bold text-emerald-600 mt-1 tabular-nums">{formatCurrency(profitPerDayData.filteredRevenue)}</p>
           </CardContent>
         </Card>
         
@@ -721,7 +624,7 @@ export default function Financials() {
               </div>
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Total Expenses</p>
-            <p className="text-2xl font-bold text-red-600 mt-1 tabular-nums">{formatCurrency(metrics.totalExpenses)}</p>
+            <p className="text-2xl font-bold text-red-600 mt-1 tabular-nums">{formatCurrency(profitPerDayData.filteredExpenseTotal)}</p>
           </CardContent>
         </Card>
         
@@ -733,7 +636,7 @@ export default function Financials() {
               </div>
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Sold COGS</p>
-            <p className="text-2xl font-bold text-orange-600 mt-1 tabular-nums">{formatCurrency(metrics.totalCogs)}</p>
+            <p className="text-2xl font-bold text-orange-600 mt-1 tabular-nums">{formatCurrency(profitPerDayData.filteredCogs)}</p>
           </CardContent>
         </Card>
         
@@ -745,7 +648,7 @@ export default function Financials() {
               </div>
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Gross Profit</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{formatCurrency(metrics.grossProfit)}</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1 tabular-nums">{formatCurrency(profitPerDayData.filteredGrossProfit)}</p>
           </CardContent>
         </Card>
         
@@ -757,7 +660,7 @@ export default function Financials() {
               </div>
             </div>
             <p className="text-xs text-slate-500 uppercase tracking-wide">Net Profit</p>
-            <p className="text-2xl font-bold text-purple-600 mt-1 tabular-nums">{formatCurrency(metrics.netProfit)}</p>
+            <p className="text-2xl font-bold text-purple-600 mt-1 tabular-nums">{formatCurrency(profitPerDayData.filteredNetProfit)}</p>
           </CardContent>
         </Card>
       </div>
