@@ -15,6 +15,7 @@ export interface AppSettings {
   watch_register_fee: number;
   quick_estimate_platform_fees: QuickEstimatePlatformFee[];
   default_tax_rate: number;
+  vat_rate: number;
   default_margin_rate: number;
   monthly_profit_goal: number;
   aging_threshold_days: number;
@@ -41,6 +42,7 @@ const DEFAULTS: AppSettings = {
     { id: "wristler", label: "Wristler", type: "percentage", amount: 3 },
   ],
   default_tax_rate: 36.97,
+  vat_rate: 21,
   default_margin_rate: 12.5,
   monthly_profit_goal: 200000,
   aging_threshold_days: 60,
@@ -157,6 +159,13 @@ export function useSettings() {
         .map((entry) => ({ ...entry, label: entry.label.trim() }))
         .filter((entry) => entry.label.length > 0)
     : fallbackPlatformFees;
+  const normalizedVatRate =
+    typeof rawMerged.vat_rate === "number" &&
+    Number.isFinite(rawMerged.vat_rate) &&
+    rawMerged.vat_rate >= 0 &&
+    rawMerged.vat_rate <= 100
+      ? rawMerged.vat_rate
+      : DEFAULTS.vat_rate;
 
   const normalizedPaidWith: { name: string; isCredit: boolean }[] = (
     rawMerged.paid_with_methods as unknown[]
@@ -170,6 +179,7 @@ export function useSettings() {
   const merged: AppSettings = {
     ...rawMerged,
     quick_estimate_platform_fees: normalizedPlatformFees.length > 0 ? normalizedPlatformFees : fallbackPlatformFees,
+    vat_rate: normalizedVatRate,
     paid_with_methods: normalizedPaidWith,
   };
 

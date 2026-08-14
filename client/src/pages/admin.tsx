@@ -721,6 +721,14 @@ export default function Admin() {
               testId="default-tax-rate"
             />
             <NumberSetting
+              label="VAT Rate (%)"
+              value={settings.vat_rate}
+              onSave={(v) => saveSetting("vat_rate", v)}
+              suffix="%"
+              step={0.01}
+              testId="vat-rate"
+            />
+            <NumberSetting
               label="Default Margin Rate (%)"
               value={settings.default_margin_rate}
               onSave={(v) => saveSetting("default_margin_rate", v)}

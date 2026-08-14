@@ -263,6 +263,13 @@ export async function registerRoutes(
       }
       settingValue = parsed.data;
     }
+    if (key === "vat_rate") {
+      const parsed = z.number().finite().min(0).max(100).safeParse(value);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "VAT rate must be a number between 0 and 100." });
+      }
+      settingValue = parsed.data;
+    }
     const result = await storage.upsertSetting(key, settingValue);
     res.json(result);
   });
@@ -573,6 +580,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   chrono24_commission: 6.5,
   watch_register_fee: 600,
   default_tax_rate: 36.97,
+  vat_rate: 21,
   default_margin_rate: 12.5,
   monthly_profit_goal: 200000,
   aging_threshold_days: 60,

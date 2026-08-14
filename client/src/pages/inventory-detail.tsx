@@ -723,6 +723,8 @@ export default function InventoryDetail() {
   const salePrice = (item as any).salePrice || 0;
   const profit = salePrice > 0 ? salePrice - totalCosts : 0;
   const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
+  const vatAmount = profit > 0 ? Math.round(profit * (settings.vat_rate / 100)) : 0;
+  const netAfterVat = profit - vatAmount;
   
   const getEndDate = () => {
     if (item.status === 'sold' && (item.soldDate || (item as any).dateSold || item.dateSold)) {
@@ -1472,6 +1474,16 @@ export default function InventoryDetail() {
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Total Fees</p>
                   <p className="text-xl font-bold text-red-500">{formatCurrency(totalFees)}</p>
+                </div>
+                <div className="p-4 bg-violet-50/50 rounded-xl border border-violet-100">
+                  <p className="text-xs font-medium text-violet-500 uppercase tracking-wider mb-1">Net After VAT</p>
+                  <p className={`text-xl font-bold ${netAfterVat >= 0 ? "text-violet-700" : "text-red-600"}`}>
+                    {formatCurrency(netAfterVat)}
+                  </p>
+                </div>
+                <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-100">
+                  <p className="text-xs font-medium text-amber-600 uppercase tracking-wider mb-1">VAT Amount</p>
+                  <p className="text-xl font-bold text-amber-700">{formatCurrency(vatAmount)}</p>
                 </div>
               </div>
 
