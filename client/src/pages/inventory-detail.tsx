@@ -43,6 +43,7 @@ import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn, parsePriceInput } from "@/lib/utils";
+import { computeVat } from "@/lib/vat-calculations";
 import { useSettings } from "@/hooks/use-settings";
 import { QuickEstimate } from "@/components/quick-estimate";
 
@@ -721,10 +722,12 @@ export default function InventoryDetail() {
     ((item as any).watchRegister ? effectiveWrFee : 0);
   
   const salePrice = (item as any).salePrice || 0;
-  const profit = salePrice > 0 ? salePrice - totalCosts : 0;
-  const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
-  const vatAmount = profit > 0 ? Math.round(profit * (settings.vat_rate / 100)) : 0;
-  const netAfterVat = profit - vatAmount;
+  const margin = salePrice > 0 ? ((salePrice - totalCosts) / salePrice) * 100 : 0;
+  const { profit, vatAmount, netAfterVat } = computeVat({
+    salePrice,
+    totalCosts,
+    vatRate: settings.vat_rate,
+  });
   
   const getEndDate = () => {
     if (item.status === 'sold' && (item.soldDate || (item as any).dateSold || item.dateSold)) {
