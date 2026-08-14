@@ -1698,7 +1698,6 @@ export default function InventoryDetail() {
             </CardContent>
           </Card>
 
-          <QuickEstimate initialBuyPriceCents={item.purchasePrice} />
         </div>
 
         {/* Right Sidebar */}
@@ -2221,6 +2220,8 @@ export default function InventoryDetail() {
               </div>
             </CardContent>
           </Card>
+
+          <QuickEstimate initialBuyPriceCents={item.purchasePrice} />
         </div>
       </div>
 
