@@ -31,3 +31,23 @@ export function computeVat({ salePrice, totalCosts, vatRate }: WatchFinancials):
   const netAfterVat = profit - vatAmount;
   return { profit, vatAmount, netAfterVat };
 }
+
+/**
+ * Aggregate VAT figures across a collection of watches.
+ *
+ * Unsold watches (salePrice = 0) and loss-making watches contribute zero VAT,
+ * consistent with the per-item computeVat rules.
+ */
+export function aggregateVat(watches: WatchFinancials[]): VatResult {
+  return watches.reduce(
+    (acc, watch) => {
+      const r = computeVat(watch);
+      return {
+        profit: acc.profit + r.profit,
+        vatAmount: acc.vatAmount + r.vatAmount,
+        netAfterVat: acc.netAfterVat + r.netAfterVat,
+      };
+    },
+    { profit: 0, vatAmount: 0, netAfterVat: 0 },
+  );
+}
