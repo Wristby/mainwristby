@@ -136,3 +136,56 @@ describe("aggregateVat — income summary aggregation", () => {
     expect(result.netAfterVat).toBe(0);
   });
 });
+
+describe("Financials page — aggregateVat matches per-watch rounding contract", () => {
+  /**
+   * These tests guard the Financials income summary against the rounding error
+   * that arises when VAT is computed on the aggregate profit instead of per watch.
+   *
+   * Example: two watches each with a profit whose VAT rounds differently in
+   * isolation than when their profits are summed first.
+   *   Watch A profit = 100_001 cents → Math.round(100_001 × 0.21) = 21_000
+   *   Watch B profit = 100_002 cents → Math.round(100_002 × 0.21) = 21_000
+   *   Per-watch sum  = 42_000
+   *   Wrong way (aggregate): Math.round(200_003 × 0.21) = Math.round(42_000.63) = 42_001
+   */
+  it("rounds VAT per watch before summing, not on the aggregate profit", () => {
+    const rate = 21;
+    const watchA = { salePrice: 600_001, totalCosts: 500_000, vatRate: rate }; // profit 100_001
+    const watchB = { salePrice: 600_002, totalCosts: 500_000, vatRate: rate }; // profit 100_002
+
+    const result = aggregateVat([watchA, watchB]);
+
+    const perWatchVat =
+      Math.round(100_001 * 0.21) + Math.round(100_002 * 0.21); // 21_000 + 21_000 = 42_000
+    const wrongAggregateVat = Math.round(200_003 * 0.21);       // 42_001
+
+    // Confirm the two approaches diverge (ensures the test is meaningful)
+    expect(perWatchVat).not.toBe(wrongAggregateVat);
+
+    expect(result.vatAmount).toBe(perWatchVat);
+    expect(result.netAfterVat).toBe(result.profit - perWatchVat);
+  });
+
+  it("Financials net-after-VAT deducts VAT from netProfit (business expenses stay in)", () => {
+    // Simulate how the Financials page computes netAfterVat:
+    //   netProfit = grossProfit - businessExpenses
+    //   netAfterVat = netProfit - aggregatedVatAmount
+    const rate = 21;
+    const watches = [
+      { salePrice: 700_000, totalCosts: 500_000, vatRate: rate }, // profit €2 000 → VAT €420
+      { salePrice: 550_000, totalCosts: 500_000, vatRate: rate }, // profit €500  → VAT €105
+    ];
+    const businessExpenses = 50_000; // €500
+
+    const { vatAmount } = aggregateVat(watches);
+
+    const grossProfit = 200_000 + 50_000; // €2 500
+    const netProfit = grossProfit - businessExpenses; // €2 000
+    const netAfterVat = netProfit - vatAmount;
+
+    const expectedVat = Math.round(200_000 * 0.21) + Math.round(50_000 * 0.21); // 42_000 + 10_500 = 52_500
+    expect(vatAmount).toBe(expectedVat);
+    expect(netAfterVat).toBe(netProfit - expectedVat);
+  });
+});

@@ -69,6 +69,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
+import { aggregateVat } from "@/lib/vat-calculations";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -223,6 +224,8 @@ export default function Financials() {
       totalCogs: 0,
       grossProfit: 0,
       netProfit: 0, 
+      vatAmount: 0,
+      netAfterVat: 0,
       avgRoi: 0,
       soldCount: 0
     };
@@ -280,16 +283,41 @@ export default function Financials() {
     });
     const avgRoi = roiCount > 0 ? Math.round(totalRoi / roiCount) : 0;
 
+    // VAT: use shared aggregateVat helper (rounds per-watch before summing)
+    const vatAgg = aggregateVat(
+      soldItems.map((item) => {
+        const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
+        const itemFees =
+          (item.serviceFee || 0) +
+          (item.polishFee || 0) +
+          (item.platformFees || 0) +
+          (item.shippingFee || 0) +
+          (item.insuranceFee || 0) +
+          (item.watchRegister ? wrFee : 0) +
+          (item.importFee || 0);
+        return {
+          salePrice: item.salePrice || 0,
+          totalCosts: item.purchasePrice + itemFees,
+          vatRate: settings.vat_rate,
+        };
+      })
+    );
+    const totalVatAmount = vatAgg.vatAmount;
+    // Net After VAT keeps business expenses deducted (netProfit base)
+    const netAfterVat = netProfit - totalVatAmount;
+
     return { 
       totalRevenue, 
       totalExpenses: allExpensesTotal, 
       totalCogs,
       grossProfit,
       netProfit, 
+      vatAmount: totalVatAmount,
+      netAfterVat,
       avgRoi,
       soldCount: soldItems.length
     };
-  }, [inventory, expenses]);
+  }, [inventory, expenses, settings.vat_rate, settings.watch_register_fee]);
 
   const monthlyData = useMemo(() => {
     if (!inventory || !expenses) return [];
@@ -892,6 +920,9 @@ export default function Financials() {
         const taxableIncome = metrics.netProfit;
         const estimatedTax = taxableIncome > 0 ? (taxableIncome * taxRate) / 100 : 0;
         const afterTaxIncome = taxableIncome - estimatedTax;
+        const vatAmount = metrics.vatAmount;
+        const netAfterVat = metrics.netAfterVat;
+        const vatRate_ = settings.vat_rate;
 
         return (
           <Card className="border-slate-200 bg-white">
@@ -984,6 +1015,30 @@ export default function Financials() {
                   <span className="text-sm font-bold text-emerald-800">After-Tax Net Income</span>
                   <span className={`text-lg font-bold tabular-nums ${afterTaxIncome >= 0 ? "text-emerald-700" : "text-red-600"}`}>
                     {formatCurrency(afterTaxIncome)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-3">
+                  <span className="text-sm text-slate-600">
+                    VAT Amount ({vatRate_}%)
+                    <TooltipProvider delayDuration={0}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="w-3 h-3 text-slate-400 inline ml-1 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          Sum of per-watch net profit × VAT rate. Watches with a negative profit contribute €0 VAT.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums text-red-500">
+                    -{formatCurrency(vatAmount)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-4 py-4 bg-blue-50">
+                  <span className="text-sm font-bold text-blue-800">Net After VAT</span>
+                  <span className={`text-lg font-bold tabular-nums ${netAfterVat >= 0 ? "text-blue-700" : "text-red-600"}`}>
+                    {formatCurrency(netAfterVat)}
                   </span>
                 </div>
               </div>
