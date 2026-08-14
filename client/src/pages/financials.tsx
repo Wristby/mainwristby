@@ -448,6 +448,28 @@ export default function Financials() {
     const filteredExpenseTotal = filteredExpensesForPeriod.reduce((sum, e) => sum + e.amount, 0);
     
     const filteredNetProfit = filteredRevenue - filteredCogs - filteredWatchFees - filteredExpenseTotal;
+
+    // VAT: period-filtered (same logic as all-time metrics, but scoped to filteredSoldItems)
+    const filteredVatAgg = aggregateVat(
+      filteredSoldItems.map((item) => {
+        const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
+        const itemFees =
+          (item.serviceFee || 0) +
+          (item.polishFee || 0) +
+          (item.platformFees || 0) +
+          (item.shippingFee || 0) +
+          (item.insuranceFee || 0) +
+          (item.watchRegister ? wrFee : 0) +
+          (item.importFee || 0);
+        return {
+          salePrice: item.salePrice || 0,
+          totalCosts: item.purchasePrice + itemFees,
+          vatRate: settings.vat_rate,
+        };
+      })
+    );
+    const filteredVatAmount = filteredVatAgg.vatAmount;
+    const filteredNetAfterVat = filteredNetProfit - filteredVatAmount;
     
     // Calculate days in period
     let daysInPeriod = 0;
@@ -490,9 +512,11 @@ export default function Financials() {
       profitPerDay,
       daysInPeriod,
       periodLabel,
-      filteredNetProfit
+      filteredNetProfit,
+      filteredVatAmount,
+      filteredNetAfterVat,
     };
-  }, [monthFilter, yearFilter, inventory, expenses]);
+  }, [monthFilter, yearFilter, inventory, expenses, settings.vat_rate, settings.watch_register_fee]);
 
   const isLoading = expensesLoading || inventoryLoading;
 
@@ -920,8 +944,8 @@ export default function Financials() {
         const taxableIncome = metrics.netProfit;
         const estimatedTax = taxableIncome > 0 ? (taxableIncome * taxRate) / 100 : 0;
         const afterTaxIncome = taxableIncome - estimatedTax;
-        const vatAmount = metrics.vatAmount;
-        const netAfterVat = metrics.netAfterVat;
+        const vatAmount = profitPerDayData.filteredVatAmount;
+        const netAfterVat = profitPerDayData.filteredNetAfterVat;
         const vatRate_ = settings.vat_rate;
 
         return (
