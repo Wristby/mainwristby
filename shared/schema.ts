@@ -62,6 +62,8 @@ export const inventory = pgTable("inventory", {
   salePrice: integer("sale_price").default(0),
   soldTo: text("sold_to"),
   platformFees: integer("platform_fees").default(0),
+  // Stored in hundredths of a percent: 650 represents a 6.50% Chrono24 fee.
+  chrono24FeeRate: integer("chrono24_fee_rate"),
   shippingFee: integer("shipping_fee").default(0),
   insuranceFee: integer("insurance_fee").default(0),
   

@@ -10,6 +10,7 @@ const dateStringToDate = z.union([
 
 // Extended inventory schema that properly handles date strings from JSON
 const inventoryInputSchema = insertInventorySchema.extend({
+  chrono24FeeRate: z.number().int().min(0).max(10000).nullable().optional(),
   purchaseDate: dateStringToDate,
   dateListed: dateStringToDate,
   soldDate: dateStringToDate,

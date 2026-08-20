@@ -118,6 +118,7 @@ const editFormSchema = z.object({
   salePrice: z.coerce.number().optional().default(0),
   platformFees: z.coerce.number().optional().default(0),
   soldPlatform: z.string().optional().nullable(),
+  chrono24FeeRate: z.coerce.number().min(0, "Chrono24 fee rate cannot be negative").max(100, "Chrono24 fee rate cannot exceed 100%").optional().nullable(),
   shippingFee: z.coerce.number().optional().default(0),
   insuranceFee: z.coerce.number().optional().default(0),
   soldTo: z.string().optional().nullable(),
@@ -263,6 +264,7 @@ export default function InventoryDetail() {
       salePrice: 0,
       platformFees: 0,
       soldPlatform: "",
+      chrono24FeeRate: undefined,
       shippingFee: 0,
       insuranceFee: 0,
       soldTo: "",
@@ -284,6 +286,7 @@ export default function InventoryDetail() {
   const watchedStatus = form.watch("status");
   const watchedSalePrice = Number(form.watch("salePrice"));
   const watchedSoldPlatform = form.watch("soldPlatform");
+  const watchedChrono24FeeRate = form.watch("chrono24FeeRate");
 
   useEffect(() => {
     if (watchedStatus === "sold") {
@@ -295,11 +298,20 @@ export default function InventoryDetail() {
   }, [watchedStatus]);
 
   useEffect(() => {
-    if (watchedSoldPlatform === "Chrono24" && watchedSalePrice > 0) {
-      const fee = watchedSalePrice * (settings.chrono24_commission / 100);
+    if (watchedSoldPlatform !== "Chrono24") return;
+
+    const rate = Number(watchedChrono24FeeRate);
+    const feeRate = Number.isFinite(rate) ? rate : settings.chrono24_commission;
+
+    if (!Number.isFinite(rate)) {
+      form.setValue("chrono24FeeRate", feeRate);
+    }
+
+    if (watchedSalePrice > 0 && feeRate >= 0 && feeRate <= 100) {
+      const fee = watchedSalePrice * (feeRate / 100);
       form.setValue("platformFees", Number(fee.toFixed(2)));
     }
-  }, [watchedSalePrice, watchedSoldPlatform, form.setValue, settings.chrono24_commission]);
+  }, [watchedSalePrice, watchedSoldPlatform, watchedChrono24FeeRate, form.setValue, settings.chrono24_commission]);
 
   const watchedPurchaseChannel = form.watch("purchasedFrom");
   const showSellerField = watchedPurchaseChannel === "Dealer" || watchedPurchaseChannel === "Private Purchase" || watchedPurchaseChannel === "Other";
@@ -349,6 +361,7 @@ export default function InventoryDetail() {
         salePrice: ((item as any).salePrice || 0) / 100,
         platformFees: ((item as any).platformFees || 0) / 100,
         soldPlatform: item.soldPlatform || "",
+        chrono24FeeRate: (item as any).chrono24FeeRate != null ? (item as any).chrono24FeeRate / 100 : undefined,
         shippingFee: ((item as any).shippingFee || 0) / 100,
         insuranceFee: ((item as any).insuranceFee || 0) / 100,
         soldTo: (item as any).soldTo || "",
@@ -658,6 +671,7 @@ export default function InventoryDetail() {
       polishFee: Math.round(Number(data.polishFee) * 100),
       salePrice: Math.round(Number(data.salePrice) * 100),
       platformFees: Math.round(Number(data.platformFees) * 100),
+      chrono24FeeRate: data.chrono24FeeRate != null ? Math.round(Number(data.chrono24FeeRate) * 100) : null,
       shippingFee: Math.round(Number(data.shippingFee) * 100),
       insuranceFee: Math.round(Number(data.insuranceFee) * 100),
       targetSellPrice: Math.round(Number(data.targetSellPrice) * 100),
@@ -1109,6 +1123,25 @@ export default function InventoryDetail() {
                           </SelectContent>
                         </Select>
                       </div>
+                      {watchedSoldPlatform === "Chrono24" && (
+                        <div className="space-y-2">
+                          <Label>Chrono24 Fee (%)</Label>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              {...form.register("chrono24FeeRate", {
+                                setValueAs: (value) => value === "" ? undefined : Number(value),
+                              })}
+                              className="pr-8 bg-white border-slate-200"
+                              data-testid="edit-input-chrono24-fee-rate"
+                            />
+                            <span className="absolute right-3 top-2.5 text-slate-400">%</span>
+                          </div>
+                        </div>
+                      )}
                       <div className="space-y-2">
                         <Label>Platform Fees</Label>
                         <div className="relative">
