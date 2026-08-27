@@ -43,6 +43,13 @@
       "when": 1785520800000,
       "tag": "0005_listing_title",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787860800000,
+      "tag": "0006_chrono24_fee_rate",
+      "breakpoints": true
     }
   ]
 }

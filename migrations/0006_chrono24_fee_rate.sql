@@ -1,0 +1,1 @@
+ALTER TABLE "inventory" ADD COLUMN IF NOT EXISTS "chrono24_fee_rate" integer;
