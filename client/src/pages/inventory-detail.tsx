@@ -612,6 +612,8 @@ export default function InventoryDetail() {
           payload.serviceStartDate = date.toISOString();
         } else if (newStatus === "in_stock") {
           payload.dateListed = date.toISOString();
+        } else if (newStatus === "received") {
+          payload.dateReceived = date.toISOString();
         } else {
           payload.purchaseDate = date.toISOString();
         }
