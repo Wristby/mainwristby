@@ -91,6 +91,17 @@ const formatCurrency = (val: number) => {
   }).format(val / 100);
 };
 
+const WATCH_DETAIL_CONDITIONS = ["Good", "Very Good", "Excellent", "Like New"] as const;
+
+const normalizeWatchCondition = (condition: string | null | undefined): typeof WATCH_DETAIL_CONDITIONS[number] => {
+  if ((WATCH_DETAIL_CONDITIONS as readonly string[]).includes(condition || "")) {
+    return condition as typeof WATCH_DETAIL_CONDITIONS[number];
+  }
+  if (condition === "New") return "Like New";
+  if (condition === "Mint") return "Excellent";
+  return "Good";
+};
+
 const editFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
@@ -98,7 +109,7 @@ const editFormSchema = z.object({
   serialNumber: z.string().optional().nullable(),
   internalSerial: z.string().optional().nullable(),
   year: z.coerce.number().optional().nullable(),
-  condition: z.enum(["New", "Mint", "Used", "Damaged"]).optional(),
+  condition: z.enum(WATCH_DETAIL_CONDITIONS).optional(),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
   gdriveLink: z.string().optional().nullable(),
@@ -247,7 +258,7 @@ export default function InventoryDetail() {
       serialNumber: "",
       internalSerial: "",
       year: undefined,
-      condition: "Used",
+      condition: "Good",
       box: false,
       papers: false,
       gdriveLink: "",
@@ -344,7 +355,7 @@ export default function InventoryDetail() {
         serialNumber: item.serialNumber || "",
         internalSerial: (item as any).internalSerial || "",
         year: item.year || undefined,
-        condition: (item.condition as "New" | "Mint" | "Used" | "Damaged") || "Used",
+        condition: normalizeWatchCondition(item.condition),
         box: item.box || false,
         papers: item.papers || false,
         gdriveLink: item.gdriveLink || "",
@@ -895,13 +906,12 @@ export default function InventoryDetail() {
                     </div>
                     <div className="space-y-2">
                       <Label>Condition</Label>
-                      <Select value={form.watch("condition")} onValueChange={(val) => form.setValue("condition", val as any)}>
+                          <Select value={form.watch("condition")} onValueChange={(val) => form.setValue("condition", val as any)}>
                         <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Condition" /></SelectTrigger>
                         <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          <SelectItem value="New">New</SelectItem>
-                          <SelectItem value="Mint">Mint</SelectItem>
-                          <SelectItem value="Used">Used</SelectItem>
-                          <SelectItem value="Damaged">Damaged</SelectItem>
+                              {WATCH_DETAIL_CONDITIONS.map((condition) => (
+                                <SelectItem key={condition} value={condition}>{condition}</SelectItem>
+                              ))}
                         </SelectContent>
                       </Select>
                     </div>
