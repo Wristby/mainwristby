@@ -38,7 +38,8 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { RowLink } from "@/components/row-link";
-import { differenceInDays, format } from "date-fns";
+import { differenceInDays, endOfDay, endOfMonth, format, startOfDay, startOfMonth, subMonths } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import {
   Tooltip,
   TooltipContent,
@@ -154,6 +155,8 @@ export default function Inventory() {
   
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -336,6 +339,24 @@ export default function Inventory() {
     return uniqueBrands.sort();
   }, [inventory]);
 
+  const monthOptions = useMemo(() => {
+    return Array.from({ length: 12 }, (_, index) => {
+      const month = startOfMonth(subMonths(new Date(), index));
+      return {
+        value: format(month, "yyyy-MM"),
+        label: format(month, "MMMM yyyy"),
+        from: startOfMonth(month),
+        to: endOfMonth(month),
+      };
+    });
+  }, []);
+
+  const dateFilterLabel = dateRange?.from
+    ? dateRange.to
+      ? `${format(dateRange.from, "MMM d, yyyy")} – ${format(dateRange.to, "MMM d, yyyy")}`
+      : format(dateRange.from, "MMM d, yyyy")
+    : "Purchase Date";
+
   const metrics = useMemo(() => {
     if (!inventory) return { 
       total: 0, 
@@ -413,10 +434,16 @@ export default function Inventory() {
       
       const matchesStatus = statusFilter === "all" || item.status === statusFilter;
       const matchesBrand = brandFilter === "all" || item.brand === brandFilter;
+      const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : null;
+      const rangeStart = dateRange?.from ? startOfDay(dateRange.from) : null;
+      const rangeEnd = dateRange?.to ? endOfDay(dateRange.to) : rangeStart ? endOfDay(rangeStart) : null;
+      const matchesDate = !rangeStart || !rangeEnd
+        ? !rangeStart
+        : !!purchaseDate && purchaseDate >= rangeStart && purchaseDate <= rangeEnd;
       const matchesBox = hasBoxFilter === null || item.box === hasBoxFilter;
       const matchesPapers = hasPapersFilter === null || item.papers === hasPapersFilter;
       
-      return matchesSearch && matchesStatus && matchesBrand && matchesBox && matchesPapers;
+      return matchesSearch && matchesStatus && matchesBrand && matchesDate && matchesBox && matchesPapers;
     });
 
     result.sort((a, b) => {
@@ -445,7 +472,7 @@ export default function Inventory() {
     });
 
     return result;
-  }, [inventory, search, statusFilter, brandFilter, hasBoxFilter, hasPapersFilter, sortField, sortOrder]);
+  }, [inventory, search, statusFilter, brandFilter, dateRange, hasBoxFilter, hasPapersFilter, sortField, sortOrder]);
 
   const exportToCSV = () => {
     if (!filteredInventory || filteredInventory.length === 0) {
@@ -639,7 +666,7 @@ export default function Inventory() {
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button 
             variant="outline" 
             onClick={exportToCSV}
@@ -1377,6 +1404,76 @@ export default function Inventory() {
               ))}
             </SelectContent>
           </Select>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-[210px] justify-start bg-white border-slate-200 h-10 font-normal",
+                  dateRange?.from && "text-slate-900"
+                )}
+                data-testid="button-purchase-date-filter"
+              >
+                <CalendarIcon className="mr-2 h-3.5 w-3.5 text-slate-400" />
+                <span className="truncate">{dateFilterLabel}</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-4 bg-white border-slate-200" align="end">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Purchase Date</p>
+                  <p className="text-xs text-slate-500 mt-1">Choose a month or select a custom range.</p>
+                </div>
+                <Select
+                  value={selectedMonth}
+                  onValueChange={(value) => {
+                    setSelectedMonth(value);
+                    if (value === "all") {
+                      setDateRange(undefined);
+                    } else if (value !== "custom") {
+                      const month = monthOptions.find((option) => option.value === value);
+                      if (month) setDateRange({ from: month.from, to: month.to });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-[240px] bg-white border-slate-200">
+                    <SelectValue placeholder="Quick month" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border-slate-200 text-slate-900">
+                    <SelectItem value="all">All purchase dates</SelectItem>
+                    {monthOptions.map((month) => (
+                      <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                    ))}
+                    <SelectItem value="custom">Custom range</SelectItem>
+                  </SelectContent>
+                </Select>
+                <CalendarComponent
+                  mode="range"
+                  selected={dateRange}
+                  onSelect={(range) => {
+                    setDateRange(range);
+                    setSelectedMonth(range?.from ? "custom" : "all");
+                  }}
+                  numberOfMonths={1}
+                  initialFocus
+                />
+                {dateRange?.from && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full text-slate-500 hover:text-slate-900"
+                    onClick={() => {
+                      setDateRange(undefined);
+                      setSelectedMonth("all");
+                    }}
+                  >
+                    Clear date filter
+                  </Button>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
