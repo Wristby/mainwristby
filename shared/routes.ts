@@ -10,6 +10,8 @@ const dateStringToDate = z.union([
 
 // Extended inventory schema that properly handles date strings from JSON
 const inventoryInputSchema = insertInventorySchema.extend({
+  // Accept both legacy values and the labels shown in Watch Details.
+  condition: z.enum(["New", "Mint", "Used", "Damaged", "Good", "Very Good", "Excellent", "Like New"]),
   chrono24FeeRate: z.number().int().min(0).max(10000).nullable().optional(),
   purchaseDate: dateStringToDate,
   dateListed: dateStringToDate,
