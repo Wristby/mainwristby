@@ -102,6 +102,14 @@ const normalizeWatchCondition = (condition: string | null | undefined): typeof W
   return "Good";
 };
 
+const serializeWatchCondition = (
+  condition: typeof WATCH_DETAIL_CONDITIONS[number] | undefined,
+): "New" | "Mint" | "Used" | "Damaged" => {
+  if (condition === "Like New") return "New";
+  if (condition === "Excellent") return "Mint";
+  return "Used";
+};
+
 const editFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
@@ -677,6 +685,7 @@ export default function InventoryDetail() {
     
     const submissionData = {
       ...data,
+      condition: serializeWatchCondition(data.condition),
       status: finalStatus,
       purchasePrice: Math.round(Number(data.purchasePrice) * 100),
       importFee: Math.round(Number(data.importFee) * 100),
