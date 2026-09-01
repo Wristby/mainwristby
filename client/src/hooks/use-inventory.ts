@@ -62,7 +62,10 @@ export function useUpdateInventory() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to update inventory item");
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        throw new Error(error?.message || "Failed to update inventory item");
+      }
       return api.inventory.update.responses[200].parse(await res.json());
     },
     onSuccess: (data) => {

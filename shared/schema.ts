@@ -79,7 +79,11 @@ export const inventory = pgTable("inventory", {
   dateSold: timestamp("date_sold"),
   
   // Details
-  condition: text("condition", { enum: ["New", "Mint", "Used", "Damaged"] }).notNull(),
+  // Keep legacy values for existing records and older forms while allowing the
+  // clearer condition labels used by Watch Details.
+  condition: text("condition", {
+    enum: ["New", "Mint", "Used", "Damaged", "Good", "Very Good", "Excellent", "Like New"],
+  }).notNull(),
   status: text("status", { enum: ["in_stock", "sold", "incoming", "servicing", "received"] }).default("incoming").notNull(),
   box: boolean("box").default(false).notNull(),
   papers: boolean("papers").default(false).notNull(),
