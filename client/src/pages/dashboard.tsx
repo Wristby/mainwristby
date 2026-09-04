@@ -1093,7 +1093,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center space-x-2 pt-8">
                   <Checkbox id="dash-watchRegister" checked={watchForm.watch("watchRegister")} onCheckedChange={(checked) => watchForm.setValue("watchRegister", !!checked)} />
-                  <Label htmlFor="dash-watchRegister" className="cursor-pointer">Watch Register (€6)</Label>
+                  <Label htmlFor="dash-watchRegister" className="cursor-pointer">Watch Register</Label>
                 </div>
                 <div className="space-y-2">
                   <Label>Purchase Date</Label>
