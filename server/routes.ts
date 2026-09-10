@@ -5,7 +5,15 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
-const DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest";
+const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+const GEMINI_FALLBACK_MODELS = [
+  DEFAULT_GEMINI_MODEL,
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.8-flash",
+] as const;
+const GEMINI_TRANSIENT_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const GEMINI_MAX_ATTEMPTS_PER_MODEL = 3;
 
 type GeminiGenerateResponse = {
   candidates?: Array<{
@@ -29,6 +37,13 @@ function normalizeGeminiModel(model: string): string {
     .replace(/^models\//, "")       // strip API prefix
     .trim();
 
+  if (cleaned === "gemini-flash-lite-latest") {
+    return DEFAULT_GEMINI_MODEL;
+  }
+  if (cleaned === "gemini-flash-latest") {
+    return "gemini-3.5-flash";
+  }
+
   if (/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(cleaned)) {
     return cleaned;
   }
@@ -36,43 +51,68 @@ function normalizeGeminiModel(model: string): string {
 }
 
 async function generateGeminiText(apiKey: string, model: string, prompt: string): Promise<string> {
-  // Try the requested model first. If Google rejects it with quota (429) or a
-  // missing/retired model (404) — e.g. gemini-2.0-flash-lite is quota-locked
-  // on the free tier for some keys and gemini-2.5-flash-lite was removed from
-  // the API — automatically retry with the known-good default model instead of
-  // erroring, so AI generation still works no matter what the admin has stored.
   const attempted = new Set<string>();
-  for (const candidate of [normalizeGeminiModel(model), DEFAULT_GEMINI_MODEL]) {
+  let lastTransientError = "Gemini is temporarily unavailable.";
+
+  modelLoop:
+  for (const candidate of [normalizeGeminiModel(model), ...GEMINI_FALLBACK_MODELS]) {
     const safeModel = normalizeGeminiModel(candidate);
     if (attempted.has(safeModel)) continue;
     attempted.add(safeModel);
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      // Quota-exhausted or model unavailable → try the next candidate instead of failing
-      if (response.status === 429 || response.status === 404) {
-        continue;
+    for (let attempt = 0; attempt < GEMINI_MAX_ATTEMPTS_PER_MODEL; attempt++) {
+      let response: Response;
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          },
+        );
+      } catch (error) {
+        lastTransientError = error instanceof Error ? error.message : "Network request failed.";
+        if (attempt < GEMINI_MAX_ATTEMPTS_PER_MODEL - 1) {
+          const delayMs = (500 * (2 ** attempt)) + Math.floor(Math.random() * 250);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        break;
       }
-      throw new Error(`Gemini API error: ${errorText}`);
-    }
 
-    const data = await response.json() as GeminiGenerateResponse;
-    return data.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text || "")
-      .join("")
-      .trim() || "";
+      if (response.ok) {
+        const data = await response.json() as GeminiGenerateResponse;
+        const text = data.candidates?.[0]?.content?.parts
+          ?.map((part) => part.text || "")
+          .join("")
+          .trim() || "";
+        if (text) return text;
+        throw new Error("Gemini returned an empty response.");
+      }
+
+      const errorText = await response.text();
+      if (response.status === 404) {
+        lastTransientError = `${safeModel} is unavailable.`;
+        continue modelLoop;
+      }
+
+      if (GEMINI_TRANSIENT_STATUSES.has(response.status)) {
+        lastTransientError = errorText;
+        if (attempt < GEMINI_MAX_ATTEMPTS_PER_MODEL - 1) {
+          const delayMs = (500 * (2 ** attempt)) + Math.floor(Math.random() * 250);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+        break;
+      }
+
+      throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+    }
   }
 
-  throw new Error("Gemini quota is unavailable for the selected model. Check the Google AI Studio project quota or billing configuration, then try again.");
+  console.error("Gemini retries exhausted:", lastTransientError);
+  throw new Error("Gemini is temporarily unavailable after multiple retries. Please try again in a moment.");
 }
 
 export async function registerRoutes(
@@ -285,10 +325,13 @@ export async function registerRoutes(
         return res.json({ models: [] });
       }
       const data = await response.json() as { models?: Array<{ name?: string; displayName?: string; supportedGenerationMethods?: string[] }> };
-      // Models that are unusable on the free tier of Gemini — verified with the
-      // project's API key: gemini-2.0-flash-lite returns HTTP 429 (no free quota)
-      // and gemini-2.5-flash-lite returns HTTP 404 (removed from the API).
-      const BLOCKED_MODEL_IDS = new Set(["gemini-2.0-flash-lite", "gemini-2.5-flash-lite"]);
+      // Hide models that are unavailable to this project or map to newer aliases.
+      const BLOCKED_MODEL_IDS = new Set([
+        "gemini-2.0-flash-lite",
+        "gemini-2.5-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-flash-latest",
+      ]);
       const models = (data.models || [])
         .filter((model) => model.name?.startsWith("models/") && model.supportedGenerationMethods?.includes("generateContent"))
         .map((model) => ({
