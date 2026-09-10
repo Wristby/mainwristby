@@ -346,7 +346,7 @@ export default function InventoryDetail() {
   useEffect(() => {
     if (item) {
       const hasSaleData = (item as any).salePrice > 0 || item.soldDate || (item as any).dateSold;
-      const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).dateSentToService || (item as any).serviceStartDate;
+      const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).serviceStartDate || (item as any).dateReturnedFromService;
       const hasShippingData = item.shippingPartner || item.trackingNumber;
       setShowSaleDetails(hasSaleData);
       setShowServiceDetails(hasServiceData);
@@ -406,7 +406,6 @@ export default function InventoryDetail() {
   const [isDateListedOpen, setIsDateListedOpen] = useState(false);
   const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
   const [isDateServiceStartOpen, setIsDateServiceStartOpen] = useState(false);
-  const [isDateSentOpen, setIsDateSentOpen] = useState(false);
   const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
 
   const [descriptionValue, setDescriptionValue] = useState((item as any)?.description || "");
@@ -631,6 +630,9 @@ export default function InventoryDetail() {
           payload.serviceStartDate = date.toISOString();
         } else if (newStatus === "in_stock") {
           payload.dateListed = date.toISOString();
+          if (item?.serviceStartDate) {
+            payload.dateReturnedFromService = date.toISOString();
+          }
         } else if (newStatus === "received") {
           payload.dateReceived = date.toISOString();
         } else {
@@ -781,12 +783,12 @@ export default function InventoryDetail() {
     : 0;
 
   const daysInService = (() => {
-    const sent = item.dateSentToService;
-    const returned = item.dateReturnedFromService;
-    if (!sent) return null;
-    const start = startOfDay(typeof sent === 'string' ? parseISO(sent) : new Date(sent));
-    const end = returned
-      ? startOfDay(typeof returned === 'string' ? parseISO(returned) : new Date(returned))
+    const serviceStart = item.serviceStartDate;
+    const serviceCompleted = item.dateReturnedFromService;
+    if (!serviceStart) return null;
+    const start = startOfDay(typeof serviceStart === 'string' ? parseISO(serviceStart) : new Date(serviceStart));
+    const end = serviceCompleted
+      ? startOfDay(typeof serviceCompleted === 'string' ? parseISO(serviceCompleted) : new Date(serviceCompleted))
       : startOfDay(new Date());
     return Math.max(0, differenceInDays(end, start));
   })();
@@ -1083,7 +1085,22 @@ export default function InventoryDetail() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <Calendar mode="single" selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined} onSelect={(date) => { form.setValue("dateListed", date ? date.toISOString() : null); if (date) form.setValue("status", "in_stock"); setIsDateListedOpen(false); }} initialFocus />
+                          <Calendar
+                            mode="single"
+                            selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined}
+                            onSelect={(date) => {
+                              const dateValue = date ? date.toISOString() : null;
+                              form.setValue("dateListed", dateValue);
+                              if (date) {
+                                form.setValue("status", "in_stock");
+                                if (form.getValues("serviceStartDate")) {
+                                  form.setValue("dateReturnedFromService", dateValue);
+                                }
+                              }
+                              setIsDateListedOpen(false);
+                            }}
+                            initialFocus
+                          />
                         </PopoverContent>
                       </Popover>
                     </div>
@@ -1258,21 +1275,7 @@ export default function InventoryDetail() {
                           </Popover>
                         </div>
                         <div className="space-y-2">
-                          <Label>Date Sent to Service</Label>
-                          <Popover open={isDateSentOpen} onOpenChange={setIsDateSentOpen}>
-                            <PopoverTrigger asChild>
-                              <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateSentToService") && "text-muted-foreground")}>
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {form.watch("dateSentToService") ? format(new Date(form.watch("dateSentToService")!), "PPP") : <span>Pick a date</span>}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                              <Calendar mode="single" selected={form.watch("dateSentToService") ? new Date(form.watch("dateSentToService")!) : undefined} onSelect={(date) => { form.setValue("dateSentToService", date ? date.toISOString() : null); if (date) form.setValue("status", "servicing"); setIsDateSentOpen(false); }} initialFocus />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Date Returned</Label>
+                          <Label>Date Service Completed</Label>
                           <Popover open={isDateReturnedOpen} onOpenChange={setIsDateReturnedOpen}>
                             <PopoverTrigger asChild>
                               <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateReturnedFromService") && "text-muted-foreground")}>
@@ -1453,7 +1456,7 @@ export default function InventoryDetail() {
                     {daysInService !== null ? (
                       <>
                         {daysInService} days
-                        {!item.dateReturnedFromService && item.dateSentToService && (
+                        {!item.dateReturnedFromService && item.serviceStartDate && (
                           <span className="ml-2 text-xs font-normal text-amber-500">ongoing</span>
                         )}
                       </>
@@ -1938,19 +1941,9 @@ export default function InventoryDetail() {
                   </div>
                 )}
 
-                {(item as any).dateSentToService && (
-                  <div>
-                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Sent to Service</Label>
-                    <div className="flex items-center gap-2 mt-1 text-slate-600">
-                      <Wrench className="w-4 h-4" />
-                      <span className="text-sm font-medium">{format(new Date((item as any).dateSentToService), 'M/d/yyyy')}</span>
-                    </div>
-                  </div>
-                )}
-
                 {(item as any).dateReturnedFromService && (
                   <div>
-                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Returned from Service</Label>
+                    <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Service Completed</Label>
                     <div className="flex items-center gap-2 mt-1 text-slate-600">
                       <Check className="w-4 h-4" />
                       <span className="text-sm font-medium">{format(new Date((item as any).dateReturnedFromService), 'M/d/yyyy')}</span>
