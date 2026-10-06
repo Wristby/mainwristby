@@ -37,6 +37,7 @@ import { insertInventorySchema, insertClientSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
+import { compareSoldDates, getSoldDate } from "@/lib/sold-date";
 import { RowLink } from "@/components/row-link";
 import { differenceInDays, endOfDay, endOfMonth, format, startOfDay, startOfMonth, subMonths } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -128,7 +129,7 @@ const createFormSchema = z.object({
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
 
-type SortField = 'id' | 'brand' | 'model' | 'purchasePrice' | 'holdTime' | 'status';
+type SortField = 'id' | 'brand' | 'model' | 'purchasePrice' | 'holdTime' | 'status' | 'soldDate';
 type SortOrder = 'asc' | 'desc';
 
 const formatCurrency = (val: number) => {
@@ -164,6 +165,10 @@ export default function Inventory() {
     const status = queryParams.get("status");
     if (status) {
       setStatusFilter(status);
+      if (status === "sold") {
+        setSortField("soldDate");
+        setSortOrder("desc");
+      }
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [location]);
@@ -447,6 +452,7 @@ export default function Inventory() {
     });
 
     result.sort((a, b) => {
+      if (sortField === "soldDate") return compareSoldDates(a, b, sortOrder);
       let comparison = 0;
       switch (sortField) {
         case 'id':
@@ -1373,7 +1379,16 @@ export default function Inventory() {
         </div>
         
         <div className="flex gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={(status) => {
+            setStatusFilter(status);
+            if (status === "sold") {
+              setSortField("soldDate");
+              setSortOrder("desc");
+            } else if (sortField === "soldDate") {
+              setSortField("id");
+              setSortOrder("desc");
+            }
+          }}>
             <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
               <div className="flex items-center gap-2">
                 <Filter className="h-3.5 w-3.5 text-slate-400" />
@@ -1496,13 +1511,18 @@ export default function Inventory() {
               <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('status')}>
                 <div className="flex items-center">Status <SortIcon field="status" /></div>
               </TableHead>
+              {statusFilter === "sold" && (
+                <TableHead className="cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('soldDate')}>
+                  <div className="flex items-center whitespace-nowrap">Date Sold <SortIcon field="soldDate" /></div>
+                </TableHead>
+              )}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                <TableCell colSpan={statusFilter === "sold" ? 8 : 7} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2 text-slate-500">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Loading inventory...
@@ -1511,7 +1531,7 @@ export default function Inventory() {
               </TableRow>
             ) : filteredInventory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                <TableCell colSpan={statusFilter === "sold" ? 8 : 7} className="h-24 text-center">
                   <div className="flex flex-col items-center justify-center gap-1 text-slate-500">
                     <AlertTriangle className="h-5 w-5 text-amber-500" />
                     <p>No watches found matching your search.</p>
@@ -1573,6 +1593,11 @@ export default function Inventory() {
                       {getStatusLabel(item.status)}
                     </Badge>
                   </TableCell>
+                  {statusFilter === "sold" && (
+                    <TableCell className="whitespace-nowrap text-slate-700" data-testid={`text-sold-date-${item.id}`}>
+                      {getSoldDate(item) ? format(getSoldDate(item)!, "MMM d, yyyy") : "—"}
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
                     <div className="relative z-10 flex justify-end gap-2">
                       {item.gdriveLink && (
