@@ -14,8 +14,9 @@ import {
 import logoPng from "@assets/WRISTBY-login-logo_1770424094780.png";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { installTouchScrollGuard } from "@/lib/touch-scroll-guard";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
@@ -95,6 +96,7 @@ export function MobileNav() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  useEffect(() => installTouchScrollGuard(document), []);
 
   if (isLoading) return <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500">Loading...</div>;
 
@@ -109,7 +111,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Sidebar />
       </aside>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="min-w-0 flex-1 flex flex-col h-full overflow-hidden">
         <header className="h-16 lg:hidden flex items-center px-4 border-b border-slate-200 bg-slate-50">
           <MobileNav />
           <div className="ml-4 flex items-center gap-2">
