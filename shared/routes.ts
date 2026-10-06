@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses } from './schema';
+import { deliveryDateError } from './delivery';
 
 // Helper to transform date strings to Date objects or null
 const dateStringToDate = z.union([
@@ -22,6 +23,10 @@ const inventoryInputSchema = insertInventorySchema.extend({
   dateSentToService: dateStringToDate,
   dateReturnedFromService: dateStringToDate,
   dateShipped: dateStringToDate,
+  deliveredDate: z.string().superRefine((value, context) => {
+    const message = deliveryDateError(value);
+    if (message) context.addIssue({ code: z.ZodIssueCode.custom, message });
+  }).nullable().optional(),
 });
 
 // Extended expense schema that properly handles date strings from JSON

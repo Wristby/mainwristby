@@ -124,6 +124,9 @@ export class DatabaseStorage implements IStorage {
 
   async updateInventoryItem(id: number, updates: UpdateInventoryRequest): Promise<InventoryItem> {
     const [item] = await db.update(inventory).set(updates).where(eq(inventory.id, id)).returning();
+    if (!item) throw new Error("Item not found");
+    // Delivery confirmation must not rewrite existing financial/expense entries.
+    if (Object.keys(updates).every(key => key === "deliveredDate")) return item;
     // Sync watch fees to expenses
     await this.syncWatchFeesToExpenses(item);
     return item;

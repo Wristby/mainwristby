@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -111,6 +111,8 @@ export const inventory = pgTable("inventory", {
   shippingPartner: text("shipping_partner"),
   trackingNumber: text("tracking_number"),
   dateShipped: timestamp("date_shipped"),
+  // Customer delivery is a calendar date, not a timezone-dependent timestamp.
+  deliveredDate: date("delivered_date", { mode: "string" }),
   soldPlatform: text("sold_platform"),
   
   // Fee snapshot — captures the watch_register_fee at the time of item creation

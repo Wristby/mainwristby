@@ -46,6 +46,7 @@ import { cn, parsePriceInput } from "@/lib/utils";
 import { computeVat } from "@/lib/vat-calculations";
 import { useSettings } from "@/hooks/use-settings";
 import { QuickEstimate } from "@/components/quick-estimate";
+import { DeliveryStatus } from "@/components/delivery-status";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -1645,6 +1646,7 @@ export default function InventoryDetail() {
                           <span className="font-medium">N/A</span>
                         )}
                       </div>
+                      <DeliveryStatus key={id} id={id} deliveredDate={item.deliveredDate} />
                     </div>
                   </div>
                 )}
