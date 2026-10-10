@@ -53,6 +53,9 @@ import { cn, parsePriceInput } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
+import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
+import { compareReturnDeadlines, matchesReturnWindowFilter, type ReturnWindowFilter } from "@/lib/sold-return";
+import { formatDeliveryDate, returnWindow } from "@shared/delivery";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -129,7 +132,7 @@ const createFormSchema = z.object({
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
 
-type SortField = 'id' | 'brand' | 'model' | 'purchasePrice' | 'holdTime' | 'status' | 'soldDate';
+type SortField = 'id' | 'brand' | 'model' | 'purchasePrice' | 'holdTime' | 'status' | 'soldDate' | 'returnDeadline';
 type SortOrder = 'asc' | 'desc';
 
 const formatCurrency = (val: number) => {
@@ -150,7 +153,31 @@ const getServiceDurationDays = (item: any) => {
   return Math.max(0, differenceInDays(effectiveEnd, start));
 };
 
+function SoldReturnSummary({ deliveredDate, now }: { deliveredDate?: string | null; now: Date }) {
+  const countdown = returnWindow(deliveredDate, now);
+  if (!countdown || !deliveredDate) {
+    return <span className="text-sm text-slate-500">Delivery not confirmed</span>;
+  }
+
+  const tone = countdown.daysRemaining < 0
+    ? "text-slate-500"
+    : countdown.daysRemaining <= 3
+      ? "text-amber-800"
+      : "text-emerald-800";
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-slate-600">Delivered <span className="font-medium text-slate-800">{formatDeliveryDate(deliveredDate)}</span></p>
+      <div className="space-y-0.5">
+        <p className={cn("text-sm font-medium", tone)}>{countdown.label}</p>
+        <p className="text-xs text-slate-500">Deadline: {formatDeliveryDate(countdown.deadline)} (Amsterdam)</p>
+      </div>
+    </div>
+  );
+}
+
 export default function Inventory() {
+  const now = useAmsterdamClock();
   const [search, setSearch] = useState("");
   const [location] = useLocation();
   
@@ -159,6 +186,7 @@ export default function Inventory() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [hasBoxFilter, setHasBoxFilter] = useState<boolean | null>(null);
+  const [returnWindowFilter, setReturnWindowFilter] = useState<ReturnWindowFilter>("all");
 
   useEffect(() => {
     const queryParams = new URLSearchParams(window.location.search);
@@ -167,6 +195,10 @@ export default function Inventory() {
       setStatusFilter(status);
       if (status === "sold") {
         setSortField("soldDate");
+        setSortOrder("desc");
+      } else {
+        setReturnWindowFilter("all");
+        setSortField("id");
         setSortOrder("desc");
       }
       window.history.replaceState({}, '', window.location.pathname);
@@ -421,6 +453,15 @@ export default function Inventory() {
     }
   };
 
+  const handleDeadlineSort = () => {
+    if (sortField === "returnDeadline") {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortField("returnDeadline");
+      setSortOrder("asc");
+    }
+  };
+
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ArrowUpDown className="ml-2 h-4 w-4 text-slate-400" />;
     return sortOrder === 'asc' ? <ArrowUp className="ml-2 h-4 w-4 text-emerald-600" /> : <ArrowDown className="ml-2 h-4 w-4 text-emerald-600" />;
@@ -438,6 +479,7 @@ export default function Inventory() {
         (item.serialNumber?.toLowerCase().includes(term) ?? false);
       
       const matchesStatus = statusFilter === "all" || item.status === statusFilter;
+      const matchesReturnWindow = statusFilter !== "sold" || matchesReturnWindowFilter(item, returnWindowFilter, now);
       const matchesBrand = brandFilter === "all" || item.brand === brandFilter;
       const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : null;
       const rangeStart = dateRange?.from ? startOfDay(dateRange.from) : null;
@@ -448,10 +490,13 @@ export default function Inventory() {
       const matchesBox = hasBoxFilter === null || item.box === hasBoxFilter;
       const matchesPapers = hasPapersFilter === null || item.papers === hasPapersFilter;
       
-      return matchesSearch && matchesStatus && matchesBrand && matchesDate && matchesBox && matchesPapers;
+      return matchesSearch && matchesStatus && matchesReturnWindow && matchesBrand && matchesDate && matchesBox && matchesPapers;
     });
 
     result.sort((a, b) => {
+      if (statusFilter === "sold" && sortField === "returnDeadline") {
+        return compareReturnDeadlines(a, b, sortOrder, now);
+      }
       if (sortField === "soldDate") return compareSoldDates(a, b, sortOrder);
       let comparison = 0;
       switch (sortField) {
@@ -478,7 +523,7 @@ export default function Inventory() {
     });
 
     return result;
-  }, [inventory, search, statusFilter, brandFilter, dateRange, hasBoxFilter, hasPapersFilter, sortField, sortOrder]);
+  }, [inventory, search, statusFilter, brandFilter, dateRange, hasBoxFilter, hasPapersFilter, sortField, sortOrder, returnWindowFilter, now]);
 
   const exportToCSV = () => {
     if (!filteredInventory || filteredInventory.length === 0) {
@@ -1382,11 +1427,15 @@ export default function Inventory() {
           <Select value={statusFilter} onValueChange={(status) => {
             setStatusFilter(status);
             if (status === "sold") {
+              setReturnWindowFilter("all");
               setSortField("soldDate");
               setSortOrder("desc");
-            } else if (sortField === "soldDate") {
-              setSortField("id");
-              setSortOrder("desc");
+            } else {
+              setReturnWindowFilter("all");
+              if (sortField === "soldDate" || sortField === "returnDeadline") {
+                setSortField("id");
+                setSortOrder("desc");
+              }
             }
           }}>
             <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
@@ -1404,6 +1453,19 @@ export default function Inventory() {
               <SelectItem value="sold">Sold</SelectItem>
             </SelectContent>
           </Select>
+
+          {statusFilter === "sold" && (
+            <Select value={returnWindowFilter} onValueChange={(value) => setReturnWindowFilter(value as ReturnWindowFilter)}>
+              <SelectTrigger className="w-[170px] bg-white border-slate-200 h-10" aria-label="Filter sold watches by return window">
+                <SelectValue placeholder="All delivery states" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border-slate-200 text-slate-900">
+                <SelectItem value="all">All delivery states</SelectItem>
+                <SelectItem value="unconfirmed">Delivery unconfirmed</SelectItem>
+                <SelectItem value="active">Active return window</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
 
           <Select value={brandFilter} onValueChange={setBrandFilter}>
             <SelectTrigger className="w-[140px] bg-white border-slate-200 h-10">
@@ -1516,13 +1578,28 @@ export default function Inventory() {
                   <div className="flex items-center whitespace-nowrap">Date Sold <SortIcon field="soldDate" /></div>
                 </TableHead>
               )}
+              {statusFilter === "sold" && (
+                <TableHead aria-sort={sortField === "returnDeadline" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
+                  <button
+                    type="button"
+                    onClick={handleDeadlineSort}
+                    className="inline-flex min-h-10 items-center rounded-sm text-left font-medium text-slate-700 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                    aria-label={`Sort by return deadline${sortField === "returnDeadline" ? `, currently ${sortOrder === "asc" ? "earliest first" : "latest first"}` : ""}`}
+                  >
+                    Return window
+                    {sortField === "returnDeadline"
+                      ? sortOrder === "asc" ? <ArrowUp className="ml-2 h-4 w-4 text-emerald-600" /> : <ArrowDown className="ml-2 h-4 w-4 text-emerald-600" />
+                      : <ArrowUpDown className="ml-2 h-4 w-4 text-slate-400" />}
+                  </button>
+                </TableHead>
+              )}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={statusFilter === "sold" ? 8 : 7} className="h-24 text-center">
+                <TableCell colSpan={statusFilter === "sold" ? 9 : 7} className="h-24 text-center">
                   <div className="flex items-center justify-center gap-2 text-slate-500">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Loading inventory...
@@ -1531,7 +1608,7 @@ export default function Inventory() {
               </TableRow>
             ) : filteredInventory.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={statusFilter === "sold" ? 8 : 7} className="h-24 text-center">
+                <TableCell colSpan={statusFilter === "sold" ? 9 : 7} className="h-24 text-center">
                   <div className="flex flex-col items-center justify-center gap-1 text-slate-500">
                     <AlertTriangle className="h-5 w-5 text-amber-500" />
                     <p>No watches found matching your search.</p>
@@ -1598,6 +1675,11 @@ export default function Inventory() {
                       {getSoldDate(item) ? format(getSoldDate(item)!, "MMM d, yyyy") : "—"}
                     </TableCell>
                   )}
+                  {statusFilter === "sold" && (
+                    <TableCell className="min-w-[190px] whitespace-nowrap">
+                      <SoldReturnSummary deliveredDate={(item as any).deliveredDate} now={now} />
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
                     <div className="relative z-10 flex justify-end gap-2">
                       {item.gdriveLink && (
@@ -1641,6 +1723,11 @@ export default function Inventory() {
           </TableBody>
         </Table>
       </div>
+      {statusFilter === "sold" && (
+        <p className="text-xs text-slate-500">
+          Return-window dates are an operational reminder, not a legal determination. Without a confirmed delivery date, the countdown has not started.
+        </p>
+      )}
       <Dialog open={isQuickAddClientOpen} onOpenChange={(open) => { setIsQuickAddClientOpen(open); if (!open) quickClientForm.reset(); }}>
         <DialogContent className="bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
