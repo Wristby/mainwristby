@@ -27,3 +27,5 @@ export const users = pgTable("users", {
 
 export type InsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+// Legacy OIDC profile data must never supply or overwrite password credentials.
+export type UpsertUser = Pick<InsertUser, "email" | "firstName" | "lastName" | "profileImageUrl"> & { id: string };

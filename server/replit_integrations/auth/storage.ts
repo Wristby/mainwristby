@@ -16,17 +16,22 @@ class AuthStorage implements IAuthStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    // The active schema requires username/password registration. This unused
+    // legacy adapter may update an existing profile, but must not invent
+    // credentials or create passwordless accounts if enabled accidentally.
+    const { id, email, firstName, lastName, profileImageUrl } = userData;
     const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
+      .update(users)
+      .set({
+        email,
+        firstName,
+        lastName,
+        profileImageUrl,
+        updatedAt: new Date(),
       })
+      .where(eq(users.id, id))
       .returning();
+    if (!user) throw new Error("Register a username/password account before updating this profile.");
     return user;
   }
 }

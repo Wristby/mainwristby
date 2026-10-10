@@ -1,7 +1,10 @@
 import type { Config } from "tailwindcss";
+import animate from "tailwindcss-animate";
+import typography from "@tailwindcss/typography";
+import { legacyColors } from "./client/src/styles/legacy-colors";
 
 export default {
-  darkMode: ["class"],
+  darkMode: "class",
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
@@ -11,6 +14,7 @@ export default {
         sm: ".1875rem", /* 3px */
       },
       colors: {
+        ...legacyColors,
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
@@ -103,5 +107,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+  plugins: [animate, typography],
 } satisfies Config;
