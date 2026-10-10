@@ -1,3 +1,4 @@
 - [Gemini model compatibility](gemini-model-normalization.md) — normalize saved aliases; retry 429/5xx and fail over because model availability varies by key and changes over time
 - [Delivery return workflow](delivery-return-workflow.md) — manual delivery confirmation and a 14-day return-request countdown for sold watches
 - [Security dependency updates](security-dependency-updates.md) — parent upgrades may retain vulnerable transitives; keep fixes compatible with each dependency's major line
+- [Private workspace access](private-workspace-access.md) — public registration stays disabled; preserve existing accounts and require explicit approval for account-provisioning changes

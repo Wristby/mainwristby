@@ -5,6 +5,7 @@ import type { Express, RequestHandler } from "express";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
+import { denyRegistration, initializeLoginProtection, loginAttemptLimit, sameOriginWrites } from "./security";
 
 declare module "express-session" {
   interface SessionData {
@@ -13,13 +14,17 @@ declare module "express-session" {
 }
 
 export function getSession() {
+  if (!process.env.SESSION_SECRET) {
+    throw new Error("SESSION_SECRET must be configured.");
+  }
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: false,
-    ttl: sessionTtl,
+    ttl: Math.floor(sessionTtl / 1000),
     tableName: "sessions",
+    errorLog: () => console.error("Session storage operation failed."),
   });
   return session({
     secret: process.env.SESSION_SECRET!,
@@ -29,6 +34,7 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
   });
@@ -36,63 +42,20 @@ export function getSession() {
 
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
+  await initializeLoginProtection();
+  app.use("/api", sameOriginWrites);
   app.use(getSession());
 
   // Register endpoint
-  app.post("/api/register", async (req, res) => {
-    try {
-      const { username, password } = req.body;
-
-      if (!username || !password) {
-        return res.status(400).json({ message: "Username and password are required" });
-      }
-
-      if (username.length < 3) {
-        return res.status(400).json({ message: "Username must be at least 3 characters" });
-      }
-
-      if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters" });
-      }
-
-      // Check if username already exists
-      const existingUser = await db.select().from(users).where(eq(users.username, username)).limit(1);
-      if (existingUser.length > 0) {
-        return res.status(400).json({ message: "Username already exists" });
-      }
-
-      // Hash password and create user
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const [newUser] = await db.insert(users).values({
-        username,
-        password: hashedPassword,
-      }).returning();
-
-      // Set session
-      req.session.userId = newUser.id;
-      
-      res.status(201).json({
-        id: newUser.id,
-        username: newUser.username,
-        firstName: newUser.firstName,
-        lastName: newUser.lastName,
-        email: newUser.email,
-        profileImageUrl: newUser.profileImageUrl,
-        createdAt: newUser.createdAt,
-        updatedAt: newUser.updatedAt,
-      });
-    } catch (error) {
-      console.error("Registration error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+  app.post("/api/register", denyRegistration);
 
   // Login endpoint
-  app.post("/api/login", async (req, res) => {
+  app.post("/api/login", loginAttemptLimit, async (req, res) => {
     try {
-      const { username, password } = req.body;
+      const { username, password } = req.body ?? {};
 
-      if (!username || !password) {
+      if (typeof username !== "string" || typeof password !== "string" ||
+          !username || !password || username.length > 256 || password.length > 1024) {
         return res.status(400).json({ message: "Username and password are required" });
       }
 
@@ -109,7 +72,13 @@ export async function setupAuth(app: Express) {
       }
 
       // Set session
+      await new Promise<void>((resolve, reject) => {
+        req.session.regenerate((err) => err ? reject(err) : resolve());
+      });
       req.session.userId = user.id;
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => err ? reject(err) : resolve());
+      });
       
       res.json({
         id: user.id,
@@ -121,8 +90,8 @@ export async function setupAuth(app: Express) {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       });
-    } catch (error) {
-      console.error("Login error:", error);
+    } catch {
+      console.error("Login failed due to an internal error.");
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -163,9 +132,20 @@ export async function setupAuth(app: Express) {
   });
 }
 
-export const isAuthenticated: RequestHandler = (req, res, next) => {
+export const isAuthenticated: RequestHandler = async (req, res, next) => {
   if (!req.session.userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  next();
+  try {
+    const [user] = await db.select({ id: users.id }).from(users)
+      .where(eq(users.id, req.session.userId)).limit(1);
+    if (!user) {
+      req.session.destroy(() => {});
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

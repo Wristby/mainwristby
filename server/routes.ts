@@ -64,15 +64,15 @@ async function generateGeminiText(apiKey: string, model: string, prompt: string)
       let response: Response;
       try {
         response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(safeModel)}:generateContent`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
           },
         );
-      } catch (error) {
-        lastTransientError = error instanceof Error ? error.message : "Network request failed.";
+      } catch {
+        lastTransientError = "Network request failed.";
         if (attempt < GEMINI_MAX_ATTEMPTS_PER_MODEL - 1) {
           const delayMs = (500 * (2 ** attempt)) + Math.floor(Math.random() * 250);
           await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -91,14 +91,13 @@ async function generateGeminiText(apiKey: string, model: string, prompt: string)
         throw new Error("Gemini returned an empty response.");
       }
 
-      const errorText = await response.text();
       if (response.status === 404) {
         lastTransientError = `${safeModel} is unavailable.`;
         continue modelLoop;
       }
 
       if (GEMINI_TRANSIENT_STATUSES.has(response.status)) {
-        lastTransientError = errorText;
+        lastTransientError = `Gemini temporarily unavailable (HTTP ${response.status}).`;
         if (attempt < GEMINI_MAX_ATTEMPTS_PER_MODEL - 1) {
           const delayMs = (500 * (2 ** attempt)) + Math.floor(Math.random() * 250);
           await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -107,7 +106,7 @@ async function generateGeminiText(apiKey: string, model: string, prompt: string)
         break;
       }
 
-      throw new Error(`Gemini API error (${response.status}): ${errorText}`);
+      throw new Error(`AI request was rejected (HTTP ${response.status}). Please check the AI configuration.`);
     }
   }
 
@@ -320,7 +319,9 @@ export async function registerRoutes(
       return res.json({ models: [] });
     }
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+        headers: { "x-goog-api-key": apiKey },
+      });
       if (!response.ok) {
         return res.json({ models: [] });
       }
@@ -387,8 +388,8 @@ Papers/Cards: {{papers}}`;
       }
 
       res.json({ description });
-    } catch (err: any) {
-      res.status(502).json({ message: `Failed to reach AI service: ${err.message}` });
+    } catch {
+      res.status(502).json({ message: "AI generation failed. Please try again or check the AI configuration." });
     }
   });
 
@@ -443,8 +444,8 @@ Papers/Cards: {{papers}}`;
       }
 
       res.json({ specs });
-    } catch (err: any) {
-      res.status(502).json({ message: `Failed to reach AI service: ${err.message}` });
+    } catch {
+      res.status(502).json({ message: "AI generation failed. Please try again or check the AI configuration." });
     }
   });
 
@@ -483,8 +484,8 @@ Papers/Cards: {{papers}}`;
       }
 
       res.json({ caption });
-    } catch (err: any) {
-      res.status(502).json({ message: `Failed to reach AI service: ${err.message}` });
+    } catch {
+      res.status(502).json({ message: "AI generation failed. Please try again or check the AI configuration." });
     }
   });
 

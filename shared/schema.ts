@@ -1,10 +1,17 @@
-import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { users } from "./models/auth";
 
 export * from "./models/auth";
+
+// Persistent security counters. No usernames, IP addresses or credentials.
+export const loginAttempts = pgTable("login_attempts", {
+  key: text("key").primaryKey(),
+  attempts: integer("attempts").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (table) => [index("login_attempts_expiry_idx").on(table.expiresAt)]);
 
 // === SETTINGS ===
 export const settings = pgTable("settings", {
