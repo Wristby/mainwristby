@@ -1498,7 +1498,7 @@ export default function InventoryDetail() {
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-50">
                   <span className="text-sm text-slate-500">Watch Register Check</span>
-                  <span className="text-sm font-medium text-slate-900">{(item as any).watchRegister ? 'Yes (€6.00)' : 'No'}</span>
+                  <span className="text-sm font-medium text-slate-900">{(item as any).watchRegister ? 'Yes ' : 'No'}</span>
                 </div>
               </div>
             </CardContent>
