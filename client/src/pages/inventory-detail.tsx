@@ -1490,11 +1490,11 @@ export default function InventoryDetail() {
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-50">
                   <span className="text-sm text-slate-500">COGS</span>
-                  <span className="text-sm font-medium text-slate-900 font-mono">{formatCurrency(item.purchasePrice)}</span>
+                  <span className="text-sm font-medium text-slate-900">{formatCurrency(item.purchasePrice)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-50">
                   <span className="text-sm text-slate-500">Import Fee</span>
-                  <span className="text-sm font-medium text-slate-900 font-mono">{formatCurrency((item as any).importFee || 0)}</span>
+                  <span className="text-sm font-medium text-slate-900">{formatCurrency((item as any).importFee || 0)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-50">
                   <span className="text-sm text-slate-500">Watch Register Check</span>
