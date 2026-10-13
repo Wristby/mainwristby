@@ -1027,7 +1027,7 @@ export default function InventoryDetail() {
                     </div>
                     <div className="flex items-center space-x-2 pt-8">
                       <Checkbox id="edit-watchRegister" checked={form.watch("watchRegister")} onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} />
-                      <Label htmlFor="edit-watchRegister" className="cursor-pointer">Watch Register (€6)</Label>
+                      <Label htmlFor="edit-watchRegister" className="cursor-pointer">Watch Register</Label>
                     </div>
                     <div className="space-y-2">
                       <Label>Purchase Date</Label>
@@ -2288,7 +2288,6 @@ export default function InventoryDetail() {
           <QuickEstimate initialBuyPriceCents={item.purchasePrice} />
         </div>
       </div>
-
       {/* Historicals Section */}
       {historicals.length > 0 && (
         <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-historicals">
@@ -2378,7 +2377,6 @@ export default function InventoryDetail() {
           </CardContent>
         </Card>
       )}
-
       <Dialog open={isQuickAddClientOpen} onOpenChange={(open) => { setIsQuickAddClientOpen(open); if (!open) quickClientForm.reset(); }}>
         <DialogContent className="bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
