@@ -638,7 +638,6 @@ const DASHBOARD_SECTION_LABELS: Record<string, string> = {
   quick_estimate: "Quick Estimate",
   inventory_status: "Inventory Status Summary",
   aging_listed_inventory: "Aging Listed Inventory",
-  aging_inventory: "Aging Inventory",
   recent_additions: "Recent Additions",
   recently_sold: "Recently Sold",
 };
@@ -1051,7 +1050,6 @@ const DEFAULT_DASHBOARD_SECTIONS: Record<string, { visible: boolean; order: numb
   quick_estimate: { visible: true, order: 3 },
   inventory_status: { visible: true, order: 4 },
   aging_listed_inventory: { visible: true, order: 5 },
-  aging_inventory: { visible: true, order: 6 },
   recent_additions: { visible: true, order: 7 },
   recently_sold: { visible: true, order: 8 },
 };
@@ -1060,6 +1058,8 @@ function mergeSections(saved: Record<string, { visible: boolean; order: number }
   const maxOrder = Object.values(saved).reduce((m, s) => Math.max(m, s.order), -1);
   let nextOrder = maxOrder + 1;
   const merged = { ...saved };
+  // Ignore the retired received-date card in previously saved configurations.
+  delete merged.aging_inventory;
   for (const key of Object.keys(DEFAULT_DASHBOARD_SECTIONS)) {
     if (!(key in merged)) {
       merged[key] = { ...DEFAULT_DASHBOARD_SECTIONS[key], order: nextOrder++ };
