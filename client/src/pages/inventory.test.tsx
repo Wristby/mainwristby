@@ -130,7 +130,7 @@ describe("Sold list controls", () => {
     expect(labels[1]).toContain("Last day");
     expect(labels[1]).toContain("6 Oct 2026");
     expect(labels[1]).toContain("20 Oct 2026");
-    expect(labels[1]).toContain("(Amsterdam)");
+    expect(labels[1]).not.toContain("Amsterdam");
     expect(labels[2]).toContain("4 days remaining");
     expect(labels[3]).toContain("Return window ended");
   });

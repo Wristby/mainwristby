@@ -18,7 +18,7 @@ export function SoldReturnSummary({ deliveredDate, now }: { deliveredDate?: stri
       <p className="text-xs text-slate-600">Delivered <span className="font-medium text-slate-800">{formatDeliveryDate(deliveredDate)}</span></p>
       <div className="space-y-0.5">
         <p className={cn("text-sm font-medium", tone)}>{countdown.label}</p>
-        <p className="text-xs text-slate-500">Deadline: {formatDeliveryDate(countdown.deadline)} (Amsterdam)</p>
+        <p className="text-xs text-slate-500">Deadline: {formatDeliveryDate(countdown.deadline)}</p>
       </div>
     </div>
   );

@@ -51,8 +51,9 @@ describe("dashboard Recently Sold", () => {
     expect(html).toContain("1 day remaining");
     expect(html).toContain("4 days remaining");
     expect(html).toContain("Return window ended");
-    expect(html).toContain("Deadline: 20 Oct 2026 (Amsterdam)");
-    expect(html).toContain("Deadline: 2 Nov 2026 (Amsterdam)");
+    expect(html).toContain("Deadline: 20 Oct 2026");
+    expect(html).toContain("Deadline: 2 Nov 2026");
+    expect(html).not.toContain("Amsterdam");
     expect(html).toContain("Delivered");
   });
 

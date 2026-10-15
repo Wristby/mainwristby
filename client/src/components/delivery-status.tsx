@@ -59,7 +59,7 @@ export function DeliveryStatus({ id, deliveredDate }: { id: number; deliveredDat
                 : "bg-emerald-50 text-emerald-800 border-emerald-200 whitespace-normal"}>
               {countdown.label}
             </Badge>
-            <p className="text-xs text-slate-600">Return deadline: {formatDeliveryDate(countdown.deadline)} (Amsterdam)</p>
+            <p className="text-xs text-slate-600">Return deadline: {formatDeliveryDate(countdown.deadline)}</p>
           </div>
         </>
       ) : <p className="text-sm text-slate-500">Delivery not confirmed</p>}
