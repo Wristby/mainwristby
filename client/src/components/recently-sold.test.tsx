@@ -54,7 +54,7 @@ describe("dashboard Recently Sold", () => {
     expect(html).toContain("Deadline: 20 Oct 2026");
     expect(html).toContain("Deadline: 2 Nov 2026");
     expect(html).not.toContain("Amsterdam");
-    expect(html).toContain("Delivered");
+    expect(html).not.toContain("Delivered");
   });
 
   it("reflects the next Amsterdam date without changing sale or delivery data", () => {

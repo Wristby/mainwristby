@@ -62,7 +62,7 @@ export function RecentlySold({ watches, now, calcProfit, formatCurrency }: Recen
                 </div>
               </div>
               <div className="mt-2 pt-2 border-t border-slate-200">
-                <SoldReturnSummary deliveredDate={item.deliveredDate} now={now} />
+                <SoldReturnSummary deliveredDate={item.deliveredDate} now={now} showDeliveredDate={false} />
               </div>
             </Link>
           );
