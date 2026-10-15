@@ -55,7 +55,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { compareReturnDeadlines, matchesReturnWindowFilter, type ReturnWindowFilter } from "@/lib/sold-return";
-import { formatDeliveryDate, returnWindow } from "@shared/delivery";
+import { SoldReturnSummary } from "@/components/sold-return-summary";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -153,28 +153,6 @@ const getServiceDurationDays = (item: any) => {
   return Math.max(0, differenceInDays(effectiveEnd, start));
 };
 
-function SoldReturnSummary({ deliveredDate, now }: { deliveredDate?: string | null; now: Date }) {
-  const countdown = returnWindow(deliveredDate, now);
-  if (!countdown || !deliveredDate) {
-    return <span className="text-sm text-slate-500">Delivery not confirmed</span>;
-  }
-
-  const tone = countdown.daysRemaining < 0
-    ? "text-slate-500"
-    : countdown.daysRemaining <= 3
-      ? "text-amber-800"
-      : "text-emerald-800";
-
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs text-slate-600">Delivered <span className="font-medium text-slate-800">{formatDeliveryDate(deliveredDate)}</span></p>
-      <div className="space-y-0.5">
-        <p className={cn("text-sm font-medium", tone)}>{countdown.label}</p>
-        <p className="text-xs text-slate-500">Deadline: {formatDeliveryDate(countdown.deadline)} (Amsterdam)</p>
-      </div>
-    </div>
-  );
-}
 
 export default function Inventory() {
   const now = useAmsterdamClock();

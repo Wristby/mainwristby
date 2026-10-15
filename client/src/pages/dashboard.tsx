@@ -22,8 +22,7 @@ import {
   Check,
   X,
   Scale,
-  ExternalLink,
-  ShoppingBag
+  ExternalLink
 } from "lucide-react";
 import { format, differenceInDays, startOfDay } from "date-fns";
 import { Link } from "wouter";
@@ -49,6 +48,8 @@ import { useCreateClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
+import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
+import { RecentlySold } from "@/components/recently-sold";
 
 const createInventoryFormSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
@@ -367,7 +368,7 @@ export default function Dashboard() {
     }).format(val / 100);
   };
 
-  const today = new Date();
+  const today = useAmsterdamClock();
   const formattedDate = format(today, "EEEE, MMMM d, yyyy");
 
   // Calculate aging inventory (held > threshold days, only active items)
@@ -411,14 +412,6 @@ export default function Dashboard() {
     .slice(0, 5);
 
   const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
-
-  const recentlySold = [...soldInventory]
-    .sort((a, b) => {
-      const dateA = new Date(a.soldDate || a.dateSold || 0).getTime();
-      const dateB = new Date(b.soldDate || b.dateSold || 0).getTime();
-      return dateB - dateA;
-    })
-    .slice(0, 4);
 
   const calcProfit = (item: InventoryItem) => {
     const revenue = item.salePrice || 0;
@@ -759,50 +752,7 @@ export default function Dashboard() {
             </Card>
           )}
           {isSectionVisible("recently_sold") && (
-          <Card className="bg-white border-slate-200">
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
-              <div className="flex items-center gap-2">
-                <ShoppingBag className="h-5 w-5 text-emerald-600" />
-                <CardTitle className="text-slate-900 text-lg">Recently Sold</CardTitle>
-              </div>
-              {recentlySold.length > 0 && (
-                <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                  {soldInventory.length} total
-                </Badge>
-              )}
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {recentlySold.length === 0 ? (
-                <div className="text-center py-8 text-slate-400">No watches sold yet.</div>
-              ) : (
-                recentlySold.map((item) => {
-                  const profit = calcProfit(item);
-                  const soldDate = item.soldDate || item.dateSold;
-                  return (
-                    <Link key={item.id} href={`/inventory/${item.id}`}>
-                      <div className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors">
-                        <div className="flex items-center gap-3">
-                          <Watch className="h-5 w-5 text-slate-400 shrink-0" />
-                          <div>
-                            <p className="font-medium text-slate-900 text-sm">{item.brand} {item.model}</p>
-                            <p className="text-xs text-slate-500">
-                              {soldDate && !isNaN(new Date(soldDate).getTime()) ? format(new Date(soldDate), "d MMM yyyy") : "—"}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-slate-900 tabular-nums">{formatCurrency(item.salePrice || 0)}</p>
-                          <p className={`text-xs font-medium tabular-nums ${profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                            {profit >= 0 ? "+" : ""}{formatCurrency(profit)}
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
+            <RecentlySold watches={soldInventory} now={today} calcProfit={calcProfit} formatCurrency={formatCurrency} />
           )}
           {isSectionVisible("aging_listed_inventory") && (
             <Card className="bg-white border-slate-200">
