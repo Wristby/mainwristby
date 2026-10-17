@@ -3,3 +3,4 @@
 - [Security dependency updates](security-dependency-updates.md) — parent upgrades may retain vulnerable transitives; keep fixes compatible with each dependency's major line
 - [Private workspace access](private-workspace-access.md) — public registration stays disabled; preserve existing accounts and require explicit approval for account-provisioning changes
 - [Browser verification boundaries](browser-verification.md) — browser testing may need local Chromium; API fixtures verify UI behavior, not live authentication or persistence
+- [Intake workflow parity](intake-workflow-parity.md) — layout redesigns must preserve established shortcuts and use Watch Details as the condition-choice reference

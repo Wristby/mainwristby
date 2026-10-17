@@ -13,7 +13,7 @@ import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useSettings } from "@/hooks/use-settings";
 import { insertClientSchema } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { buildWatchIntakePayload, watchIntakeDefaults, watchIntakeFieldTab, watchIntakeSchema, type WatchIntakeValues } from "./model";
+import { buildWatchIntakePayload, watchIntakeConditions, watchIntakeDefaults, watchIntakeFieldTab, watchIntakeSchema, type WatchIntakeValues } from "./model";
 import { Card, CheckRow, DateField, Field, Money } from "./fields";
 import { IntakeReview } from "./review";
 const tabs = [
@@ -137,10 +137,10 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
         <div ref={content} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-8 sm:px-7">
           {tab===0 && <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
             <Card title="Identity & reference"><div className="grid gap-4 sm:grid-cols-2">
-              <Field name="brand" label="Brand" required options={settings.watch_brands}/><Field name="model" label="Model" required placeholder="e.g. Submariner Date"/>
+              <Field name="brand" label="Brand" required options={settings.watch_brands}/><Field name="model" label="Model" required/>
               <Field name="referenceNumber" label="Reference number" required/><Field name="year" label="Production year" type="number"/>
               <Field name="serialNumber" label="Serial number"/><Field name="internalSerial" label="Movement / internal serial"/>
-              <Field name="linkCount" label="Bracelet link count" type="number"/><Field name="condition" label="Condition" options={["New","Mint","Used","Damaged"]}/>
+              <Field name="linkCount" label="Bracelet link count" type="number"/><Field name="condition" label="Condition" options={[...watchIntakeConditions]}/>
             </div><div className="mt-4 grid gap-3 sm:grid-cols-2"><CheckRow name="box" label="Box included"/><CheckRow name="papers" label="Papers included"/></div></Card>
             <Card title="Reference materials"><Field name="gdriveLink" label="Google Drive link" placeholder="https://drive.google.com/…" labelAction={
               <a href="https://drive.google.com/drive/u/1/folders/19gIwCa7aNqQk1s00gmkCWWzFC_dfL4sG" target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-emerald-600 hover:underline">

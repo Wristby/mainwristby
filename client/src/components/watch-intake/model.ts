@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const watchIntakeConditions = ["Good", "Very Good", "Excellent", "Like New"] as const;
+
 export const watchIntakeSchema = z.object({
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
@@ -27,7 +29,7 @@ export const watchIntakeSchema = z.object({
   dateSold: z.string().optional().nullable(),
   targetSellPrice: z.coerce.number().optional().default(0),
   status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"], { required_error: "Status is required" }),
-  condition: z.enum(["New", "Mint", "Used", "Damaged"]).default("Used"),
+  condition: z.enum(watchIntakeConditions).default("Good"),
   box: z.boolean().default(false),
   papers: z.boolean().default(false),
   gdriveLink: z.string().optional().nullable(),
@@ -51,7 +53,7 @@ export const watchIntakeDefaults: WatchIntakeValues = {
   purchasedFrom: "", paidWith: "", clientId: undefined, purchasePrice: 0, importFee: 0, watchRegister: false,
   serviceFee: 0, polishFee: 0, salePrice: 0, soldTo: "", platformFees: 0, shippingFee: 0, insuranceFee: 0,
   dateReceived: null, purchaseDate: null, dateListed: null, dateSold: null, targetSellPrice: 0, status: "incoming",
-  condition: "Used", box: false, papers: false, gdriveLink: "", notes: "", shippingPartner: "", trackingNumber: "",
+  condition: "Good", box: false, papers: false, gdriveLink: "", notes: "", shippingPartner: "", trackingNumber: "",
   dateShipped: null, soldPlatform: "", dateSentToService: null, dateReturnedFromService: null, serviceNotes: "",
 };
 export const watchIntakeFieldTab: Record<keyof WatchIntakeValues, number> = {

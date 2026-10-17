@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { api } from "@shared/routes";
-import { buildWatchIntakePayload, watchIntakeDefaults, watchIntakeFieldTab, watchIntakeMoneyFields, watchIntakeSchema } from "./model";
+import { buildWatchIntakePayload, watchIntakeConditions, watchIntakeDefaults, watchIntakeFieldTab, watchIntakeMoneyFields, watchIntakeSchema } from "./model";
 import { IntakeReview } from "./review";
 
 const valid = { ...watchIntakeDefaults, brand: "Rolex", model: "Explorer", referenceNumber: "124270", purchasedFrom: "Private Purchase", paidWith: "Wire", purchasePrice: 5123.45 };
 
 describe("shared watch intake", () => {
+  it("keeps the existing watch-detail condition choices and saves each exact selection", () => {
+    expect(watchIntakeConditions).toEqual(["Good", "Very Good", "Excellent", "Like New"]);
+    expect(watchIntakeDefaults.condition).toBe("Good");
+    for (const condition of watchIntakeConditions) {
+      const values = watchIntakeSchema.parse({ ...valid, condition });
+      const payload = buildWatchIntakePayload(values);
+      expect(payload.condition).toBe(condition);
+      expect(api.inventory.create.input.parse(payload).condition).toBe(condition);
+    }
+  });
   it("validates required fields and routes every field to a section", () => {
     const result = watchIntakeSchema.safeParse(watchIntakeDefaults);
     expect(result.success).toBe(false);
