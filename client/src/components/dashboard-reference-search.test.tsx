@@ -14,6 +14,7 @@ describe("dashboard search shell", () => {
     expect(html).toContain("Search inventory by reference number");
     expect(html).toContain("role=\"search\"");
     expect(html).toContain("aria-live=\"polite\"");
+    expect(html).not.toContain("placeholder=");
     expect(html).not.toContain("href=\"/inventory/1\"");
   });
   it("does not claim no matches when inventory could not be loaded", () => {

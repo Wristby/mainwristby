@@ -81,8 +81,9 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 1100, deviceScaleFactor: 1, mobile: false });
   await home();
   assert.equal(await evaluate(`document.querySelectorAll('ul[aria-label="Matching watches"] a').length`), 0);
-  const placement = await evaluate(`(() => {const search=document.querySelector('#reference-search-title').closest('section');return {previous:search.previousElementSibling.innerText,next:search.nextElementSibling.innerText}})()`);
-  assert(placement.previous.includes("Quick Actions")); assert(placement.next.includes("Monthly Goal"));
+  const placement = await evaluate(`(() => {const search=document.querySelector('#reference-search-title').closest('section');return {previous:search.previousElementSibling.innerText,beforeGoal:search.previousElementSibling.previousElementSibling.innerText}})()`);
+  assert(placement.previous.includes("Monthly Goal")); assert(placement.beforeGoal.includes("Quick Actions"));
+  assert.equal(await evaluate(`document.querySelector('#dashboard-reference-search').hasAttribute('placeholder')`), false);
   await input(" 124270 ");
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('ul[aria-label="Matching watches"] a'),el=>el.getAttribute('href'))`), ["/inventory/2", "/inventory/1", "/inventory/3"]);
   assert((await evaluate(`document.querySelector('ul[aria-label="Matching watches"]').innerText`)).includes("SERIAL-1"));

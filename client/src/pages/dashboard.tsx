@@ -428,7 +428,6 @@ export default function Dashboard() {
           </Button>
         </CardContent>
       </Card>}
-      {isSectionVisible("quick_actions") && <DashboardReferenceSearch watches={inventory || []} unavailable={inventoryError && !inventory} />}
       {isSectionVisible("monthly_profit_goal") && <Card className="bg-white border-slate-200 shadow-sm">
         <CardContent className="py-4">
           <div className="flex items-center justify-between mb-3">
@@ -497,6 +496,7 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>}
+      {isSectionVisible("quick_actions") && <DashboardReferenceSearch watches={inventory || []} unavailable={inventoryError && !inventory} />}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* Left column: stacked sections */}
         <div className="flex flex-col gap-6">

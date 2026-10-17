@@ -106,7 +106,6 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
             value={query}
             onChange={(event) => handleQueryChange(event.currentTarget.value)}
             onKeyDown={handleKeyDown}
-            placeholder="e.g. 126610LN"
             className="h-11 w-full rounded-md border border-slate-200 bg-slate-50 pl-10 pr-11 text-base text-slate-900 outline-none transition-[border-color,box-shadow,background-color] placeholder:text-slate-400 focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-600/15 md:text-sm"
           />
           {query.length > 0 && (
