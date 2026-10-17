@@ -5,16 +5,19 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { WatchIntakeValues } from "./model";
 
-export function Field({ name, label, type = "text", required = false, placeholder, options, step }: {
+export function Field({ name, label, type = "text", required = false, placeholder, options, step, labelAction }: {
   name: keyof WatchIntakeValues; label: string; type?: string; required?: boolean;
-  placeholder?: string; options?: string[]; step?: string;
+  placeholder?: string; options?: string[]; step?: string; labelAction?: ReactNode;
 }) {
   const form = useFormContext<WatchIntakeValues>();
   const error = form.formState.errors[name]?.message as string | undefined;
   const id = `intake-${name}`;
   const attributes = { id, "aria-invalid": !!error, "aria-required": required, "aria-describedby": error ? `${id}-error` : undefined };
   return <div className="space-y-1.5">
-    <Label htmlFor={id}>{label}{required && <span className="text-rose-700"> *</span>}</Label>
+    <div className="flex items-center justify-between gap-2">
+      <Label htmlFor={id}>{label}{required && <span className="text-rose-700"> *</span>}</Label>
+      {labelAction}
+    </div>
     {options ? <select {...attributes} {...form.register(name)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700/30 sm:text-sm">
       <option value="">Choose…</option>{options.map(option => <option key={option} value={option}>{option === "in_stock" ? "Listed" : option.charAt(0).toUpperCase() + option.slice(1)}</option>)}
     </select> : <Input {...attributes} type={type} step={step} inputMode={type === "number" ? "decimal" : undefined} placeholder={placeholder} {...form.register(name)} className="border-slate-300 bg-white text-base sm:text-sm" />}

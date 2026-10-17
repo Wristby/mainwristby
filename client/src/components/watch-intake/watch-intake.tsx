@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, ArrowLeft, ArrowRight, Check, X } from "lucide-react";
+import { Plus, ArrowLeft, ArrowRight, Check, X, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,7 +142,11 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
               <Field name="serialNumber" label="Serial number"/><Field name="internalSerial" label="Movement / internal serial"/>
               <Field name="linkCount" label="Bracelet link count" type="number"/><Field name="condition" label="Condition" options={["New","Mint","Used","Damaged"]}/>
             </div><div className="mt-4 grid gap-3 sm:grid-cols-2"><CheckRow name="box" label="Box included"/><CheckRow name="papers" label="Papers included"/></div></Card>
-            <Card title="Reference materials"><Field name="gdriveLink" label="Google Drive link" placeholder="https://drive.google.com/…"/><p className="mt-2 text-xs leading-5 text-slate-500">Use your existing shared folder for photographs and documents.</p></Card>
+            <Card title="Reference materials"><Field name="gdriveLink" label="Google Drive link" placeholder="https://drive.google.com/…" labelAction={
+              <a href="https://drive.google.com/drive/u/1/folders/19gIwCa7aNqQk1s00gmkCWWzFC_dfL4sG" target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-emerald-600 hover:underline">
+                Open Folder <ExternalLink className="h-3 w-3" />
+              </a>
+            }/><p className="mt-2 text-xs leading-5 text-slate-500">Use your existing shared folder for photographs and documents.</p></Card>
           </div>}
           {tab===1 && <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Purchase details"><div className="grid gap-4 sm:grid-cols-2">
