@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
+import { MonthlyGoalProgress } from "@/components/monthly-goal-progress";
+import { DashboardReferenceSearch } from "@/components/dashboard-reference-search";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -156,7 +157,7 @@ export default function Dashboard() {
     queryKey: ["/api/dashboard/stats"],
   });
 
-  const { data: inventory, isLoading: inventoryLoading } = useQuery<InventoryItem[]>({
+  const { data: inventory, isLoading: inventoryLoading, isError: inventoryError } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
   });
 
@@ -427,6 +428,7 @@ export default function Dashboard() {
           </Button>
         </CardContent>
       </Card>}
+      {isSectionVisible("quick_actions") && <DashboardReferenceSearch watches={inventory || []} unavailable={inventoryError && !inventory} />}
       {isSectionVisible("monthly_profit_goal") && <Card className="bg-white border-slate-200 shadow-sm">
         <CardContent className="py-4">
           <div className="flex items-center justify-between mb-3">
@@ -474,16 +476,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="relative pt-4">
-            <Progress 
-              value={goalProgress} 
-              className={cn(
-                "h-4",
-                goalProgress >= 100 ? "[&>div]:bg-emerald-500" : 
-                goalProgress >= 75 ? "[&>div]:bg-emerald-400" :
-                goalProgress >= 50 ? "[&>div]:bg-amber-400" :
-                "[&>div]:bg-slate-300"
-              )}
-            />
+            <MonthlyGoalProgress value={goalProgress} />
             <div 
               className="absolute top-0 transform -translate-x-1/2 flex flex-col items-center"
               style={{ left: `${Math.max(5, Math.min(95, goalProgress))}%` }}
