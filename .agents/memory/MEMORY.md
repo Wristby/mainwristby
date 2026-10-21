@@ -4,4 +4,4 @@
 - [Private workspace access](private-workspace-access.md) — public registration stays disabled; preserve existing accounts and require explicit approval for account-provisioning changes
 - [Browser verification boundaries](browser-verification.md) — browser testing may need local Chromium; API fixtures verify UI behavior, not live authentication or persistence
 - [Intake workflow parity](intake-workflow-parity.md) — layout redesigns must preserve established shortcuts and use Watch Details as the condition-choice reference
-- [Visual direction](visual-direction.md) — the user selected Refined light for modernizing WRISTBY; preserve established workflows during visual changes
+- [Visual direction](visual-direction.md) — light styling, but a noticeably different layout; the user rejected a cosmetic-only refresh
