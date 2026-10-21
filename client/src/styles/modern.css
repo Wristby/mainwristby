@@ -1,0 +1,148 @@
+/* Approved WRISTBY visual system. Layout and business components stay intact. */
+.wristby-modern {
+  --wm-ink: #172723;
+  --wm-muted: #64736c;
+  --wm-line: #d8e2dc;
+  --wm-paper: #f2f5f0;
+  --wm-card: #fbfcf8;
+  --wm-deep: #173c32;
+  --wm-green: #16715a;
+  --wm-gold: #c89b52;
+  --background: 96 20% 95%;
+  --foreground: 165 26% 12%;
+  --card: 75 40% 98%;
+  --card-foreground: 165 26% 12%;
+  --popover: 75 40% 98%;
+  --popover-foreground: 165 26% 12%;
+  --primary: 165 67% 26%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 100 20% 94%;
+  --secondary-foreground: 165 26% 12%;
+  --muted: 100 20% 94%;
+  --muted-foreground: 148 7% 42%;
+  --accent: 140 20% 91%;
+  --accent-foreground: 165 45% 16%;
+  --border: 144 15% 87%;
+  --input: 144 15% 87%;
+  --ring: 36 46% 53%;
+  min-height: 100dvh;
+  color: var(--wm-ink);
+  background: var(--wm-paper);
+  font-family: "DM Sans", "Spline Sans", sans-serif;
+}
+.wristby-modern *,
+.wristby-modern *::before,
+.wristby-modern *::after { box-sizing: border-box; }
+.wristby-modern .wm-shell { display: flex; width: 100%; min-height: 100dvh; height: 100dvh; overflow: hidden; }
+.wristby-modern .wm-desktop-rail { display: none; flex: 0 0 252px; }
+.wristby-modern .wm-main-column { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.wristby-modern .wm-main-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--wm-paper); }
+.wristby-modern .wm-page-content { position: relative; z-index: 1; width: 100%; max-width: 1540px; margin-inline: auto; padding: 30px clamp(20px, 3vw, 44px) 48px; }
+.wristby-modern .wm-sidebar { width: 252px; color: #e8eee9; background: #183d33; border-right: 1px solid #2b5448; }
+.wristby-modern .wm-brand { display: flex; align-items: center; gap: 13px; padding: 24px 22px 30px; text-decoration: none; }
+.wristby-modern .wm-brand img { width: 46px; height: 46px; border-radius: 11px; background: #f0f2e9; object-fit: contain; }
+.wristby-modern .wm-brand-copy { display: flex; flex-direction: column; gap: 3px; }
+.wristby-modern .wm-brand-copy strong { color: #f4f1e8; font-size: 15px; letter-spacing: .18em; }
+.wristby-modern .wm-brand-copy small { color: #aebfb4; font-size: 12px; letter-spacing: .035em; }
+.wristby-modern .wm-navigation { display: flex; flex: 1; flex-direction: column; gap: 7px; padding: 4px 13px 22px; }
+.wristby-modern .wm-nav-link { display: flex; align-items: center; gap: 13px; min-height: 47px; padding: 0 14px; border: 1px solid transparent; border-radius: 9px; color: #c0cec5; font-size: 14px; font-weight: 500; text-decoration: none; }
+.wristby-modern .wm-nav-link svg { width: 19px; height: 19px; color: #9bb4a6; }
+.wristby-modern .wm-nav-link:hover { background: #254c40; color: #fff; transform: translateX(2px); }
+.wristby-modern .wm-nav-link.is-active { color: #f8f5ed; background: #2d5a4c; border-color: #46715e; box-shadow: inset 3px 0 #d1a760; }
+.wristby-modern .wm-nav-link.is-active svg { color: #e0bd7b; }
+.wristby-modern .wm-sidebar-bottom { padding: 14px; border-top: 1px solid #2b5448; }
+.wristby-modern .wm-logout { justify-content: flex-start; width: 100%; min-height: 44px; gap: 12px; color: #bdcbc2; }
+.wristby-modern .wm-logout svg { width: 18px; height: 18px; }
+.wristby-modern .wm-logout:hover { color: #f1d6d1; background: #244a3f; }
+.wristby-modern .wm-mobile-header { display: flex; align-items: center; gap: 12px; min-height: 62px; padding: 0 16px; color: #f2f4eb; background: #183d33; border-bottom: 1px solid #294f43; }
+.wristby-modern .wm-menu-button { min-width: 44px; min-height: 44px; color: #f2f4eb; }
+.wristby-modern .wm-mobile-brand { display: flex; align-items: center; gap: 10px; color: #f2f4eb; font-weight: 700; letter-spacing: .13em; text-decoration: none; }
+.wristby-modern .wm-mobile-brand img { width: 30px; height: 30px; border-radius: 7px; background: #f0f2e9; object-fit: contain; }
+.wristby-modern-drawer { width: min(292px, 86vw) !important; padding: 0 !important; border: 0 !important; background: #183d33 !important; }
+.wristby-modern-drawer .wm-sidebar { width: 100%; min-height: 100%; border: 0; }
+@media (min-width: 1024px) {
+  .wristby-modern .wm-desktop-rail { display: block; }
+  .wristby-modern .wm-mobile-header { display: none; }
+}
+.wristby-modern button,
+.wristby-modern a,
+.wristby-modern input,
+.wristby-modern textarea,
+.wristby-modern [role="switch"] { transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.wristby-modern :focus-visible { outline: 3px solid #bf9250 !important; outline-offset: 2px; }
+.wristby-modern .animate-fade-in { animation: wm-arrive .42s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes wm-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .wristby-modern *, .wristby-modern *::before, .wristby-modern *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+.wristby-modern main { background: var(--wm-paper); }
+.wristby-modern header .wm-menu-button { color: #f2f4eb; min-width: 44px; min-height: 44px; }
+.wristby-modern [class*="rounded-xl"][class*="border"],
+.wristby-modern [class*="rounded-lg"][class*="border"] { border-color: var(--wm-line); }
+.wristby-modern .bg-white { background-color: var(--wm-card); }
+.wristby-modern .border-slate-200 { border-color: var(--wm-line); }
+.wristby-modern .text-slate-900 { color: var(--wm-ink); }
+.wristby-modern .text-slate-500 { color: var(--wm-muted); }
+.wristby-modern .bg-emerald-600 { background: var(--wm-deep); border-color: #285648; }
+.wristby-modern .hover\:bg-emerald-500:hover { background: #245444; }
+.wristby-modern .text-emerald-600 { color: var(--wm-green); }
+.wristby-modern .bg-emerald-50 { background: #e7f0e9; }
+.wristby-modern .text-blue-600 { color: #567e83; }
+.wristby-modern .bg-blue-50 { background: #e9f0ef; }
+.wristby-modern .bg-blue-100 { background: #dae8e5; }
+.wristby-modern .text-blue-700 { color: #315b60; }
+.wristby-modern .bg-amber-100 { background: #f4ebd8; }
+.wristby-modern .text-amber-700, .wristby-modern .text-amber-600 { color: #936c2d; }
+.wristby-modern h1, .wristby-modern h2, .wristby-modern h3,
+.wristby-modern [class*="CardTitle"] { font-family: "Manrope", "DM Sans", sans-serif; }
+.wristby-modern h1 { font-size: clamp(28px, 3vw, 37px); letter-spacing: -.045em; color: #173c32; }
+.wristby-modern .text-3xl { font-size: clamp(25px, 2vw, 31px); letter-spacing: -.035em; }
+.wristby-modern .text-lg { letter-spacing: -.02em; }
+.wristby-modern main .rounded-xl.border,
+.wristby-modern main [class*="rounded-xl"][class*="shadow"] { box-shadow: 0 2px 7px rgba(24, 50, 40, .045), 0 1px 1px rgba(24, 50, 40, .035); }
+.wristby-modern main .rounded-xl.border:hover { border-color: #bacbc0; }
+.wristby-modern main button:not([role="switch"]):not([role="checkbox"]) { min-height: 44px; }
+.wristby-modern main input,
+.wristby-modern main textarea,
+.wristby-modern main [role="combobox"] { min-height: 44px; font-size: 15px; }
+.wristby-modern main input::placeholder,
+.wristby-modern main textarea::placeholder { color: #929f97; }
+.wristby-modern main .bg-slate-50 { background: #f0f4ef; }
+.wristby-modern main .border-slate-100 { border-color: #e3eae3; }
+.wristby-modern main .bg-slate-100 { background: #e6ede7; }
+.wristby-modern main a > div:hover,
+.wristby-modern main button:hover { border-color: #b5c9bd; }
+.wristby-modern main button:active { transform: translateY(1px); }
+.wristby-modern main .bg-emerald-600.text-white,
+.wristby-modern main button.bg-emerald-600 { color: #fff; }
+.wristby-modern [role="dialog"] { border-color: var(--wm-line); background: var(--wm-card); color: var(--wm-ink); }
+/* Keep portalled controls legible without resizing native checkboxes or switches. */
+.wristby-modern :where([role="dialog"], [data-radix-popper-content-wrapper]) { font-family: "DM Sans", sans-serif; }
+@media (min-width: 768px) and (max-width: 1279px) {
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .h-10 { height: auto; min-height: 56px; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .text-sm { min-height: 56px; display: block; }
+}
+@media (max-width: 767px) {
+  .wristby-modern .wm-page-content { padding: 20px 16px 36px; }
+  /* Dashboard composition only: don't turn other pages' mobile forms into two columns. */
+  .wristby-modern .wm-dashboard .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wristby-modern .wm-dashboard .md\:flex-row { flex-direction: column; }
+  .wristby-modern .wm-dashboard .grid-cols-2 { gap: 10px; }
+  .wristby-modern main .text-3xl { font-size: 24px; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * { position: relative; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .rounded-full { position: absolute; top: 14px; right: 12px; width: 28px; height: 28px; padding: 6px; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .rounded-full svg { width: 16px; height: 16px; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .h-10 { height: auto; min-height: 56px; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .text-sm { min-height: 56px; display: block; font-size: 13px; line-height: 1.35; padding-right: 24px; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .text-3xl { font-size: 22px; line-height: 1.15; white-space: nowrap; }
+  .wristby-modern .wm-dashboard .py-4 > .flex.items-center.justify-between.mb-3 { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+  .wristby-modern .wm-dashboard .py-4 > .flex.items-center.justify-between.mb-3 > div:last-child { margin-left: auto; }
+  .wristby-modern .wm-dashboard .py-4 > .flex.items-center.justify-between.mb-3 > div:last-child span { font-size: 15px; }
+}
+@media (max-width: 360px) {
+  .wristby-modern .wm-page-content { padding-inline: 12px; }
+  .wristby-modern main .text-3xl { font-size: 21px; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .text-3xl { font-size: 19px; white-space: normal; }
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .h-10,
+  .wristby-modern .wm-dashboard .lg\:grid-cols-4 > * .text-sm { min-height: 66px; }
+}

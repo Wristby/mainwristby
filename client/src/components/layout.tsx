@@ -13,10 +13,11 @@ import {
 } from "lucide-react";
 import logoPng from "@assets/WRISTBY-login-logo_1770424094780.png";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { installTouchScrollGuard } from "@/lib/touch-scroll-guard";
+import "@/styles/modern.css";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
@@ -28,48 +29,44 @@ const NAV_ITEMS = [
   { icon: Settings, label: "Admin", href: "/admin" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const [location] = useLocation();
   const { logout } = useAuth();
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 border-r border-slate-200 text-slate-900 w-64">
-      <Link href="/">
-        <div className="p-6 flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
-          <img src={logoPng} alt="Wristby Logo" className="w-[53px] h-[53px] rounded-lg object-contain" />
-          <div>
-            <h1 className="font-bold text-lg tracking-tight">WRISTBY</h1>
-            <p className="text-xs text-slate-500 font-medium">Watch Tracking</p>
-          </div>
-        </div>
+    <div className="wm-sidebar flex h-full w-64 flex-col">
+      <Link href="/" onClick={onNavigate} className="wm-brand">
+        <img src={logoPng} alt="WRISTBY" />
+        <span className="wm-brand-copy">
+          <strong>WRISTBY</strong><small>Watch Tracking</small>
+        </span>
       </Link>
-      <nav className="flex-1 px-4 py-6 space-y-2">
+      <nav aria-label="Main navigation" className="wm-navigation">
         {NAV_ITEMS.map((item) => {
-          const isActive = location === item.href;
+          const isActive = location === item.href
+            || (item.href === "/" && location === "/dashboard")
+            || (item.href !== "/" && location.startsWith(`${item.href}/`));
           return (
-            <Link key={item.href} href={item.href}>
-              <div
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer group",
-                  isActive
-                    ? "bg-white text-emerald-600 shadow-sm border border-slate-200"
-                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
-                )}
-              >
-                <item.icon className={cn("w-5 h-5", isActive ? "text-emerald-600" : "text-slate-400 group-hover:text-slate-600")} />
-                <span className="font-medium text-sm">{item.label}</span>
-              </div>
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              aria-current={isActive ? "page" : undefined}
+              className={cn("wm-nav-link", isActive && "is-active")}
+            >
+              <item.icon aria-hidden="true" />
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
-      <div className="p-4 border-t border-slate-200">
+      <div className="wm-sidebar-bottom">
         <Button
           variant="ghost"
-          className="w-full justify-start text-slate-500 hover:text-red-600 hover:bg-red-50 gap-3"
-          onClick={() => logout()}
+          className="wm-logout"
+          onClick={() => { logout(); onNavigate?.(); }}
         >
-          <LogOut className="w-5 h-5" />
+          <LogOut aria-hidden="true" />
           Logout
         </Button>
       </div>
@@ -83,12 +80,14 @@ export function MobileNav() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="lg:hidden text-slate-400">
-          <Menu className="w-6 h-6" />
+        <Button variant="ghost" size="icon" className="wm-menu-button lg:hidden" aria-label="Open navigation">
+          <Menu aria-hidden="true" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="p-0 bg-slate-950 border-slate-800 w-64">
-        <Sidebar />
+      <SheetContent side="left" className="wristby-modern wristby-modern-drawer" aria-label="Main navigation">
+        <SheetTitle className="sr-only">WRISTBY navigation</SheetTitle>
+        <SheetDescription className="sr-only">Navigate between your watch management tools.</SheetDescription>
+        <Sidebar onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );
@@ -96,7 +95,16 @@ export function MobileNav() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  useEffect(() => installTouchScrollGuard(document), []);
+  useEffect(() => {
+    // Portalled dialogs and menus share the protected workspace's visual theme.
+    const wasThemed = document.body.classList.contains("wristby-modern");
+    document.body.classList.add("wristby-modern");
+    const removeGuard = installTouchScrollGuard(document);
+    return () => {
+      removeGuard();
+      if (!wasThemed) document.body.classList.remove("wristby-modern");
+    };
+  }, []);
 
   if (isLoading) return <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-500">Loading...</div>;
 
@@ -106,29 +114,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden font-sans text-slate-900">
-      <aside className="hidden lg:block">
+    <div className="wristby-modern">
+    <div className="wm-shell">
+      <aside className="wm-desktop-rail">
         <Sidebar />
       </aside>
 
-      <div className="min-w-0 flex-1 flex flex-col h-full overflow-hidden">
-        <header className="h-16 lg:hidden flex items-center px-4 border-b border-slate-200 bg-slate-50">
+      <div className="wm-main-column">
+        <header className="wm-mobile-header">
           <MobileNav />
-          <div className="ml-4 flex items-center gap-2">
-            <img src={logoPng} alt="Wristby Logo" className="w-7 h-7 rounded-md object-contain" />
-            <span className="font-bold text-slate-900 tracking-tight">WRISTBY</span>
-          </div>
+          <Link href="/" className="wm-mobile-brand">
+            <img src={logoPng} alt="" aria-hidden="true" />
+            <span>WRISTBY</span>
+          </Link>
         </header>
         
-        <main className="flex-1 overflow-auto bg-slate-50 relative">
-          {/* Subtle grid background */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20 pointer-events-none" />
-          
-          <div className="relative z-10 p-4 md:p-8 max-w-7xl mx-auto animate-fade-in">
+        <main className="wm-main-scroll">
+          <div className="wm-page-content animate-fade-in">
             {children}
           </div>
         </main>
       </div>
+    </div>
     </div>
   );
 }

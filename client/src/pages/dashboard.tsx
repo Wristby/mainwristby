@@ -308,7 +308,7 @@ export default function Dashboard() {
   const getOrder = (key: string) => dashSections?.[key]?.order ?? 99;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="wm-dashboard flex flex-col gap-6">
       {/* Header - always first */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

@@ -131,13 +131,42 @@ try {
     profit = value; await home();
     assert.equal(await evaluate(`document.querySelector('[aria-label="Monthly goal progress"]').getAttribute('aria-valuenow')`), expected);
   }
+  // Shared-shell graduation checks against the actual app, not the preview copy.
+  profit = 120000;
+  await home();
+  for (const width of [1440, 1024, 768, 390, 320]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 768 });
+    await pause(120);
+    assert.equal(await evaluate("document.body.classList.contains('wristby-modern')"), true);
+    assert.equal(await evaluate("getComputedStyle(document.querySelector('.wm-desktop-rail')).display !== 'none'"), width >= 1024);
+    assert.equal(await evaluate("document.documentElement.scrollWidth > innerWidth || document.querySelector('main').scrollWidth > document.querySelector('main').clientWidth"), false, `no workspace overflow at ${width}px`);
+    assert.equal(await evaluate("document.querySelector('.wm-desktop-rail [aria-current=page]').getAttribute('href')"), "/");
+    assert((await evaluate("getComputedStyle(document.querySelector('main')).fontFamily")).includes("DM Sans"));
+    await evaluate("document.querySelector('main').scrollTo(0,0)");
+    if (width === 1440 || width === 390) {
+      await writeFile(`/tmp/wristby-modern-${width}.jpg`, Buffer.from((await send("Page.captureScreenshot", { format: "jpeg", quality: 80 })).data, "base64"));
+    }
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await evaluate("document.querySelector('[aria-label=\"Open navigation\"]').click()");
+  await wait("!!document.querySelector('[role=dialog].wristby-modern-drawer')", "navigation drawer opens");
+  await wait("Math.abs(document.querySelector('.wristby-modern-drawer').getBoundingClientRect().x)<1", "left drawer animation settles");
+  assert.equal(await evaluate("document.querySelectorAll('.wristby-modern-drawer .wm-nav-link').length"), 7);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.wristby-modern-drawer .wm-sidebar')).backgroundColor"), "rgb(24, 61, 51)");
+  await evaluate("document.querySelector('.wristby-modern-drawer a[href=\"/inventory\"]').click()");
+  await wait("location.pathname==='/inventory' && !document.querySelector('.wristby-modern-drawer')", "navigation closes the mobile drawer");
+  await wait("document.querySelector('main h1, main h2')?.textContent==='Inventory'", "inventory still renders inside the shared shell");
+  assert.equal(await evaluate("document.querySelector('.wm-desktop-rail [aria-current=page]').getAttribute('href')"), "/inventory");
+  await send("Page.navigate", { url: `https://${process.env.REPLIT_DEV_DOMAIN}/dashboard` });
+  await wait("!!document.querySelector('#dashboard-reference-search')", "dashboard alias loads");
+  assert.equal(await evaluate("document.querySelector('.wm-desktop-rail [aria-current=page]').getAttribute('href')"), "/");
   hidden = true;
   await send("Page.navigate", { url: `https://${process.env.REPLIT_DEV_DOMAIN}/` });
   await wait(`document.body?.innerText.includes('Monthly Goal')`);
   assert.equal(await evaluate(`!!document.querySelector('#dashboard-reference-search')`), false);
   assert.deepEqual(writes, [], "search must not write any data");
   assert.deepEqual(errors, [], "no browser exceptions");
-  console.log("PASS: reference matching, duplicate/sold selection, keyboard navigation, no-match/clear/Escape, placement, mobile scroll and deliberate tap, green gradient and boundary fills, Quick Actions visibility. Browser-only API fixtures; no live accounts/data changed. Screenshots: /tmp/dashboard-reference-{desktop,mobile}.jpg");
+  console.log("PASS: reference lookup and keyboard navigation, mobile scroll and deliberate tap, green goal gradient and boundary fills, Quick Actions visibility; modern shell at 320–1440px, left drawer routes and close-on-selection, active dashboard alias, shared inventory shell. Browser-only API fixtures; no live accounts/data changed. Screenshots: /tmp/wristby-modern-{1440,390}.jpg");
 } finally {
   socket?.close(); chrome.kill("SIGTERM"); await pause(300);
   await rm(profile, { recursive: true, force: true }).catch(() => {});
