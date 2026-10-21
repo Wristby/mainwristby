@@ -19,3 +19,9 @@ The visual refresh must still be clearly noticeable.
 **Why:** The user described the first refined-light preview as “like 1% better” and “almost the same.” Their “Yes, use this direction” selected the light direction, not that near-identical execution.
 
 **How to apply:** Make the visual system stronger through contrast, typography, surfaces, and component treatment while preserving the original card arrangement and business tools.
+
+The user approved the stronger evergreen-and-light preview with the original layout preserved.
+
+**Why:** When asked whether that visual style felt closer with the original layout preserved, the user answered “Yes, this is the right direction” without further changes.
+
+**How to apply:** Use that approved direction as the baseline for implementation: deep evergreen left sidebar, light main surfaces, higher-contrast individual metric cards, and the original dashboard composition. Do not restart layout exploration unless asked.
