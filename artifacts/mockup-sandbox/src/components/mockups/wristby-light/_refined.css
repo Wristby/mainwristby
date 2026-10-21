@@ -1,0 +1,141 @@
+.wristby-refined {
+  --wb-ink: #15251f;
+  --wb-muted: #728078;
+  --wb-line: #e4ebe6;
+  --wb-canvas: #f5f8f6;
+  --wb-green: #19734f;
+  --wb-green-soft: #eaf4ed;
+  color: var(--wb-ink);
+  background: var(--wb-canvas);
+  font-family: "DM Sans", "Avenir Next", ui-sans-serif, sans-serif;
+  min-height: 100dvh;
+}
+.wristby-refined * { box-sizing: border-box; }
+.wristby-refined .wb-layout {
+  height: 100dvh;
+  min-height: 100dvh;
+  background: var(--wb-canvas);
+  color: var(--wb-ink);
+}
+.wristby-refined .wb-sidebar {
+  background: #fff;
+  border-color: var(--wb-line);
+  width: 246px;
+}
+.wristby-refined .wb-brand {
+  padding: 27px 24px 25px;
+  border-bottom: 1px solid #edf1ee;
+}
+.wristby-refined .wb-brand img { width: 42px; height: 42px; }
+.wristby-refined .wb-brand h1 { letter-spacing: .13em; font-size: 13px; }
+.wristby-refined .wb-brand p { color: #87938b; font-size: 11px; }
+.wristby-refined .wb-navigation { padding: 22px 14px; }
+.wristby-refined .wb-navigation a { text-decoration: none; }
+.wristby-refined .wb-navigation-item {
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  letter-spacing: .005em;
+}
+.wristby-refined .wb-sidebar footer { border-color: #edf1ee; }
+.wristby-refined .wb-mobile-header {
+  height: 60px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,.96);
+  border-color: var(--wb-line);
+}
+.wristby-refined main.wb-main {
+  background:
+    radial-gradient(ellipse at 15% 0%, rgba(230,241,233,.55), transparent 38%),
+    var(--wb-canvas);
+  overflow: auto;
+}
+.wristby-refined .wb-content {
+  width: min(100%, 1440px);
+  padding: 34px 42px 54px;
+}
+.wristby-refined .wb-content > div { gap: 20px; }
+.wristby-refined .wb-content h1 {
+  font-size: 27px;
+  line-height: 1.15;
+  letter-spacing: -.045em;
+  font-weight: 650;
+}
+.wristby-refined .wb-content > div > div:first-child p { font-size: 13px; color: #87938b; }
+.wristby-refined [data-testid="kpi-view-toggle"] {
+  background: #fff;
+  border: 1px solid var(--wb-line);
+  border-radius: 999px;
+  padding: 7px 12px;
+  gap: 9px;
+}
+.wristby-refined .wb-content .rounded-xl,
+.wristby-refined .wb-content [class*="rounded-lg"] {
+  border-radius: 10px;
+}
+.wristby-refined .wb-content [class*="bg-emerald-600"] {
+  background-color: #fff !important;
+  border-color: var(--wb-line) !important;
+}
+.wristby-refined .wb-content [class*="bg-emerald-600"] p,
+.wristby-refined .wb-content [class*="bg-emerald-600"] .text-white,
+.wristby-refined .wb-content [class*="bg-emerald-600"] .text-emerald-50\/90 {
+  color: var(--wb-ink) !important;
+}
+.wristby-refined .wb-content [class*="bg-white\/20"] {
+  background: var(--wb-green-soft) !important;
+}
+.wristby-refined .wb-content [class*="bg-white\/20"] svg { color: var(--wb-green) !important; }
+.wristby-refined .wb-content [class*="text-blue-600"],
+.wristby-refined .wb-content [class*="text-blue-700"] { color: var(--wb-green) !important; }
+.wristby-refined .wb-content [class*="bg-blue-50"] {
+  background: #f1f6f2 !important;
+  border-color: #e1ebe4 !important;
+}
+.wristby-refined .wb-content [class*="border-slate-200"][class*="bg-white"] {
+  border-color: var(--wb-line);
+  box-shadow: 0 1px 2px rgba(21,37,31,.025);
+}
+.wristby-refined .wb-content [data-testid="kpi-view-toggle"] span { font-size: 11px; }
+.wristby-refined .wb-content .text-3xl { letter-spacing: -.045em; }
+.wristby-refined .wb-content button:not([role="switch"]):not([role="checkbox"]) { min-height: 40px; }
+.wristby-refined .wb-content button:focus-visible,
+.wristby-refined .wb-navigation a:focus-visible {
+  outline: 2px solid #4e9a71;
+  outline-offset: 2px;
+}
+.wristby-refined .wb-content input { border-radius: 7px; }
+.wristby-refined .wb-content [class*="grid-cols-2"] a { min-width: 0; }
+.wristby-refined .wb-content .overflow-x-auto { scrollbar-width: thin; }
+.wristby-refined .wb-content a { text-decoration: none; }
+.wristby-refined .wb-content .text-center.py-8 { color: #829088; }
+.wristby-refined .wb-content > div > div:first-child { margin-bottom: 2px; }
+@media (max-width: 1023px) {
+  .wristby-refined .wb-layout { height: auto; min-height: 100dvh; overflow: visible; }
+  .wristby-refined .wb-layout > div.min-w-0 { height: auto; min-height: calc(100dvh - 60px); overflow: visible; }
+  .wristby-refined main.wb-main { overflow: visible; }
+  .wristby-refined .wb-content { padding: 27px 24px 40px; }
+}
+@media (max-width: 767px) {
+  .wristby-refined .wb-goal-heading { flex-direction: column; align-items: stretch; gap: 10px; }
+  .wristby-refined .wb-goal-heading > div { justify-content: space-between; }
+  .wristby-refined .wb-content .wb-kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+  .wristby-refined .wb-kpi-grid > div { position: relative; min-width: 0; }
+  .wristby-refined .wb-kpi-grid > div > div { padding: 16px 12px; }
+  .wristby-refined .wb-kpi-grid p.text-3xl { font-size: clamp(18px,5.6vw,23px); white-space: nowrap; }
+  .wristby-refined .wb-kpi-grid p:not(.text-3xl) { padding-right: 26px; font-size: 11px; min-height: 32px; line-height: 15px; }
+  .wristby-refined .wb-kpi-grid .p-2 { position: absolute; right: 10px; top: 12px; padding: 5px; }
+  .wristby-refined .wb-kpi-grid .p-2 svg { width: 14px; height: 14px; }
+  .wristby-refined .wb-content { padding: 23px 16px 32px; }
+  .wristby-refined .wb-content > div { gap: 16px; }
+  .wristby-refined .wb-content h1 { font-size: 24px; }
+  .wristby-refined .wb-content > div > div:first-child { align-items: flex-start; }
+  .wristby-refined .wb-content [data-testid="kpi-view-toggle"] { padding: 6px 9px; }
+  .wristby-refined .wb-content [data-testid="kpi-view-toggle"] span { font-size: 10px; }
+  .wristby-refined .wb-content .grid-cols-2 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .wristby-refined .wb-content .flex-col.md\:flex-row > button { min-height: 48px; }
+  .wristby-refined .wb-content [class*="grid-cols-5"] { gap: 8px; }
+  .wristby-refined .wb-content [class*="grid-cols-5"] > a > div { padding: 10px 8px; }
+  .wristby-refined .wb-content [class*="grid-cols-5"] span:first-child { font-size: 9px; }
+}
