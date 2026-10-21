@@ -8,8 +8,14 @@ The user chose “Refined light” for the WRISTBY redesign.
 
 **How to apply:** Keep the white/slate/emerald identity when continuing this redesign. Treat visual approval separately from permission to replace established workflows; prototype from existing components before applying a broad refresh.
 
-The modernization must noticeably change the layout and information hierarchy, not just colors, fonts, and spacing.
+Keep navigation on the left and retain the original dashboard card layout and flow.
 
-**Why:** The user described the initial refined-light preview as “like 1% better” and “almost the same,” and asked for a more modern layout that feels noticeably different and refreshing to use. Their “Yes, use this direction” selected the light direction, not the near-identical layout.
+**Why:** After seeing the top-navigation Workspace preview, the user said: “nav bar should stay on the left like the original, layout of the cards like the original flow better and fill up the spaces better.”
 
-**How to apply:** Prioritize structural redesigns while preserving the business tools. Do not interpret approval of the light palette as approval to ship a cosmetic-only refresh.
+**How to apply:** Hold the original composition fixed when continuing the redesign. Do not replace the left sidebar with top navigation or rearrange cards to demonstrate novelty.
+
+The visual refresh must still be clearly noticeable.
+
+**Why:** The user described the first refined-light preview as “like 1% better” and “almost the same.” Their “Yes, use this direction” selected the light direction, not that near-identical execution.
+
+**How to apply:** Make the visual system stronger through contrast, typography, surfaces, and component treatment while preserving the original card arrangement and business tools.
