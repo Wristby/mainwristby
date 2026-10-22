@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses } from './schema';
 import { deliveryDateError } from './delivery';
+import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
 
 // Helper to transform date strings to Date objects or null
 const dateStringToDate = z.union([
@@ -125,9 +126,11 @@ export const api = {
     update: {
       method: 'PUT' as const,
       path: '/api/inventory/:id',
-      input: inventoryInputSchema.partial(),
+      input: inventoryInputSchema.partial().extend({ saleBuyer: saleBuyerSchema.optional() }),
       responses: {
         200: z.custom<typeof inventory.$inferSelect>(),
+        400: errorSchemas.validation,
+        409: errorSchemas.validation,
         404: errorSchemas.notFound,
       },
     },
@@ -205,5 +208,5 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
 }
 
 export type CreateInventoryRequest = z.infer<typeof insertInventorySchema>;
-export type UpdateInventoryRequest = Partial<CreateInventoryRequest>;
+export type UpdateInventoryRequest = Partial<CreateInventoryRequest> & { saleBuyer?: SaleBuyerInput };
 export type CreateExpenseRequest = z.infer<typeof insertExpenseSchema>;

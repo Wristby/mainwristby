@@ -78,6 +78,9 @@ export function useDeleteClient() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.get.path] });
     },
   });
 }

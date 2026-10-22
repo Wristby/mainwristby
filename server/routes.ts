@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, isAuthenticated } from "./auth";
-import { storage } from "./storage";
+import { storage, SaleBuyerSaveError } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
@@ -199,14 +199,16 @@ export async function registerRoutes(
 
   app.put(api.inventory.update.path, isAuthenticated, async (req, res) => {
     try {
-      const input = api.inventory.update.input.parse(req.body);
-      const item = await storage.updateInventoryItem(Number(req.params.id), input);
+      const { saleBuyer, ...input } = api.inventory.update.input.parse(req.body);
+      const item = await storage.updateInventoryItem(Number(req.params.id), input, saleBuyer);
       res.json(item);
     } catch (err) {
+      if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-      res.status(404).json({ message: "Item not found" });
+      if (err instanceof Error && err.message === "Item not found") return res.status(404).json({ message: "Item not found" });
+      res.status(500).json({ message: "Could not save watch. Please try again." });
     }
   });
 

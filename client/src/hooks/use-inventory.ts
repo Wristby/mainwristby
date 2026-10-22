@@ -68,9 +68,13 @@ export function useUpdateInventory() {
       }
       return api.inventory.update.responses[200].parse(await res.json());
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.get.path, data.id] });
+      if (variables.saleBuyer) {
+        queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
+        queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
+      }
     },
   });
 }

@@ -5,3 +5,4 @@
 - [Browser verification boundaries](browser-verification.md) — browser testing may need local Chromium; API fixtures verify UI behavior, not live authentication or persistence
 - [Intake workflow parity](intake-workflow-parity.md) — layout redesigns must preserve established shortcuts and use Watch Details as the condition-choice reference
 - [Visual direction](visual-direction.md) — keep the left sidebar and original card flow; the light refresh must still look noticeably more modern
+- [Buyer contact policy](buyer-contact-policy.md) — a name is enough; contact fields are optional, and matching names must not silently merge people

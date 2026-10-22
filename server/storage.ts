@@ -7,6 +7,13 @@ import {
   type DashboardStats, type Setting
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
+import { matchingBuyerContact, sameBuyerContact, type SaleBuyerInput } from "@shared/sale-buyer";
+
+export class SaleBuyerSaveError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
+type ExpenseExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 
 // Fee types that should be synced to expenses
 const FEE_TYPES = [
@@ -31,7 +38,7 @@ export interface IStorage {
   getInventoryItems(status?: string): Promise<(InventoryItem & { seller?: Client })[]>;
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
   createInventoryItem(item: InsertInventory): Promise<InventoryItem>;
-  updateInventoryItem(id: number, updates: UpdateInventoryRequest): Promise<InventoryItem>;
+  updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem>;
   updateCreditInfo(id: number, updates: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null }): Promise<InventoryItem>;
   deleteInventoryItem(id: number): Promise<void>;
@@ -74,10 +81,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteClient(id: number): Promise<void> {
-    // Unlink from inventory items (set clientId to null)
-    await db.update(inventory).set({ clientId: null }).where(eq(inventory.clientId, id));
-    // Then delete the client
-    await db.delete(clients).where(eq(clients.id, id));
+    await db.transaction(async tx => {
+      await tx.update(inventory).set({ clientId: null }).where(eq(inventory.clientId, id));
+      await tx.update(inventory).set({ buyerId: null }).where(eq(inventory.buyerId, id));
+      await tx.delete(clients).where(eq(clients.id, id));
+    });
   }
 
   // Inventory
@@ -122,7 +130,47 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
-  async updateInventoryItem(id: number, updates: UpdateInventoryRequest): Promise<InventoryItem> {
+  async updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
+    if (saleBuyer) {
+      return db.transaction(async tx => {
+        // Serialize saves of the same watch, including retries after a lost response.
+        const [current] = await tx.select().from(inventory).where(eq(inventory.id, id)).for("update");
+        if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
+        let buyerId: number | null = null;
+        let soldTo: string | null = null;
+        if (saleBuyer.mode === "existing") {
+          const [client] = await tx.select().from(clients).where(eq(clients.id, saleBuyer.clientId));
+          if (!client) throw new SaleBuyerSaveError("This client no longer exists. Choose another client.", 400);
+          buyerId = client.id;
+          soldTo = client.name;
+        } else if (saleBuyer.mode === "new") {
+          // No unique constraint is imposed on legacy contact data. Serialize new
+          // sale-buyer creation so concurrent sales cannot create the same contact.
+          await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
+          const contacts = await tx.select().from(clients);
+          const currentBuyer = contacts.find(client => client.id === current.buyerId);
+          if (currentBuyer && sameBuyerContact(currentBuyer, saleBuyer)) {
+            buyerId = currentBuyer.id;
+            soldTo = currentBuyer.name;
+          } else {
+            if (contacts.some(client => matchingBuyerContact(client, saleBuyer))) {
+              throw new SaleBuyerSaveError("A client with this email or phone already exists. Choose them using Existing client.", 409);
+            }
+            const [client] = await tx.insert(clients).values({
+              name: saleBuyer.name, email: saleBuyer.email || null,
+              phone: saleBuyer.phone || null, country: saleBuyer.country || null,
+              type: "client",
+            }).returning();
+            buyerId = client.id;
+            soldTo = client.name;
+          }
+        }
+        const [item] = await tx.update(inventory).set({ ...updates, buyerId, soldTo })
+          .where(eq(inventory.id, id)).returning();
+        await this.syncWatchFeesToExpenses(item, tx);
+        return item;
+      });
+    }
     const [item] = await db.update(inventory).set(updates).where(eq(inventory.id, id)).returning();
     if (!item) throw new Error("Item not found");
     // Delivery confirmation must not rewrite existing financial/expense entries.
@@ -148,11 +196,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Sync watch fees to expense entries
-  private async syncWatchFeesToExpenses(item: InventoryItem): Promise<void> {
+  private async syncWatchFeesToExpenses(item: InventoryItem, connection: ExpenseExecutor = db): Promise<void> {
     const watchRef = `${item.brand} ${item.model} - Ref#${item.referenceNumber}`;
     const feeDate = item.purchaseDate || new Date();
     // Use per-item snapshot if available, otherwise fall back to current setting
-    const watchRegisterFee = (item as any).watchRegisterFeeSnapshot ?? await this.getSetting("watch_register_fee") ?? 600;
+    const [feeSetting] = item.watchRegisterFeeSnapshot == null
+      ? await connection.select().from(settings).where(eq(settings.key, "watch_register_fee"))
+      : [];
+    const watchRegisterFee = item.watchRegisterFeeSnapshot ?? (feeSetting?.value as number | undefined) ?? 600;
 
     for (const feeType of FEE_TYPES) {
       let feeValue: number;
@@ -166,7 +217,7 @@ export class DatabaseStorage implements IStorage {
       const description = `${feeType.label} - ${watchRef}`;
 
       // Find existing expense for this fee type and inventory item
-      const existingExpenses = await db.select().from(expenses)
+      const existingExpenses = await connection.select().from(expenses)
         .where(and(
           eq(expenses.inventoryId, item.id),
           sql`${expenses.description} LIKE ${`${feeType.label}%`}`
@@ -177,7 +228,7 @@ export class DatabaseStorage implements IStorage {
       if (feeValue > 0) {
         if (existingExpense) {
           // Update existing expense
-          await db.update(expenses)
+          await connection.update(expenses)
             .set({ 
               amount: feeValue, 
               description,
@@ -187,7 +238,7 @@ export class DatabaseStorage implements IStorage {
             .where(eq(expenses.id, existingExpense.id));
         } else {
           // Create new expense
-          await db.insert(expenses).values({
+          await connection.insert(expenses).values({
             inventoryId: item.id,
             description,
             amount: feeValue,
@@ -198,7 +249,7 @@ export class DatabaseStorage implements IStorage {
         }
       } else if (existingExpense) {
         // Remove expense if fee is now 0
-        await db.delete(expenses).where(eq(expenses.id, existingExpense.id));
+        await connection.delete(expenses).where(eq(expenses.id, existingExpense.id));
       }
     }
   }

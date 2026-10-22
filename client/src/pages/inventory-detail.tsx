@@ -47,6 +47,8 @@ import { computeVat } from "@/lib/vat-calculations";
 import { useSettings } from "@/hooks/use-settings";
 import { QuickEstimate } from "@/components/quick-estimate";
 import { DeliveryStatus } from "@/components/delivery-status";
+import { SaleBuyerFields } from "@/components/sale-buyer-fields";
+import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuyerInput } from "@shared/sale-buyer";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -175,7 +177,11 @@ export default function InventoryDetail() {
   const [, navigate] = useLocation();
   const { data: item, isLoading } = useInventoryItem(id);
   const { data: allInventory } = useInventory();
-  const { data: clients } = useClients();
+  const { data: clients, isLoading: clientsLoading, isError: clientsUnavailable } = useClients();
+  const [buyerDraft, setBuyerDraft] = useState<SaleBuyerDraft>(emptySaleBuyer);
+  const [buyerDirty, setBuyerDirty] = useState(false);
+  const [buyerError, setBuyerError] = useState("");
+  const linkedBuyer = clients?.find(client => client.id === item?.buyerId);
   const updateMutation = useUpdateInventory();
   const deleteMutation = useDeleteInventory();
   const quickAddClientMutation = useCreateClient();
@@ -357,6 +363,9 @@ export default function InventoryDetail() {
 
   useEffect(() => {
     if (isEditOpen && item) {
+      setBuyerDraft({ ...emptySaleBuyer(), mode: item.buyerId ? "existing" : "new", clientId: item.buyerId || null, name: item.soldTo || "" });
+      setBuyerDirty(false);
+      setBuyerError("");
       form.reset({
         brand: item.brand,
         model: item.model,
@@ -672,6 +681,18 @@ export default function InventoryDetail() {
   };
 
   const onSubmitEdit = (data: EditFormValues) => {
+    if (updateMutation.isPending) return;
+    let saleBuyer: SaleBuyerInput | undefined;
+    if (buyerDirty) {
+      try {
+        saleBuyer = buildSaleBuyerInput(buyerDraft);
+        setBuyerError("");
+      } catch (error) {
+        setBuyerError(error instanceof z.ZodError ? error.issues[0].message : (error as Error).message);
+        document.getElementById(buyerDraft.mode === "existing" ? "sale-buyer-search" : "sale-buyer-name")?.focus();
+        return;
+      }
+    }
     const userChangedStatus = data.status !== item?.status;
     let finalStatus = data.status;
     if (!userChangedStatus) {
@@ -688,6 +709,7 @@ export default function InventoryDetail() {
     
     const submissionData = {
       ...data,
+      ...(saleBuyer ? { saleBuyer } : {}),
       condition: serializeWatchCondition(data.condition),
       status: finalStatus,
       purchasePrice: Math.round(Number(data.purchasePrice) * 100),
@@ -719,6 +741,7 @@ export default function InventoryDetail() {
           toast({ title: "Success", description: "Watch updated successfully" });
         },
         onError: (err) => {
+          if (buyerDirty) setBuyerError(err.message);
           toast({ title: "Error", description: err.message, variant: "destructive" });
         },
       }
@@ -1228,10 +1251,12 @@ export default function InventoryDetail() {
                           />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Buyer Name</Label>
-                        <Input {...form.register("soldTo")} className="bg-white border-slate-200" />
-                      </div>
+                      <SaleBuyerFields value={buyerDraft} clients={clients || []} loading={clientsLoading}
+                        unavailable={clientsUnavailable} dirty={buyerDirty} error={buyerError}
+                        onChange={value => {
+                          setBuyerDraft(value); setBuyerDirty(true); setBuyerError("");
+                          form.setValue("soldTo", value.name, { shouldDirty: true });
+                        }}/>
                       <div className="space-y-2">
                         <Label>Date Sold</Label>
                         <Popover open={isDateSoldOpen} onOpenChange={setIsDateSoldOpen}>
@@ -1626,8 +1651,16 @@ export default function InventoryDetail() {
                       <Separator className="my-3" />
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-500">Sold To</span>
-                        <span className="font-medium">{(item as any).soldTo || 'N/A'}</span>
+                        {linkedBuyer ? <Link href={`/clients/${linkedBuyer.id}`} className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:underline">
+                          <Check className="h-3 w-3" aria-hidden="true"/>{linkedBuyer.name}
+                        </Link> : <span className="font-medium">{item.soldTo || 'N/A'}</span>}
                       </div>
+                      {linkedBuyer && ([
+                        ["Email", linkedBuyer.email], ["Phone", linkedBuyer.phone], ["Country", linkedBuyer.country],
+                      ] as const).map(([label, value]) => value && <div key={label} className="flex justify-between gap-4 text-sm">
+                        <span className="shrink-0 text-slate-500">{label}</span><span className="min-w-0 break-words text-right font-medium">{value}</span>
+                      </div>)}
+                      {item.buyerId && clientsUnavailable && <p className="text-xs text-red-600">Buyer contact details could not be loaded.</p>}
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-500">Shipper</span>
                         <span className="font-medium">{item.shippingPartner || 'N/A'}</span>
