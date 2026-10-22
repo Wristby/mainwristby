@@ -6,3 +6,4 @@
 - [Intake workflow parity](intake-workflow-parity.md) — layout redesigns must preserve established shortcuts and use Watch Details as the condition-choice reference
 - [Visual direction](visual-direction.md) — keep the left sidebar and original card flow; the light refresh must still look noticeably more modern
 - [Buyer contact policy](buyer-contact-policy.md) — a name is enough; contact fields are optional, and matching names must not silently merge people
+- [Client spending policy](client-spending-policy.md) — disclose missing sale amounts; distinguish unknown totals, recorded zero, and no purchases

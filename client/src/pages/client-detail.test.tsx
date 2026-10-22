@@ -35,6 +35,8 @@ const watch = (id: number, extra = {}) => ({
   status: "sold", clientId: null, buyerId: null, ...extra,
 } as unknown as InventoryItem);
 const render = () => renderToStaticMarkup(<ClientDetail />);
+const summary = (html: string, id: string) =>
+  html.match(new RegExp(`data-testid="client-summary-${id}">([^<]*)</p>`))?.[1];
 const sections = (html: string) => ({
   sales: html.split("Watches sold to this client")[1]?.split("Watches bought from this client")[0] ?? "",
   purchases: html.split("Watches bought from this client")[1] ?? "",
@@ -77,19 +79,24 @@ describe("client watch histories", () => {
     expect(purchases).toContain("Watch-1");
     expect(purchases).toContain("Watch-3");
     expect(purchases).not.toContain("Watch-2");
-    expect(render()).toContain('mt-1">4</p>');
+    expect(summary(render(), "purchase-count")).toBe("2");
+    expect(summary(render(), "acquisition-count")).toBe("2");
   });
 
-  it("removes a reversed sale from buyer history and transaction count without changing seller history", () => {
+  it("removes a reversed sale from buyer history and summaries without changing seller history", () => {
     state.inventory = [watch(1, { buyerId: 12, clientId: 12 })];
     expect(sections(render()).sales).toContain("Watch-1");
-    expect(render()).toContain('mt-1">2</p>');
+    expect(summary(render(), "purchase-count")).toBe("1");
+    expect(summary(render(), "total-spent")).toContain("1.234,56");
     state.inventory[0].status = "in_stock";
     const html = render();
     expect(sections(html).sales).not.toContain("Watch-1");
     expect(sections(html).sales).toContain("No watches sold to this client yet.");
     expect(sections(html).purchases).toContain("Watch-1");
-    expect(html).toContain('mt-1">1</p>');
+    expect(summary(html, "purchase-count")).toBe("0");
+    expect(summary(html, "total-spent")).toContain("0,00");
+    expect(summary(html, "acquisition-count")).toBe("1");
+    expect(summary(html, "acquisition-value")).toContain("1.000,00");
     expect(state.inventory[0].buyerId).toBe(12);
   });
 
@@ -146,5 +153,97 @@ describe("client watch histories", () => {
     state[key] = true;
     expect(render()).toContain("Unable to load client history");
     expect(render()).not.toContain("No watches sold");
+  });
+});
+
+describe("role-specific client summaries", () => {
+  it("shows buyer-only purchases and spending without acquisition value", () => {
+    state.inventory = [watch(1, { buyerId: 12, salePrice: 123456 }), watch(2, { buyerId: 12, salePrice: 101 })];
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("2");
+    expect(summary(html, "total-spent")).toContain("1.235,57");
+    expect(summary(html, "acquisition-count")).toBe("0");
+    expect(summary(html, "acquisition-value")).toContain("0,00");
+  });
+
+  it("shows seller-only acquisitions regardless of status, not client spending", () => {
+    state.inventory = [watch(1, { clientId: 12, buyerId: 99, purchasePrice: 100099 }),
+      watch(2, { clientId: 12, status: "in_stock", purchasePrice: 102 })];
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("0");
+    expect(summary(html, "total-spent")).toContain("0,00");
+    expect(summary(html, "acquisition-count")).toBe("2");
+    expect(summary(html, "acquisition-value")).toContain("1.002,01");
+  });
+
+  it("keeps amounts independent for mixed roles and a watch linked in both roles", () => {
+    state.inventory = [
+      watch(1, { clientId: 12, purchasePrice: 10001 }),
+      watch(2, { buyerId: 12, salePrice: 20002 }),
+      watch(3, { clientId: 12, buyerId: 12, purchasePrice: 30003, salePrice: 40004 }),
+    ];
+    const before = JSON.stringify(state.inventory);
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("2");
+    expect(summary(html, "total-spent")).toContain("600,06");
+    expect(summary(html, "acquisition-count")).toBe("2");
+    expect(summary(html, "acquisition-value")).toContain("400,04");
+    expect(html).not.toContain("Total Transactions");
+    expect(JSON.stringify(state.inventory)).toBe(before);
+  });
+
+  it("ignores unlinked names, other buyers and non-sold buyer links", () => {
+    state.inventory = [
+      watch(1, { soldTo: "Renamed client" }),
+      watch(2, { soldTo: "Renamed client", buyerId: 99, clientId: 99 }),
+      watch(3, { buyerId: 12, status: "in_stock" }),
+    ];
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("0");
+    expect(summary(html, "total-spent")).toContain("0,00");
+    expect(summary(html, "acquisition-count")).toBe("0");
+    expect(summary(html, "acquisition-value")).toContain("0,00");
+  });
+
+  it("shows zero counts and amounts for an empty client", () => {
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("0");
+    expect(summary(html, "total-spent")).toContain("0,00");
+    expect(summary(html, "acquisition-count")).toBe("0");
+    expect(summary(html, "acquisition-value")).toContain("0,00");
+    expect(html).not.toContain("excluded from total");
+  });
+
+  it("counts missing amounts but labels the subtotal and shares history's legacy price rules", () => {
+    state.inventory = [
+      watch(1, { buyerId: 12, salePrice: null, soldPrice: null }),
+      watch(2, { buyerId: 12, salePrice: null, soldPrice: 101 }),
+      watch(3, { buyerId: 12, salePrice: 0, soldPrice: 202 }),
+      watch(4, { buyerId: 12, salePrice: 303, soldPrice: 999 }),
+      watch(5, { buyerId: 12, salePrice: 0, soldPrice: null }),
+    ];
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("5");
+    expect(summary(html, "total-spent")).toContain("6,06");
+    expect(html).toContain("1 sale amount not recorded; excluded from total.");
+  });
+
+  it("shows Not recorded instead of zero when every sale amount is missing", () => {
+    state.inventory = [
+      watch(1, { buyerId: 12, salePrice: null, soldPrice: null }),
+      watch(2, { buyerId: 12, salePrice: undefined, soldPrice: undefined }),
+    ];
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("2");
+    expect(summary(html, "total-spent")).toBe("Not recorded");
+    expect(html).toContain("2 sale amounts not recorded; excluded from total.");
+  });
+
+  it("treats an explicitly recorded zero as an amount, not as missing", () => {
+    state.inventory = [watch(1, { buyerId: 12, salePrice: 0, soldPrice: null })];
+    const html = render();
+    expect(summary(html, "purchase-count")).toBe("1");
+    expect(summary(html, "total-spent")).toContain("0,00");
+    expect(html).not.toContain("excluded from total");
   });
 });

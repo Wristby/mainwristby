@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RowLink } from "@/components/row-link";
 import { compareSoldDates, getSoldDate } from "@/lib/sold-date";
+import { getSaleAmount } from "@/lib/sale-amount";
 
 const formatAmount = (amount: number) => new Intl.NumberFormat("de-DE", {
   style: "currency",
@@ -38,12 +39,7 @@ export function ClientSalesHistory({ sales }: { sales: InventoryItem[] }) {
             </TableRow>
           ) : [...sales].sort((a, b) => compareSoldDates(a, b, "desc")).map(item => {
             const date = getSoldDate(item);
-            // Older rows have the default salePrice of zero while their actual
-            // amount lives in soldPrice. Keep zero when neither field has a
-            // nonzero amount instead of treating it as missing.
-            const amount = item.salePrice === 0 && item.soldPrice != null && item.soldPrice !== 0
-              ? item.soldPrice
-              : item.salePrice ?? item.soldPrice;
+            const amount = getSaleAmount(item);
             return (
               <TableRow key={item.id} className="relative group cursor-pointer hover:bg-slate-50 transition-colors">
                 <TableCell>

@@ -59,13 +59,14 @@ import { useUpdateClient, useDeleteClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { ClientSalesHistory } from "@/components/client-sales-history";
+import { getSaleAmount } from "@/lib/sale-amount";
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(val / 100);
 };
 
@@ -178,6 +179,23 @@ export default function ClientDetail() {
   const clientSales = inventory?.filter((item) => item.buyerId === client.id && item.status === "sold") || [];
 
   const totalValue = clientPurchases.reduce((sum, item) => sum + item.purchasePrice, 0);
+  const recordedSaleAmounts = clientSales.map(getSaleAmount).filter((amount): amount is number => amount !== null);
+  const missingSaleAmounts = clientSales.length - recordedSaleAmounts.length;
+  const totalSpent = recordedSaleAmounts.reduce((sum, amount) => sum + amount, 0);
+  const summaries = [
+    { id: "purchase-count", label: "Purchases by client", value: clientSales.length, icon: History },
+    {
+      id: "total-spent",
+      label: "Total spent by client",
+      value: clientSales.length > 0 && recordedSaleAmounts.length === 0 ? "Not recorded" : formatCurrency(totalSpent),
+      note: missingSaleAmounts > 0
+        ? `${missingSaleAmounts} ${missingSaleAmounts === 1 ? "sale amount not recorded" : "sale amounts not recorded"}; excluded from total.`
+        : undefined,
+      icon: TrendingUp,
+    },
+    { id: "acquisition-count", label: "Watches acquired from client", value: clientPurchases.length, icon: Watch },
+    { id: "acquisition-value", label: "Acquisition value", value: formatCurrency(totalValue), icon: TrendingUp },
+  ];
 
   return (
     <div className="space-y-6">
@@ -464,32 +482,22 @@ export default function ClientDetail() {
 
         <div className="md:col-span-2 min-w-0 space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Card className="bg-white border-slate-200 shadow-sm">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">Total bought from client</p>
-                    <p className="text-2xl font-bold text-slate-900 mt-1">{formatCurrency(totalValue)}</p>
+            {summaries.map(({ id, label, value, note, icon: Icon }) => (
+              <Card key={id} className="bg-white border-slate-200 shadow-sm">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-500">{label}</p>
+                      <p className="text-2xl font-bold text-slate-900 mt-1 break-words" data-testid={`client-summary-${id}`}>{value}</p>
+                      {note && <p className="mt-2 text-xs text-slate-500">{note}</p>}
+                    </div>
+                    <div className="p-3 bg-emerald-50 rounded-full shrink-0">
+                      <Icon className="h-6 w-6 text-emerald-600" />
+                    </div>
                   </div>
-                  <div className="p-3 bg-emerald-50 rounded-full">
-                    <TrendingUp className="h-6 w-6 text-emerald-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white border-slate-200 shadow-sm">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-500">Total Transactions</p>
-                    <p className="text-2xl font-bold text-slate-900 mt-1">{clientPurchases.length + clientSales.length}</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 rounded-full">
-                    <History className="h-6 w-6 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ))}
           </div>
 
           <ClientSalesHistory sales={clientSales} />

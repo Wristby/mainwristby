@@ -93,6 +93,7 @@ try {
     await wait(`document.body?.innerText.includes(${JSON.stringify(clientId === 16 ? "Client not found" : inventoryFailure ? "Unable to load client history" : "Watches sold to this client")})`);
   };
   const text = () => evaluate("document.body.innerText");
+  const summary = id => evaluate(`document.querySelector('[data-testid="client-summary-${id}"]').innerText`);
   const salesText = () => evaluate("document.querySelector('[data-testid=client-sales-history]').innerText");
   const noOverflow = () => evaluate("document.documentElement.scrollWidth <= innerWidth");
   await send("Runtime.enable");
@@ -101,6 +102,11 @@ try {
   for (const [width, height] of [[1440, 1100], [390, 844]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 500 });
     await open(12);
+    assert.equal(await summary("purchase-count"), "4");
+    assert((await summary("total-spent")).includes("11.111,10"));
+    assert.equal(await summary("acquisition-count"), "0");
+    assert((await summary("acquisition-value")).includes("0,00"));
+    assert((await text()).includes("1 sale amount not recorded; excluded from total."));
     assert((await salesText()).includes("Watch-1"));
     assert((await salesText()).includes("21 Oct 2026"));
     assert((await salesText()).includes("1.234,56"));
@@ -129,12 +135,23 @@ try {
     await evaluate("document.querySelector('[data-testid=client-sales-history] a[href=\"/inventory/1\"]').click()");
     await wait("location.pathname === '/inventory/1' && document.body?.innerText.includes('Watch-1')");
     await open(13);
+    assert.equal(await summary("purchase-count"), "0");
+    assert((await summary("total-spent")).includes("0,00"));
+    assert.equal(await summary("acquisition-count"), "1");
+    assert((await summary("acquisition-value")).includes("1.000,00"));
     assert((await salesText()).includes("No watches sold to this client yet."));
     assert((await text()).includes("Watch-1"));
     await open(14);
+    assert.equal(await summary("purchase-count"), "1");
+    assert((await summary("total-spent")).includes("1.234,56"));
+    assert.equal(await summary("acquisition-count"), "1");
+    assert((await summary("acquisition-value")).includes("1.000,00"));
     assert((await salesText()).includes("Watch-2"));
     assert.equal(await evaluate("document.querySelectorAll('a[href=\"/inventory/2\"][data-testid]').length"), 2);
     await open(15);
+    assert.equal(await summary("purchase-count"), "0");
+    assert.equal(await summary("acquisition-count"), "0");
+    assert((await summary("total-spent")).includes("0,00"));
     assert((await text()).includes("No watches sold to this client yet."));
     assert((await text()).includes("No watches bought from this client yet."));
     assert(!(await text()).includes("Watch-3"));
