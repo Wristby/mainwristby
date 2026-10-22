@@ -1,15 +1,35 @@
 import type { InventoryItem } from "@shared/schema";
 
-export type ReferenceWatch = Pick<InventoryItem, "id" | "brand" | "model" | "referenceNumber" | "serialNumber" | "status">;
+const additionalSearchFields = [
+  "internalSerial", "year", "condition", "notes", "serviceNotes",
+  "listingTitle", "description", "trackingNumber", "shippingPartner", "soldPlatform",
+] as const satisfies readonly (keyof InventoryItem)[];
 
-/** Search only owned watch references; never mutate the dashboard's inventory. */
+export type ReferenceWatch = Pick<InventoryItem, "id" | "brand" | "model" | "referenceNumber" | "serialNumber" | "status">
+  & Partial<Pick<InventoryItem, typeof additionalSearchFields[number]>>;
+
+const normalize = (value: unknown) => String(value ?? "").normalize("NFKD")
+  .replace(/\p{M}/gu, "").toLowerCase().trim();
+
+/** Search watch details across all inventory statuses without mutating source data. */
 export function findReferenceMatches<T extends ReferenceWatch>(watches: readonly T[], query: string): T[] {
-  const term = query.trim().toLowerCase();
+  const term = normalize(query);
   if (!term) return [];
-  const reference = (watch: T) => watch.referenceNumber.trim().toLowerCase();
-  return watches.filter(watch => reference(watch).includes(term)).sort((a, b) =>
-    Number(reference(b) === term) - Number(reference(a) === term)
-    || reference(a).localeCompare(reference(b))
-    || b.id - a.id,
-  );
+  const terms = term.split(/\s+/);
+  return watches.map(watch => {
+    const identifiers = [watch.referenceNumber, watch.serialNumber, watch.internalSerial].map(normalize);
+    const fields = [
+      watch.brand, watch.model, watch.status?.replace(/_/g, " "),
+      ...additionalSearchFields.map(field => watch[field]),
+    ].map(normalize).concat(identifiers);
+    const matches = terms.every(token => fields.some(field => field.includes(token)));
+    // Exact identifiers first, then exact brand/model matches, then partial matches.
+    const rank = identifiers.includes(term) ? 2
+      : [watch.brand, watch.model].some(value => normalize(value) === term) ? 1 : 0;
+    return { watch, matches, rank };
+  }).filter(result => result.matches).sort((a, b) =>
+    b.rank - a.rank
+    || normalize(a.watch.referenceNumber).localeCompare(normalize(b.watch.referenceNumber))
+    || b.watch.id - a.watch.id,
+  ).map(result => result.watch);
 }

@@ -68,7 +68,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
   const resultMessage = unavailable
     ? "Inventory could not be loaded. Refresh the page to try again."
     : !hasQuery
-    ? "Search your inventory by reference number."
+    ? "Search by brand, model, reference, serial number, or other watch details."
     : matches.length === 0
       ? `No watches found for “${query.trim()}”.`
       : `${matches.length} ${matches.length === 1 ? "watch" : "watches"} found.`;
@@ -77,14 +77,14 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="reference-search-title">
       <div className="mb-3">
         <h2 id="reference-search-title" className="text-base font-semibold tracking-tight text-slate-900">
-          Reference lookup
+          Inventory search
         </h2>
-        <p className="mt-1 text-sm text-slate-500">Find a current or sold watch by its reference.</p>
+        <p className="mt-1 text-sm text-slate-500">Find any current or sold watch in your inventory.</p>
       </div>
 
       <form onSubmit={handleSubmit} role="search" className="relative">
         <label htmlFor="dashboard-reference-search" className="sr-only">
-          Search inventory by reference number
+          Search inventory by brand, model, reference, or serial number
         </label>
         <div className="relative">
           <svg
@@ -111,7 +111,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
           {query.length > 0 && (
             <button
               type="button"
-              aria-label="Clear reference search"
+              aria-label="Clear inventory search"
               onClick={() => {
                 handleQueryChange("");
                 inputRef.current?.focus();
@@ -182,6 +182,12 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
                       Serial <span className="font-mono text-slate-600">{watch.serialNumber}</span>
                     </span>
                   )}
+                  {watch.internalSerial && (
+                    <span className="break-all">
+                      Internal <span className="font-mono text-slate-600">{watch.internalSerial}</span>
+                    </span>
+                  )}
+                  {watch.year && <span>{watch.year}</span>}
                   <span className="font-mono text-slate-400">Record #{watch.id}</span>
                 </div>
               </Link>

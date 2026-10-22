@@ -29,6 +29,7 @@ try {
   });
   const watches = [watch(1, "124270", "sold"), watch(2, "124270"), watch(3, "124270-LN"), watch(4, "WSTA0052"),
     ...Array.from({ length: 14 }, (_, index) => watch(10 + index, `SCROLL-${index}`))];
+  Object.assign(watches[3], { brand: "Cartier", model: "Tank", internalSerial: "WB-007", notes: "Blue dial" });
   const send = (method, params = {}) => new Promise((resolve, reject) => {
     const key = ++id; pending.set(key, { resolve, reject });
     socket.send(JSON.stringify({ id: key, method, params }));
@@ -84,6 +85,11 @@ try {
   const placement = await evaluate(`(() => {const search=document.querySelector('#reference-search-title').closest('section');return {previous:search.previousElementSibling.innerText,beforeGoal:search.previousElementSibling.previousElementSibling.innerText}})()`);
   assert(placement.previous.includes("Monthly Goal")); assert(placement.beforeGoal.includes("Quick Actions"));
   assert.equal(await evaluate(`document.querySelector('#dashboard-reference-search').hasAttribute('placeholder')`), false);
+  for (const query of ["Cartier", "Tank Cartier", "SERIAL-4", "WB-007", "blue dial"]) {
+    await input(query);
+    assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('ul[aria-label="Matching watches"] a'),el=>el.getAttribute('href'))`), ["/inventory/4"], `inventory search: ${query}`);
+  }
+  assert((await evaluate(`document.querySelector('ul[aria-label="Matching watches"]').innerText`)).includes("WB-007"));
   await input(" 124270 ");
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('ul[aria-label="Matching watches"] a'),el=>el.getAttribute('href'))`), ["/inventory/2", "/inventory/1", "/inventory/3"]);
   assert((await evaluate(`document.querySelector('ul[aria-label="Matching watches"]').innerText`)).includes("SERIAL-1"));
@@ -98,7 +104,7 @@ try {
   await wait(`location.pathname==='/inventory/4'`, "case-insensitive unique match opens watch");
   await home(); await input("does-not-exist");
   assert((await evaluate("document.querySelector('#reference-search-message').innerText")).includes("No watches found"));
-  await evaluate(`document.querySelector('[aria-label="Clear reference search"]').click()`);
+  await evaluate(`document.querySelector('[aria-label="Clear inventory search"]').click()`);
   assert.equal(await evaluate("document.querySelector('#dashboard-reference-search').value"), "");
   await input("124270"); await key("Escape");
   assert.equal(await evaluate(`!!document.querySelector('ul[aria-label="Matching watches"]')`), false);

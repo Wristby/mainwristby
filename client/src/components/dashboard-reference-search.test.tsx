@@ -11,7 +11,8 @@ vi.mock("wouter", () => ({
 describe("dashboard search shell", () => {
   it("labels the search accessibly without listing all inventory before typing", () => {
     const html = renderToStaticMarkup(<DashboardReferenceSearch watches={[{ id: 1, brand: "Rolex", model: "Explorer", referenceNumber: "124270", serialNumber: null, status: "sold" }]}/>);
-    expect(html).toContain("Search inventory by reference number");
+    expect(html).toContain("Inventory search");
+    expect(html).toContain("Search inventory by brand, model, reference, or serial number");
     expect(html).toContain("role=\"search\"");
     expect(html).toContain("aria-live=\"polite\"");
     expect(html).not.toContain("placeholder=");
