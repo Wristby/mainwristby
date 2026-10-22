@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { buildSaleBuyerInput, type SaleBuyerDraft } from "@shared/sale-buyer";
 
 export const watchIntakeConditions = ["Good", "Very Good", "Excellent", "Like New"] as const;
 
@@ -71,7 +72,7 @@ export const watchIntakeMoneyFields = [
 const cents = (amount: unknown) => Math.round((Number(amount) || 0) * 100);
 
 /** Converts euro form values to API cents while preserving the existing date/status rules. */
-export function buildWatchIntakePayload(data: WatchIntakeValues) {
+export function buildWatchIntakePayload(data: WatchIntakeValues, buyer?: SaleBuyerDraft) {
   let status = data.status;
   if (data.dateSold) status = "sold";
   else if (data.dateReturnedFromService && status === "servicing") status = "received";
@@ -79,6 +80,7 @@ export function buildWatchIntakePayload(data: WatchIntakeValues) {
   else if (data.dateReceived && status === "incoming") status = "received";
   return {
     ...data, status,
+    ...(buyer ? { saleBuyer: buildSaleBuyerInput(buyer) } : {}),
     ...Object.fromEntries(watchIntakeMoneyFields.map(key => [key, cents(data[key])])),
     dateReceived: data.dateReceived || null,
     purchaseDate: data.purchaseDate || null,

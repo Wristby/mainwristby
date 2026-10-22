@@ -40,13 +40,17 @@ export function useCreateInventory() {
         credentials: "include",
       });
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to create inventory item");
+        const error = await res.json().catch(() => null);
+        throw new Error(error?.message || "Failed to create inventory item");
       }
       return api.inventory.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
+      if (variables.saleBuyer) {
+        queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
+        queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
+      }
     },
   });
 }

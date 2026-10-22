@@ -30,7 +30,8 @@ function connection(getState: () => State) {
         return equal && (!sql.includes("LIKE") || row.description.startsWith(String(params[1]).replace(/%$/, "")));
       };
       if (kind === "select") return rows.filter(matches).map(row => ({ ...row }));
-      if ((fixture.failure === "watch" && name === "inventory" && kind === "update")
+      if ((fixture.failure === "watch" && name === "inventory" && (kind === "update" || kind === "insert"))
+        || (fixture.failure === "client" && name === "clients" && kind === "insert")
         || (fixture.failure === "expenses" && name === "expenses" && kind === "insert")
         || (fixture.failure === "delete" && kind === "delete")) throw new Error("Fixture failure");
       if (kind === "insert") {
@@ -81,6 +82,55 @@ beforeEach(() => {
 });
 
 describe("atomic watch buyer persistence", () => {
+  const newWatch = () => ({
+    brand: "Rolex", model: "Intake fixture", referenceNumber: "INTAKE", status: "sold" as const,
+    condition: "Good" as const, purchasePrice: 100000, targetSellPrice: 150000,
+    clientId: 91, serviceFee: 500, soldTo: "Untrusted name",
+  });
+  it.each([
+    {}, { email: "new@example.invalid" }, { phone: "+31 6 9999" },
+    { country: "Netherlands" }, { email: "new@example.invalid", phone: "+31 6 9999", country: "Netherlands" },
+  ])("creates a watch and buyer atomically with optional contacts: %s", async contact => {
+    const result = await storage.createInventoryItem(newWatch(), { mode: "new", name: "Intake buyer", ...contact });
+    expect(state.clients).toHaveLength(2);
+    expect(result).toMatchObject({ clientId: 91, buyerId: state.clients[1].id, soldTo: "Intake buyer", watchRegisterFeeSnapshot: 600 });
+    expect(state.clients[1]).toMatchObject({ name: "Intake buyer", type: "client",
+      email: contact.email || null, phone: contact.phone || null, country: contact.country || null });
+    expect(state.expenses).toContainEqual(expect.objectContaining({ inventoryId: result.id, amount: 500 }));
+    expect(fixture.operations).toContain("lock:contacts");
+  });
+  it("links a saved buyer on creation without changing seller or Client data", async () => {
+    const before = structuredClone(state.clients);
+    const result = await storage.createInventoryItem(newWatch(), { mode: "existing", clientId: 91 });
+    expect(result).toMatchObject({ clientId: 91, buyerId: 91, soldTo: "Existing dealer" });
+    expect(state.clients).toEqual(before);
+  });
+  it.each([{ email: "SAVED@example.invalid" }, { phone: "+31-6-1234" }])("rejects duplicate intake contacts atomically: %s", async contact => {
+    const before = structuredClone(state);
+    await expect(storage.createInventoryItem(newWatch(), { mode: "new", name: "Duplicate", ...contact })).rejects.toMatchObject({ status: 409 });
+    expect(state).toEqual(before);
+  });
+  it("allows different intake buyers to share a name", async () => {
+    await storage.createInventoryItem(newWatch(), { mode: "new", name: "Existing dealer" });
+    expect(state.clients).toHaveLength(2);
+  });
+  it.each(["client", "watch", "expenses"])("rolls back all intake writes if %s creation fails", async failure => {
+    const before = structuredClone(state); fixture.failure = failure;
+    await expect(storage.createInventoryItem(newWatch(), { mode: "new", name: "Rollback intake" })).rejects.toThrow("Fixture failure");
+    expect(state).toEqual(before);
+  });
+  it("rejects a deleted intake buyer without creating records", async () => {
+    const before = structuredClone(state);
+    await expect(storage.createInventoryItem(newWatch(), { mode: "existing", clientId: 404 })).rejects.toMatchObject({ status: 400 });
+    expect(state).toEqual(before);
+  });
+  it("supports blank buyers and legacy creation without adding Clients", async () => {
+    const blank = await storage.createInventoryItem(newWatch(), { mode: "none" });
+    expect(blank).toMatchObject({ buyerId: null, soldTo: null, clientId: 91 });
+    const legacy = await storage.createInventoryItem(newWatch());
+    expect(legacy.soldTo).toBe("Untrusted name");
+    expect(state.clients).toHaveLength(1);
+  });
   it("creates a client with only a name and keeps the seller association", async () => {
     const result = await storage.updateInventoryItem(11, { salePrice: 125000 }, { mode: "new", name: "New buyer" });
     expect(state.clients).toHaveLength(2);

@@ -117,10 +117,11 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/inventory',
-      input: inventoryInputSchema,
+      input: inventoryInputSchema.extend({ saleBuyer: saleBuyerSchema.optional() }),
       responses: {
         201: z.custom<typeof inventory.$inferSelect>(),
         400: errorSchemas.validation,
+        409: errorSchemas.validation,
       },
     },
     update: {
@@ -207,6 +208,6 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
   return url;
 }
 
-export type CreateInventoryRequest = z.infer<typeof insertInventorySchema>;
+export type CreateInventoryRequest = z.input<typeof api.inventory.create.input>;
 export type UpdateInventoryRequest = Partial<CreateInventoryRequest> & { saleBuyer?: SaleBuyerInput };
 export type CreateExpenseRequest = z.infer<typeof insertExpenseSchema>;

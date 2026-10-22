@@ -23,7 +23,9 @@ try {
   let id = 0;
   let failNextSave = false;
   const pending = new Map();
-  const errors = [], posts = [], sellers = [{ id: 12, name: "Fixture dealer", type: "dealer" }];
+  const errors = [], posts = [], createdWatches = [], clientPosts = [];
+  const sellers = [{ id: 12, name: "Fixture dealer", type: "dealer",
+    email: "saved@example.invalid", phone: "+31 6 1234", country: "Netherlands", notes: "Preserve", isVip: true }];
   const send = (method, params = {}) => new Promise((resolve, reject) => {
     const key = ++id;
     pending.set(key, { resolve, reject });
@@ -47,10 +49,28 @@ try {
         posts.push(JSON.parse(request.postData)); status = 201;
         data = { ...posts.at(-1), id: 9000 };
         if (failNextSave) { status = 500; data = { message: "Fixture save failed; retry" }; failNextSave = false; }
+        else {
+          const buyer = posts.at(-1).saleBuyer;
+          if (buyer?.mode === "new" && sellers.some(client =>
+            (buyer.email && client.email?.toLowerCase() === buyer.email.toLowerCase())
+            || (buyer.phone && client.phone?.replace(/\D/g, "") === buyer.phone.replace(/\D/g, "")))) {
+            status = 409; data = { message: "A client with this email or phone already exists. Choose them using Existing client." };
+          } else {
+            let client;
+            if (buyer?.mode === "new") {
+              client = { id: 100 + sellers.length, ...buyer, type: "client",
+                email: buyer.email || null, phone: buyer.phone || null, country: buyer.country || null };
+              sellers.push(client);
+            } else if (buyer?.mode === "existing") client = sellers.find(c => c.id === buyer.clientId);
+            data = { ...data, buyerId: client?.id || null, soldTo: client?.name || null };
+            createdWatches.push(data);
+          }
+        }
         await pause(600);
       } else data = [];
     } else if (path === "/api/clients") {
       if (request.method === "POST") {
+        clientPosts.push(JSON.parse(request.postData));
         data = { ...JSON.parse(request.postData), id: 14 }; sellers.push(data); status = 201;
       } else data = sellers;
     }
@@ -74,7 +94,8 @@ try {
     await pause(120);
   };
   const input = async (name, value) => {
-    await evaluate(`(() => {const el=document.querySelector('[name="${name}"]');if(!el)throw Error('Missing ${name}');const set=Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?HTMLSelectElement.prototype:el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set;set.call(el,${JSON.stringify(String(value))});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`);
+    const selector = name.startsWith("#") ? name : `[name="${name}"]`;
+    await evaluate(`(() => {const el=document.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing ${name}');const set=Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?HTMLSelectElement.prototype:el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set;set.call(el,${JSON.stringify(String(value))});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`);
     await pause(70);
   };
   await send("Runtime.enable");
@@ -119,6 +140,8 @@ try {
   await input("status", "sold");
   await input("targetSellPrice", 7000.12); await input("salePrice", 7000.51); await input("soldPlatform", "Chrono24");
   await input("dateSold", "2026-10-17");
+  await input("#sale-buyer-name", "Intake Email Buyer");
+  await input("#sale-buyer-email", "intake@example.invalid");
   await input("notes", "Fixture only");
   // Only shipping's Add details remains after sold status expands sale details.
   await click("Add details"); await input("trackingNumber", "FIXTURE-TRACK");
@@ -137,6 +160,10 @@ try {
   assert.equal(posts[0].linkCount, 11);
   assert.equal(posts[0].dateSold, posts[0].soldDate);
   assert.equal(posts[0].trackingNumber, "FIXTURE-TRACK");
+  assert.equal(posts[0].clientId, 14, "buyer must not replace seller");
+  assert.equal(createdWatches[0].soldTo, "Intake Email Buyer");
+  assert.equal(sellers.at(-1).phone, null);
+  assert.equal(sellers.at(-1).email, "intake@example.invalid");
   await click("Add Watch");
   await wait(`!!document.querySelector('#intake-model')`);
   assert.equal(await evaluate(`document.querySelector('#intake-model').value`), "");
@@ -169,19 +196,74 @@ try {
   assert(rect.top >= 0 && rect.bottom <= rect.height, "mobile footer must be reachable");
   await step(0); await input("brand", "Rolex"); await input("referenceNumber", "MOBILE-TEST");
   await step(1); await input("purchasedFrom", "Private Purchase"); await input("paidWith", "Debit"); await input("purchasePrice", 2450.19);
+  await step(3); await input("status", "sold");
+  await input("#sale-buyer-email", "invalid");
+  await step(4); await click("Add watch");
+  await wait(`document.querySelector('fieldset')?.innerText.includes('Buyer name is required')`);
+  assert.equal(posts.length, 1, "validation prevents requests");
+  await input("#sale-buyer-name", "Mobile buyer"); await step(4); await click("Add watch");
+  await wait(`document.querySelector('fieldset')?.innerText.includes('Enter a valid buyer email')`);
+  assert.equal(posts.length, 1);
+  await input("#sale-buyer-email", "SAVED@example.invalid");
+  await step(4); await click("Add watch");
+  await wait(`document.querySelector('[role=alert]')?.innerText.includes('already exists')`);
+  assert.equal(createdWatches.length, 1);
+  assert.equal(sellers.length, 3);
+  await step(3); await input("#sale-buyer-email", "mobile@example.invalid"); await input("#sale-buyer-phone", "+31 6 9999"); await input("#sale-buyer-country", "Belgium");
+  assert.equal(await evaluate(`document.querySelector('[role=dialog]').scrollWidth > document.querySelector('[role=dialog]').clientWidth`), false);
   await step(4);
   failNextSave = true;
   await click("Add watch");
   await wait(`document.body.innerText.includes('Fixture save failed; retry')`, "failed save shows a recoverable error");
   await step(0);
   assert.equal(await evaluate(`document.querySelector('#intake-model').value`), "Mobile fixture", "failed save retains input");
+  await step(3);
+  assert.equal(await evaluate(`document.querySelector('#sale-buyer-phone').value`), "+31 6 9999");
+  assert.equal(sellers.length, 3, "failed creation must not add a Client");
+  assert.equal(createdWatches.length, 1, "failed creation must not add a watch");
   await step(4); await click("Add watch");
   await wait(`!document.querySelector('nav[aria-label="Watch intake sections"]')`);
-  assert.equal(posts.length, 3);
+  assert.equal(posts.length, 4);
   assert.equal(posts.at(-1).purchasePrice, 245019);
   assert.equal(posts.at(-1).model, "Mobile fixture");
+  assert.equal(createdWatches.length, 2);
+  assert.equal(sellers.at(-1).country, "Belgium");
+  const fillWatch = async () => {
+    await click("Add Watch"); await wait(`!!document.querySelector('#intake-model')`);
+    await input("brand", "Rolex"); await input("model", "Buyer fixture"); await input("referenceNumber", "BUYER-TEST");
+    await step(1); await input("purchasedFrom", "Dealer"); await input("clientId", 12);
+    await input("paidWith", "Wire"); await input("purchasePrice", 1234.56);
+    await step(3); await input("status", "sold");
+  };
+  const saveWatch = async () => {
+    await step(4); await click("Add watch");
+    await wait(`!document.querySelector('nav[aria-label="Watch intake sections"]')`);
+  };
+  await fillWatch();
+  await evaluate(`document.querySelector('#sale-existing-client').click()`);
+  await step(4); await click("Add watch");
+  await wait(`document.querySelector('fieldset')?.innerText.includes('Choose an existing client')`);
+  const original = structuredClone(sellers[0]);
+  await input("#sale-buyer-search", "3161234");
+  await evaluate(`document.querySelector('#sale-buyer-search').focus()`);
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 });
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+  await wait(`document.querySelector('fieldset').innerText.includes('Existing client: Fixture dealer')`);
+  assert.equal(await evaluate(`!!document.querySelector('fieldset .text-emerald-800 svg')`), true, "existing buyer has a checkmark");
+  await saveWatch();
+  assert.deepEqual(sellers[0], original);
+  assert.equal(createdWatches.at(-1).buyerId, 12); assert.equal(createdWatches.at(-1).clientId, 12);
+  for (const extra of [{}, { phone: "+31 6 8888" }, { country: "France" }]) {
+    await fillWatch(); await input("#sale-buyer-name", "Name shared by different buyers");
+    for (const [field, value] of Object.entries(extra)) await input(`#sale-buyer-${field}`, value);
+    await saveWatch();
+    assert.equal(createdWatches.at(-1).soldTo, "Name shared by different buyers");
+    assert.equal(createdWatches.at(-1).clientId, 12);
+    assert.equal(sellers.at(-1).email, null);
+  }
+  assert.equal(clientPosts.length, 1, "only explicit seller quick-add may POST a Client separately");
   assert.deepEqual(errors, [], "no browser JS exceptions");
-  console.log("PASS: desktop Inventory + mobile Dashboard creation, navigation, typing focus, hidden-tab validation, dealer quick-add, retained optional values, review, exact cents payload, single submission, dirty close, reset, save-failure retry and mobile layout. API fully mocked; no live account or data changes. Screenshots /tmp/watch-intake-{desktop,mobile}.jpg");
+  console.log("PASS: sold intake name-only and optional contacts; existing buyer keyboard search/checkmark; seller preservation; no profile overwrite; validation; duplicate conflicts; failure rollback/retention/retry; desktop/mobile, original shortcuts and intake navigation. API fully mocked; no live account or data changes.");
 } finally {
   socket?.close();
   chrome.kill("SIGTERM");

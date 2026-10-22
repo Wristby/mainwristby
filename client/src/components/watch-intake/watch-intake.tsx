@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { z } from "zod";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, ArrowLeft, ArrowRight, Check, X, ExternalLink } from "lucide-react";
@@ -16,6 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import { buildWatchIntakePayload, watchIntakeConditions, watchIntakeDefaults, watchIntakeFieldTab, watchIntakeSchema, type WatchIntakeValues } from "./model";
 import { Card, CheckRow, DateField, Field, Money } from "./fields";
 import { IntakeReview } from "./review";
+import { SaleBuyerFields } from "@/components/sale-buyer-fields";
+import { emptySaleBuyer, type SaleBuyerDraft } from "@shared/sale-buyer";
 const tabs = [
   { name: "Watch", hint: "Identity & condition" },
   { name: "Purchase", hint: "Acquisition & costs" },
@@ -32,7 +35,11 @@ export interface WatchIntakeProps {
 
 export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
   const { settings } = useSettings();
-  const { data: clients = [] } = useClients();
+  const { data: clients = [], isLoading: clientsLoading, isError: clientsUnavailable } = useClients();
+  const [buyer, setBuyer] = useState<SaleBuyerDraft>(emptySaleBuyer);
+  const [buyerDirty, setBuyerDirty] = useState(false);
+  const [buyerError, setBuyerError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const createWatch = useCreateInventory();
   const createClient = useCreateClient();
   const { toast } = useToast();
@@ -86,25 +93,39 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
 
   const close = (next: boolean) => {
     if (submitting.current || createClient.isPending) return;
-    if (!next && isDirty && !window.confirm("Discard this unsaved watch intake?")) return;
+    if (!next && (isDirty || buyerDirty) && !window.confirm("Discard this unsaved watch intake?")) return;
     if (!next) {
       form.reset(watchIntakeDefaults);
       setTab(0); setShowSale(false); setShowService(false); setShowShipping(false); setQuickAdd(false);
+      setBuyer(emptySaleBuyer()); setBuyerDirty(false); setBuyerError(""); setSaveError("");
     }
     onOpenChange(next);
   };
   const submit = form.handleSubmit((data) => {
     if (submitting.current) return;
+    let submission;
+    try {
+      submission = buildWatchIntakePayload(data, buyer);
+      setBuyerError(""); setSaveError("");
+    } catch (error) {
+      setBuyerError(error instanceof z.ZodError ? error.errors[0].message : (error as Error).message);
+      setTab(3); setShowSale(true);
+      return;
+    }
     submitting.current = true;
-    const submission = buildWatchIntakePayload(data);
-    createWatch.mutate(submission as any, {
+    createWatch.mutate(submission, {
       onSuccess: () => {
         submitting.current = false;
         form.reset(watchIntakeDefaults); setTab(0); setShowSale(false); setShowService(false); setShowShipping(false);
+        setBuyer(emptySaleBuyer()); setBuyerDirty(false); setBuyerError(""); setSaveError(""); setQuickAdd(false);
         onOpenChange(false);
         toast({ title: "Success", description: "Watch added" });
       },
-      onError: (error) => { submitting.current = false; toast({ title: "Error", description: error.message, variant: "destructive" }); },
+      onError: (error) => {
+        submitting.current = false;
+        setSaveError(error.message);
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      },
     });
   }, errors => {
     const first = Object.keys(errors)[0];
@@ -177,13 +198,18 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
               <DateField name="dateReceived" label="Date received"/><DateField name="dateListed" label="Date listed"/><Money name="targetSellPrice" label="Target sell price (€)"/>
             </div></Card>
             <Card title="Optional sale details"><div className="mb-4 flex items-center justify-between gap-3"><p className="text-sm text-slate-600">Add sale information if already sold.</p><button type="button" onClick={()=>setShowSale(!showSale)} className="text-sm font-semibold text-emerald-800">{showSale?"Hide details":"Add details"}</button></div>
-              {showSale && <div className="grid gap-4 sm:grid-cols-2"><Money name="salePrice" label="Sale price (€)"/><Field name="soldTo" label="Sold to"/><Field name="soldPlatform" label="Sales platform" options={settings.sales_platforms}/><DateField name="dateSold" label="Date sold"/><Money name="platformFees" label="Platform fees (€)"/><Money name="shippingFee" label="Shipping cost (€)"/><Money name="insuranceFee" label="Insurance (€)"/></div>}
+              {showSale && <div className="grid gap-4 sm:grid-cols-2"><Money name="salePrice" label="Sale price (€)"/><Field name="soldPlatform" label="Sales platform" options={settings.sales_platforms}/><DateField name="dateSold" label="Date sold"/><Money name="platformFees" label="Platform fees (€)"/><Money name="shippingFee" label="Shipping cost (€)"/><Money name="insuranceFee" label="Insurance (€)"/></div>}
             </Card></div>
+            {showSale && <SaleBuyerFields value={buyer} onChange={draft => {
+              setBuyer(draft); setBuyerDirty(true); setBuyerError(""); setSaveError("");
+              form.setValue("soldTo", draft.name, { shouldDirty: true });
+            }} clients={clients} loading={clientsLoading} unavailable={clientsUnavailable} dirty={buyerDirty} error={buyerError}/>}
             <div className="grid gap-4 lg:grid-cols-2"><Card title="Optional shipping & tracking"><div className="mb-4 flex items-center justify-between gap-3"><p className="text-sm text-slate-600">Record dispatch information when available.</p><button type="button" onClick={()=>setShowShipping(!showShipping)} className="text-sm font-semibold text-emerald-800">{showShipping?"Hide details":"Add details"}</button></div>
               {showShipping && <div className="grid gap-4 sm:grid-cols-2"><Field name="shippingPartner" label="Shipping partner" options={settings.shipping_partners}/><Field name="trackingNumber" label="Tracking number"/><DateField name="dateShipped" label="Date shipped"/></div>}
             </Card><Card title="General notes"><Label htmlFor="intake-notes">Notes</Label><Textarea id="intake-notes" {...form.register("notes")} className="mt-1.5 min-h-24 border-slate-300 bg-white" placeholder="Private working notes"/></Card></div>
           </div>}
-          {tab===4 && <IntakeReview values={values} clients={clients} edit={setTab}/>}
+          {tab===4 && <IntakeReview values={values} clients={clients} edit={setTab} buyer={buyer}/>}
+          {saveError && <p role="alert" className="mt-4 text-sm text-red-600">{saveError}</p>}
         </div>
         <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:px-7">
           <Button type="button" variant="outline" onClick={()=>tab===0?close(false):setTab(tab-1)} disabled={createWatch.isPending}><ArrowLeft className="mr-2 h-4 w-4"/>{tab===0?"Cancel":"Back"}</Button>

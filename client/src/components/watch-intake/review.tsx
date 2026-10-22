@@ -1,4 +1,5 @@
 import type { WatchIntakeValues } from "./model";
+import type { SaleBuyerDraft } from "@shared/sale-buyer";
 import { buildWatchIntakePayload, watchIntakeFieldTab, watchIntakeMoneyFields } from "./model";
 
 const labels: Record<keyof WatchIntakeValues, string> = {
@@ -13,8 +14,8 @@ const labels: Record<keyof WatchIntakeValues, string> = {
   targetSellPrice: "Target sell price", notes: "Notes",
 };
 const sectionTitles = ["Watch", "Purchase", "Preparation", "Listing & Sale"];
-export function IntakeReview({ values, clients, edit }: {
-  values: WatchIntakeValues; clients: Array<{ id: number; name: string }>; edit: (tab: number) => void;
+export function IntakeReview({ values, clients, edit, buyer }: {
+  values: WatchIntakeValues; clients: Array<{ id: number; name: string }>; edit: (tab: number) => void; buyer?: SaleBuyerDraft;
 }) {
   const status = buildWatchIntakePayload(values).status;
   return <div className="mx-auto max-w-3xl space-y-4">
@@ -41,6 +42,11 @@ export function IntakeReview({ values, clients, edit }: {
           </div>;
         })}
       </dl>
+      {tab === 3 && buyer && (buyer.name.trim() || buyer.mode === "existing") && <div className="mt-3 space-y-1 border-t pt-3 text-sm">
+        <p className="font-medium">{buyer.mode === "existing" ? `Existing client: ${buyer.name || "Not selected"}` : `New Client: ${buyer.name}`}</p>
+        <p className="break-words text-slate-600">{[buyer.email, buyer.phone, buyer.country].filter(Boolean).join(" · ") || "No contact details provided"}</p>
+        <p className="text-xs text-slate-500">{buyer.mode === "existing" ? "Saved contact details will not be changed." : "This Client will be created with the watch."}</p>
+      </div>}
     </section>)}
     <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Required: watch identity, purchase channel, payment method, and purchase cost. Dealer purchases also require a seller.</p>
   </div>;

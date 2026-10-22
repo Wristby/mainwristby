@@ -186,14 +186,15 @@ export async function registerRoutes(
   app.post(api.inventory.create.path, isAuthenticated, async (req, res) => {
     try {
       // Coerce numeric fields from strings if necessary (though zod schema should handle types if frontend sends JSON)
-      const input = api.inventory.create.input.parse(req.body);
-      const item = await storage.createInventoryItem(input);
+      const { saleBuyer, ...input } = api.inventory.create.input.parse(req.body);
+      const item = await storage.createInventoryItem(input, saleBuyer);
       res.status(201).json(item);
     } catch (err) {
+      if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-      throw err;
+      res.status(500).json({ message: "Could not add watch. Please try again." });
     }
   });
 

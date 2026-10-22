@@ -14,6 +14,29 @@ export class SaleBuyerSaveError extends Error {
 }
 
 type ExpenseExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
+type BuyerExecutor = ExpenseExecutor & Pick<Parameters<Parameters<typeof db.transaction>[0]>[0], "execute">;
+
+async function resolveSaleBuyer(connection: BuyerExecutor, buyer: SaleBuyerInput, currentBuyerId?: number | null) {
+  if (buyer.mode === "none") return { buyerId: null, soldTo: null };
+  if (buyer.mode === "existing") {
+    const [client] = await connection.select().from(clients).where(eq(clients.id, buyer.clientId));
+    if (!client) throw new SaleBuyerSaveError("This client no longer exists. Choose another client.", 400);
+    return { buyerId: client.id, soldTo: client.name };
+  }
+  // Share the lock across creation and edits; names alone are never a match.
+  await connection.execute(sql`select pg_advisory_xact_lock(73284077)`);
+  const contacts = await connection.select().from(clients);
+  const current = contacts.find(client => client.id === currentBuyerId);
+  if (current && sameBuyerContact(current, buyer)) return { buyerId: current.id, soldTo: current.name };
+  if (contacts.some(client => matchingBuyerContact(client, buyer))) {
+    throw new SaleBuyerSaveError("A client with this email or phone already exists. Choose them using Existing client.", 409);
+  }
+  const [client] = await connection.insert(clients).values({
+    name: buyer.name, email: buyer.email || null, phone: buyer.phone || null,
+    country: buyer.country || null, type: "client",
+  }).returning();
+  return { buyerId: client.id, soldTo: client.name };
+}
 
 // Fee types that should be synced to expenses
 const FEE_TYPES = [
@@ -37,7 +60,7 @@ export interface IStorage {
   // Inventory
   getInventoryItems(status?: string): Promise<(InventoryItem & { seller?: Client })[]>;
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
-  createInventoryItem(item: InsertInventory): Promise<InventoryItem>;
+  createInventoryItem(item: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem>;
   updateCreditInfo(id: number, updates: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null }): Promise<InventoryItem>;
@@ -119,15 +142,17 @@ export class DatabaseStorage implements IStorage {
     return { ...item, expenses: itemExpenses };
   }
 
-  async createInventoryItem(insertItem: InsertInventory): Promise<InventoryItem> {
+  async createInventoryItem(insertItem: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
     // Snapshot the current watch_register_fee so future admin-panel changes
     // don't retroactively affect this item's cost calculations.
     const currentFee = await this.getSetting("watch_register_fee") || 600;
     const itemWithSnapshot = { ...insertItem, watchRegisterFeeSnapshot: currentFee };
-    const [item] = await db.insert(inventory).values(itemWithSnapshot).returning();
-    // Sync watch fees to expenses
-    await this.syncWatchFeesToExpenses(item);
-    return item;
+    return db.transaction(async tx => {
+      const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer) : {};
+      const [item] = await tx.insert(inventory).values({ ...itemWithSnapshot, ...buyer }).returning();
+      await this.syncWatchFeesToExpenses(item, tx);
+      return item;
+    });
   }
 
   async updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
@@ -136,35 +161,7 @@ export class DatabaseStorage implements IStorage {
         // Serialize saves of the same watch, including retries after a lost response.
         const [current] = await tx.select().from(inventory).where(eq(inventory.id, id)).for("update");
         if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
-        let buyerId: number | null = null;
-        let soldTo: string | null = null;
-        if (saleBuyer.mode === "existing") {
-          const [client] = await tx.select().from(clients).where(eq(clients.id, saleBuyer.clientId));
-          if (!client) throw new SaleBuyerSaveError("This client no longer exists. Choose another client.", 400);
-          buyerId = client.id;
-          soldTo = client.name;
-        } else if (saleBuyer.mode === "new") {
-          // No unique constraint is imposed on legacy contact data. Serialize new
-          // sale-buyer creation so concurrent sales cannot create the same contact.
-          await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
-          const contacts = await tx.select().from(clients);
-          const currentBuyer = contacts.find(client => client.id === current.buyerId);
-          if (currentBuyer && sameBuyerContact(currentBuyer, saleBuyer)) {
-            buyerId = currentBuyer.id;
-            soldTo = currentBuyer.name;
-          } else {
-            if (contacts.some(client => matchingBuyerContact(client, saleBuyer))) {
-              throw new SaleBuyerSaveError("A client with this email or phone already exists. Choose them using Existing client.", 409);
-            }
-            const [client] = await tx.insert(clients).values({
-              name: saleBuyer.name, email: saleBuyer.email || null,
-              phone: saleBuyer.phone || null, country: saleBuyer.country || null,
-              type: "client",
-            }).returning();
-            buyerId = client.id;
-            soldTo = client.name;
-          }
-        }
+        const { buyerId, soldTo } = await resolveSaleBuyer(tx, saleBuyer, current.buyerId);
         const [item] = await tx.update(inventory).set({ ...updates, buyerId, soldTo })
           .where(eq(inventory.id, id)).returning();
         await this.syncWatchFeesToExpenses(item, tx);

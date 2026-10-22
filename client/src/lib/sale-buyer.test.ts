@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { buildSaleBuyerInput, emptySaleBuyer, matchingBuyerContact, saleBuyerSchema, sameBuyerContact, searchBuyerClients } from "@shared/sale-buyer";
 import { api } from "@shared/routes";
+import { buildWatchIntakePayload, watchIntakeDefaults } from "../components/watch-intake/model";
 
 describe("watch sale buyers", () => {
+  const intake = { ...watchIntakeDefaults, brand: "Rolex", model: "Fixture", referenceNumber: "TEST",
+    purchasedFrom: "Dealer", paidWith: "Wire", purchasePrice: 1234.56, clientId: 9, dateSold: "2026-10-01" };
+  it("builds sold intake with buyer instructions, separate seller, and cents", () => {
+    const payload = buildWatchIntakePayload(intake, { ...emptySaleBuyer(), name: "Buyer" });
+    expect(payload).toMatchObject({ status: "sold", purchasePrice: 123456, clientId: 9, saleBuyer: { mode: "new", name: "Buyer" } });
+    expect(api.inventory.create.input.parse(payload)).toMatchObject({ clientId: 9, saleBuyer: { mode: "new", name: "Buyer" } });
+  });
+  it("rejects incomplete or invalid intake buyers on client and server", () => {
+    for (const buyer of [{ ...emptySaleBuyer(), email: "a@example.invalid" }, { ...emptySaleBuyer(), name: "Buyer", email: "wrong" },
+      { ...emptySaleBuyer(), mode: "existing" as const }]) {
+      expect(() => buildWatchIntakePayload(intake, buyer)).toThrow();
+    }
+    const payload = buildWatchIntakePayload(intake);
+    for (const saleBuyer of [{ mode: "new", email: "a@example.invalid" }, { mode: "new", name: "Buyer", email: "wrong" },
+      { mode: "existing", clientId: -1 }]) {
+      expect(api.inventory.create.input.safeParse({ ...payload, saleBuyer }).success).toBe(false);
+    }
+  });
   it("creates a valid buyer from a name alone", () => {
     expect(buildSaleBuyerInput({ ...emptySaleBuyer(), name: "  Example Buyer  " }))
       .toEqual({ mode: "new", name: "Example Buyer", email: "", phone: "", country: "" });
