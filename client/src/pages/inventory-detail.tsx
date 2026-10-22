@@ -2054,6 +2054,58 @@ export default function InventoryDetail() {
             </CardContent>
           </Card>
 
+          {(linkedBuyer || item.buyerId || item.soldTo) && (
+            <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-watch-buyer">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg text-slate-900">Buyer information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {linkedBuyer ? (
+                  <>
+                    <Link href={`/clients/${linkedBuyer.id}`} className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline" data-testid="link-watch-buyer-client">
+                      {linkedBuyer.name}
+                    </Link>
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                      {linkedBuyer.email && <div className="min-w-0">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Email</p>
+                        <a className="break-words text-slate-700 hover:text-emerald-700 hover:underline" href={`mailto:${linkedBuyer.email}`}>{linkedBuyer.email}</a>
+                      </div>}
+                      {linkedBuyer.phone && <div className="min-w-0">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Phone</p>
+                        <a className="break-words text-slate-700 hover:text-emerald-700 hover:underline" href={`tel:${linkedBuyer.phone}`}>{linkedBuyer.phone}</a>
+                      </div>}
+                      {linkedBuyer.country && <div className="min-w-0">
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Country</p>
+                        <p className="break-words text-slate-700">{linkedBuyer.country}</p>
+                      </div>}
+                    </div>
+                    {!linkedBuyer.email && !linkedBuyer.phone && !linkedBuyer.country && (
+                      <p className="text-sm text-slate-500">No additional contact details are saved for this Client.</p>
+                    )}
+                    <Link href={`/clients/${linkedBuyer.id}`} className="inline-block text-xs font-medium text-emerald-700 hover:underline">View Client profile</Link>
+                  </>
+                ) : item.soldTo ? (
+                  <>
+                    <p className="font-semibold text-slate-800">{item.soldTo}</p>
+                    {clientsLoading ? (
+                      <p className="text-sm text-slate-500">Loading buyer contact details…</p>
+                    ) : clientsUnavailable ? (
+                      <p className="text-sm text-red-600">Buyer contact details could not be loaded.</p>
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        This buyer is not linked to a Client profile yet. <Link href="/clients" className="font-medium text-emerald-700 hover:underline">Review in Clients</Link>
+                      </p>
+                    )}
+                  </>
+                ) : clientsUnavailable ? (
+                  <p className="text-sm text-red-600">Buyer contact details could not be loaded.</p>
+                ) : (
+                  <p className="text-sm text-slate-500">Loading buyer contact details…</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">

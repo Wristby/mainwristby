@@ -48,6 +48,10 @@ try {
     else if (path === "/api/inventory") data = [watch];
     else if (path === "/api/clients") data = clients;
     else if (path.startsWith("/api/clients/")) data = clients.find(client => client.id === Number(path.split("/").at(-1)));
+    else if (path === "/api/clients/watch-buyers/sync") data = { created: 0, pending: [] };
+    else if (path === "/api/retention/schedule") data = null;
+    else if (path === "/api/retention/holds") data = [];
+    else if (path === "/api/retention/inventory/11/parties") data = [];
     else if (path === "/api/inventory/11") {
       if (request.method === "PUT") {
         const { saleBuyer, ...updates } = writes.at(-1).body;
@@ -68,6 +72,7 @@ try {
         }
       } else data = watch;
     } else if (path === "/api/expenses") data = [];
+    if (data === undefined) { console.error(`Fixture has no response for ${request.method} ${path}`); data = { message: "Fixture record not found" }; status = 404; }
     await send("Fetch.fulfillRequest", { requestId, responseCode: status, responseHeaders: [{ name: "Content-Type", value: "application/json" }], body: Buffer.from(JSON.stringify(data)).toString("base64") });
   });
   const evaluate = async expression => {
@@ -94,8 +99,8 @@ try {
       await evaluate("document.querySelector('#sale-existing-client').click()"); await pause(100);
     }
   };
-  const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  assert(process.env.REPLIT_DEV_DOMAIN);
+  // Use the local dev origin; public preview domains may show a sharing interstitial.
+  const base = "http://127.0.0.1:5000";
   await send("Runtime.enable"); await send("Page.enable");
   await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/*", requestStage: "Request" }] });
   await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -103,10 +108,16 @@ try {
   await wait("document.querySelector('main')?.innerText.includes('Historical name')");
   await edit(); await input('[name="notes"]', "Legacy sale note"); await save();
   assert.equal(writes.at(-1).body.saleBuyer, undefined); assert.equal(clients.length, 2);
-  await edit(); await input("#sale-buyer-name", "Email only Buyer"); await input("#sale-buyer-email", "email-only@example.invalid"); await save();
+  await edit(); await input("#sale-buyer-name", "Email only Buyer"); await input("#sale-buyer-email", "email-only@example.invalid"); await input("#sale-buyer-country", "Netherlands"); await save();
   assert.equal(clients.length, 3); assert.equal(clients.at(-1).phone, null); assert.equal(watch.clientId, 91);
   assert.equal(writes.at(-1).body.purchasePrice, 100000); assert.equal(writes.at(-1).body.salePrice, 180000);
   await wait("document.querySelector('main').innerText.includes('email-only@example.invalid')");
+  const buyerSummary = await evaluate(`(() => {const card=document.querySelector('[data-testid="card-watch-buyer"]'),notes=document.querySelector('[data-testid="text-notes-display"]');return {text:card?.innerText,clientHref:card?.querySelector('[data-testid="link-watch-buyer-client"]')?.getAttribute('href'),beforeNotes:!!card&&!!notes&&(card.compareDocumentPosition(notes)&Node.DOCUMENT_POSITION_FOLLOWING)>0}})()`);
+  assert(buyerSummary.text.includes("Email only Buyer"));
+  assert(buyerSummary.text.includes("email-only@example.invalid"));
+  assert(buyerSummary.text.includes("Netherlands"));
+  assert(buyerSummary.beforeNotes, "buyer information appears above Notes");
+  assert.equal(buyerSummary.clientHref, "/clients/92");
   await send("Page.reload"); await wait("document.querySelector('main')?.innerText.includes('email-only@example.invalid')", "linked contact survives reload");
   await send("Page.navigate", { url: `${base}/clients` });
   await wait("document.querySelector('main')?.innerText.includes('Email only Buyer') && document.querySelector('main')?.innerText.includes('email-only@example.invalid')", "new buyer appears in Clients");
@@ -144,7 +155,8 @@ try {
   await writeFile("/tmp/sale-buyer-mobile.jpg", Buffer.from((await send("Page.captureScreenshot", { format: "jpeg", quality: 80 })).data, "base64"));
   await click("Cancel");
   assert.equal(clients.length, clientCount + 1, "cancel creates no client");
-  assert(writes.every(write => write.path === "/api/inventory/11" && write.method === "PUT"));
+  assert(writes.every(write => (write.path === "/api/inventory/11" && write.method === "PUT")
+    || (write.path === "/api/clients/watch-buyers/sync" && write.method === "POST")));
   assert.deepEqual(errors, []);
   console.log("PASS: legacy sale edit; name/email with no phone; name-only creation; Clients directory and reload persistence; existing-client keyboard selection without profile edits; seller preserved; exact cents; validation; duplicate conflict; failed-save retention/retry; mobile layout and cancel. Browser-only API fixtures; no live records/accounts modified.");
 } finally {
