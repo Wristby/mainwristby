@@ -58,6 +58,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateClient, useDeleteClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { ClientSalesHistory } from "@/components/client-sales-history";
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
@@ -76,11 +77,11 @@ export default function ClientDetail() {
   const updateClientMutation = useUpdateClient();
   const deleteClientMutation = useDeleteClient();
 
-  const { data: clients, isLoading: isLoadingClients } = useQuery<Client[]>({
+  const { data: clients, isLoading: isLoadingClients, isError: clientsError } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
   });
 
-  const { data: inventory, isLoading: isLoadingInventory } = useQuery<InventoryItem[]>({
+  const { data: inventory, isLoading: isLoadingInventory, isError: inventoryError } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
   });
 
@@ -125,6 +126,16 @@ export default function ClientDetail() {
     );
   }
 
+  if (clientsError || inventoryError) {
+    return (
+      <div className="text-center py-12" role="alert">
+        <h2 className="text-xl font-semibold text-slate-900">Unable to load client history</h2>
+        <p className="mt-2 text-slate-500">Please reload to try again.</p>
+        <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>Reload</Button>
+      </div>
+    );
+  }
+
   if (!client) {
     return (
       <div className="text-center py-12">
@@ -164,19 +175,19 @@ export default function ClientDetail() {
 
   // Filter inventory related to this client
   const clientPurchases = inventory?.filter((item) => item.clientId === client.id) || [];
-  const clientSales = inventory?.filter((item) => item.soldTo === client.name) || [];
+  const clientSales = inventory?.filter((item) => item.buyerId === client.id && item.status === "sold") || [];
 
   const totalValue = clientPurchases.reduce((sum, item) => sum + item.purchasePrice, 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => setLocation("/clients")} className="rounded-full">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 flex flex-wrap items-center gap-3 break-words">
               {client.name}
               {client.isVip && <Badge className="bg-amber-50 text-amber-600 border-amber-100">VIP</Badge>}
             </h2>
@@ -451,13 +462,13 @@ export default function ClientDetail() {
           </CardContent>
         </Card>
 
-        <div className="md:col-span-2 space-y-6">
+        <div className="md:col-span-2 min-w-0 space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Card className="bg-white border-slate-200 shadow-sm">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-500">Total Purchase Value</p>
+                    <p className="text-sm font-medium text-slate-500">Total bought from client</p>
                     <p className="text-2xl font-bold text-slate-900 mt-1">{formatCurrency(totalValue)}</p>
                   </div>
                   <div className="p-3 bg-emerald-50 rounded-full">
@@ -481,11 +492,13 @@ export default function ClientDetail() {
             </Card>
           </div>
 
+          <ClientSalesHistory sales={clientSales} />
+
           <Card className="bg-white border-slate-200 shadow-sm overflow-hidden">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200">
               <CardTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                 <Watch className="w-5 h-5 text-emerald-600" />
-                Purchase History
+                Watches bought from this client
               </CardTitle>
             </CardHeader>
             <Table>
@@ -502,7 +515,7 @@ export default function ClientDetail() {
                 {clientPurchases.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-slate-400">
-                      No purchase history found for this client.
+                      No watches bought from this client yet.
                     </TableCell>
                   </TableRow>
                 ) : (
