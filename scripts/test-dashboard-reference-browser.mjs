@@ -93,6 +93,9 @@ try {
   await input(" 124270 ");
   assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('ul[aria-label="Matching watches"] a'),el=>el.getAttribute('href'))`), ["/inventory/2", "/inventory/1", "/inventory/3"]);
   assert((await evaluate(`document.querySelector('ul[aria-label="Matching watches"]').innerText`)).includes("SERIAL-1"));
+  const resultText = await evaluate(`document.querySelector('ul[aria-label="Matching watches"]').innerText`);
+  assert(resultText.includes("IN STOCK"), "in-stock status is readable");
+  assert(!resultText.includes("IN_STOCK"), "status label does not show database underscores");
   await key("Enter");
   assert.equal(await evaluate("location.pathname"), "/", "Enter must not choose an arbitrary duplicate");
   await key("ArrowDown");

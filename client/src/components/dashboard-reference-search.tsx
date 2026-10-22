@@ -170,7 +170,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
                         : "bg-emerald-50 text-emerald-700"
                     }`}
                   >
-                    {watch.status || "Status unavailable"}
+                    {watch.status?.replace(/_/g, " ") || "Status unavailable"}
                   </span>
                 </div>
                 <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 text-slate-500">
