@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="WRISTBY's GDPR readiness assessment, data-flow map, open decisions, and phased feature roadmap.">
+  <title>WRISTBY — GDPR Readiness Map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17352d;
+      --muted: #536b64;
+      --line: #d8e4df;
+      --paper: #ffffff;
+      --canvas: #f1f6f3;
+      --green: #126346;
+      --green-pale: #e8f3ed;
+      --amber: #7a4c00;
+      --amber-pale: #fff4dd;
+      --red: #873a31;
+      --red-pale: #fff0ed;
+      --blue: #315983;
+      --blue-pale: #edf4fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font: 16px/1.62 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: #086b4a; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: #074c37; }
+    .page { max-width: 1050px; margin: 0 auto; padding: 38px 24px 76px; }
+    .masthead {
+      padding: 34px;
+      border-radius: 22px;
+      background: linear-gradient(130deg, #103d2e, #197557);
+      color: #fff;
+      box-shadow: 0 16px 40px #163f3020;
+    }
+    .eyebrow { margin: 0 0 10px; color: #c6e3d4; font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { max-width: 760px; margin: 0; font-size: clamp(2rem, 5vw, 3.05rem); line-height: 1.1; letter-spacing: -.035em; }
+    .lede { max-width: 760px; margin: 17px 0 0; color: #e5f2eb; font-size: 1.12rem; }
+    .meta { margin: 22px 0 0; color: #d1e7db; font-size: .9rem; }
+    .banner, .card, .section, .roadmap-item {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+    }
+    .banner { margin-top: 18px; padding: 18px 20px; }
+    .banner strong { display: block; margin-bottom: 4px; }
+    .banner.caution { border-color: #efd59d; background: var(--amber-pale); color: #5b3a00; }
+    .banner.alert { border-color: #edc4bd; background: var(--red-pale); color: #682c25; }
+    .banner.info { border-color: #c7daed; background: var(--blue-pale); color: #244565; }
+    main { display: grid; gap: 18px; margin-top: 20px; }
+    .section { padding: 25px 27px; }
+    h2 { margin: 0 0 14px; font-size: 1.42rem; line-height: 1.25; letter-spacing: -.015em; }
+    h3 { margin: 21px 0 7px; font-size: 1.03rem; line-height: 1.35; }
+    p { margin: 8px 0; }
+    ul, ol { margin: 8px 0 4px; padding-left: 1.35rem; }
+    li + li { margin-top: 5px; }
+    .muted { color: var(--muted); }
+    .small { font-size: .9rem; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 13px 0 17px; }
+    .pill { padding: 5px 11px; border: 1px solid #cbded4; border-radius: 999px; background: var(--green-pale); color: var(--green); font-size: .82rem; font-weight: 700; }
+    .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; margin: 14px 0; }
+    .flow-box { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fbfdfc; }
+    .flow-box strong { display: block; margin-bottom: 4px; }
+    .flow-arrow { align-self: center; color: #50816c; font-weight: 800; }
+    .table-wrap { overflow-x: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: 11px; }
+    table { width: 100%; border-collapse: collapse; font-size: .93rem; }
+    th, td { padding: 12px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    thead th { background: #eef5f1; color: #345b4c; font-size: .8rem; letter-spacing: .05em; text-transform: uppercase; }
+    tbody tr:last-child td { border-bottom: 0; }
+    td:first-child { min-width: 150px; font-weight: 700; }
+    .status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 800; white-space: nowrap; }
+    .status.confirmed { background: var(--green-pale); color: var(--green); }
+    .status.open { background: var(--amber-pale); color: var(--amber); }
+    .status.risk { background: var(--red-pale); color: var(--red); }
+    .roadmap { display: grid; gap: 11px; margin-top: 14px; }
+    .roadmap-item { padding: 17px 19px; }
+    .roadmap-item h3 { margin: 0 0 4px; }
+    .priority { display: inline-block; margin-right: 7px; color: #126346; font-size: .75rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .source-list { display: grid; gap: 9px; margin: 12px 0 0; padding: 0; list-style: none; }
+    .source-list li { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fbfdfc; }
+    .source-list a { font-weight: 700; }
+    footer { margin-top: 22px; padding: 15px 5px; color: var(--muted); font-size: .88rem; }
+    @media (max-width: 680px) {
+      .page { padding: 18px 13px 48px; }
+      .masthead { padding: 25px 20px; border-radius: 17px; }
+      .section { padding: 20px 17px; }
+      .flow { grid-template-columns: 1fr; gap: 6px; }
+      .flow-arrow { justify-self: center; transform: rotate(90deg); }
+      th, td { padding: 10px; }
+      table { min-width: 600px; }
+    }
+    @media print {
+      body { background: white; }
+      .page { max-width: none; padding: 0; }
+      .masthead { box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .section, .banner, .roadmap-item { break-inside: avoid; box-shadow: none; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <p class="eyebrow">WRISTBY · Data protection</p>
+      <h1>GDPR readiness map</h1>
+      <p class="lede">What the app stores, where information flows, what is already protected, and what to verify before automating retention or deletion.</p>
+      <p class="meta">Prepared 22 October 2026 · Based on source-code review, official public guidance, and the owner's answers</p>
+    </header>
+
+    <div class="banner info">
+      <strong>This is a readiness assessment, not a legal opinion or a compliance certificate.</strong>
+      It describes the application and reported business practices. It does not inspect customer records, credentials, the live hosting account, or provider contracts. The business remains responsible for confirming its legal obligations and operating procedures with an appropriate Dutch accountant or privacy adviser.
+    </div>
+
+    <main>
+      <section class="section">
+        <h2>Executive summary</h2>
+        <div class="pill-row">
+          <span class="pill">EU customers</span>
+          <span class="pill">Mostly consumers</span>
+          <span class="pill">Production reported on cPanel</span>
+          <span class="pill">No customer records inspected</span>
+        </div>
+        <p>WRISTBY is a private inventory and customer-relationship app. It associates client profiles with buying and selling watches, sales totals, service history, deliveries, and expense records. The owner says customers are based in the EU and are mostly end users, the seller offers a 12-month warranty, the live app and database are in a cPanel environment, and shipping details are entered into UPS separately.</p>
+        <p>The app has useful baseline protections: private sign-in, public registration disabled, authenticated API routes, non-cacheable API responses, and request/error logs designed to omit customer data. These controls do not establish GDPR compliance by themselves.</p>
+        <p class="muted">The main open work is to establish a defensible purpose and retention period for each data category; accurately inform customers; handle their rights; prevent deletion of accounting or warranty evidence where it must be preserved; and verify hosting, backups, and provider contracts.</p>
+      </section>
+
+      <section class="section">
+        <h2>Important warranty clarification</h2>
+        <div class="banner alert">
+          <strong>Do not rely on “12 months is the Dutch legal minimum” without checking the terms.</strong>
+          ACM ConsuWijzer says Dutch statutory conformity rights have no single fixed time limit; they depend on how long a buyer could reasonably expect the product to last. A 12-month seller warranty is a separate promise and does not necessarily end a consumer's statutory rights.
+        </div>
+        <p>EU guidance describes a general two-year legal guarantee and allows a shorter agreed period for second-hand goods only in some countries, not below one year where that option exists. Because WRISTBY sells mainly to EU consumers, check the buyer's country, whether the watch is second-hand, and the exact warranty wording. This map does not decide whether a particular 12-month policy is lawful.</p>
+        <p><strong>Practical effect on data retention:</strong> confirm what records are needed to administer the seller's warranty and respond to statutory consumer claims, and when those obligations end. Store the seller's own warranty promise separately from the legal/conformity rights that may apply.</p>
+      </section>
+
+      <section class="section">
+        <h2>Data-flow map</h2>
+        <p>The application data flow visible in the code is:</p>
+        <div class="flow" aria-label="Data flow from user entry through WRISTBY to its database">
+          <div class="flow-box"><strong>Owner and business users</strong><span class="small muted">Manually enter client, watch, sale, service, and finance details.</span></div>
+          <span class="flow-arrow" aria-hidden="true">→</span>
+          <div class="flow-box"><strong>WRISTBY web app</strong><span class="small muted">Private, password-protected interface and authenticated API.</span></div>
+          <span class="flow-arrow" aria-hidden="true">→</span>
+          <div class="flow-box"><strong>PostgreSQL database</strong><span class="small muted">cPanel environment reported by the owner; provider, location, and backups not verified.</span></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>People and data</th><th>What the code stores or links</th><th>Business use to confirm</th><th>Open decision</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Clients, consumers, and dealers</td>
+                <td>Name, email, phone, country, social-media handle, website, notes, client/dealer type, VIP marker, and profile creation date.</td>
+                <td>Customer and supplier relationships; communication; watch purchase/sale history.</td>
+                <td>Which optional fields have a current, specific business purpose? What should customers be told at collection?</td>
+              </tr>
+              <tr>
+                <td>Sale and acquisition parties</td>
+                <td>Seller and buyer links to client profiles; a separate buyer-name text snapshot; purchase/sale dates and prices; fees, payment method, credit status/notes, and linked expenses.</td>
+                <td>Contracts, accounting, warranty claims, customer history, and business reporting.</td>
+                <td>Which exact fields are accounting records subject to a legal retention duty, and which are only convenience/contact data?</td>
+              </tr>
+              <tr>
+                <td>Watch and service records</td>
+                <td>Watch/reference/serial identifiers; service dates and free-text service notes; watch condition, listing text, credit notes, and an optional Google Drive folder link.</td>
+                <td>Inventory, servicing, warranty support, and sale fulfilment.</td>
+                <td>The schema contains service history but no dedicated warranty-claim or warranty-expiry case workflow. Confirm what warranty evidence is actually held.</td>
+              </tr>
+              <tr>
+                <td>Shipment recipients</td>
+                <td>WRISTBY records the carrier, tracking number, ship date, and delivery date; no dedicated shipping-address field was found in the schema. Free-text notes or linked files could still contain addresses.</td>
+                <td>The owner reports manually entering customer shipping details into UPS.</td>
+                <td>Confirm what is sent to UPS, the account/provider terms, UPS's role for each purpose, and what is retained there. The UPS privacy notice identifies relevant UPS EEA entities as controllers for their own processing.</td>
+              </tr>
+              <tr>
+                <td>Owner / login account</td>
+                <td>Username, password hash, optional email/name/profile image; database-backed session identifier, user reference, and expiry.</td>
+                <td>Private app access and sign-in security.</td>
+                <td>Confirm the live database and session-storage region, encrypted backup retention, and restoration/deletion procedures with the real hosting company.</td>
+              </tr>
+              <tr>
+                <td>Security counters</td>
+                <td>Login-attempt counters use hashes derived from IP address and username, with a stated 15-minute expiry.</td>
+                <td>Reduce password-guessing attempts.</td>
+                <td>The expiry is cleaned up during a later login, not by a scheduled purge; check whether stale rows are removed promptly. Hashing is pseudonymisation, not proof that data is anonymous.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Lawful-basis candidates to validate</h3>
+        <p>These are starting points for a Dutch adviser, not legal conclusions. Do not apply one basis to every Client field.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Processing purpose</th><th>Possible basis to assess</th><th>What needs confirmation</th></tr></thead>
+            <tbody>
+              <tr><td>Complete a watch sale, delivery, or service request</td><td>Necessary for a contract or steps requested before a contract.</td><td>Which records and contact details are actually necessary at each stage; UPS's separate purpose and role.</td></tr>
+              <tr><td>Preserve accounting records</td><td>Legal obligation, only for the records covered by an applicable accounting/tax duty.</td><td>Which fields/linked transactions form the required administration and which country rules apply.</td></tr>
+              <tr><td>Handle an express seller warranty or legal claim</td><td>Contract for the seller's voluntary warranty; a statutory obligation where one actually applies; legal claims may also need consideration.</td><td>The correct warranty wording, country, watch condition, event that starts the period, and minimum necessary evidence.</td></tr>
+              <tr><td>Optional profile details, internal notes, or relationship tracking</td><td>Possibly legitimate interests after a necessity/balancing assessment; marketing can have additional rules.</td><td>Specific purpose, necessity, customer expectations, objection route, and whether to remove these fields altogether.</td></tr>
+              <tr><td>Secure sign-in and prevent abuse</td><td>Assess legitimate interests/security obligations for the business's access controls.</td><td>Short retention for pseudonymous login counters, host logs, and who can access those records.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small muted"><strong>People represented:</strong> mostly EU consumer buyers, occasional business buyers, and individual suppliers/dealer contacts where the profile relates to a person. Names entered for businesses may still identify a natural-person contact. Delivery recipients may be represented in UPS even when their address is not stored in WRISTBY.</p>
+      </section>
+
+      <section class="section">
+        <h2>External data flows and hosting</h2>
+        <ul>
+          <li><strong>cPanel:</strong> the owner says the live app and database are in a cPanel environment. cPanel is hosting-control-panel software; the company that operates and bills for the actual server is the provider whose service terms, security measures, data location, and backup policy must be checked. The workspace's <code>.replit</code> file still contains a Replit Autoscale deployment setting, so that file is not evidence of the live cPanel server or its region.</li>
+          <li><strong>UPS:</strong> the owner says customer details are entered directly when arranging shipping. This is an external handoff, not an API transfer from WRISTBY. Send only the fields needed for the shipment, include the relevant recipient/service in the customer information, and check UPS's current EEA privacy notice and applicable terms. Do not assume UPS is merely a processor; its notice describes controller responsibilities for its own purposes.</li>
+          <li><strong>Google Gemini:</strong> the app makes authenticated calls to Google's Gemini API for watch listing text, captions, and movement-spec lookup. The built-in requests contain watch attributes such as brand, model/reference, year, condition, accessories, and sometimes list price—not buyer name, email, or phone. Admin-editable prompts are another input path, so never place client contact details or other personal data in those templates. Verify the API service/tier, current data-use terms, processing addendum, region, and retention before including any personal data.</li>
+          <li><strong>Google Drive:</strong> WRISTBY can store and open a Drive folder link for a watch; it does not upload the folder contents through an in-app Drive API. If a linked folder contains invoices, warranty files, or customer contact information, Drive becomes part of the records and must be included in the privacy/provider review.</li>
+          <li><strong>Photos:</strong> the database schema has a text-array image field, but no in-app upload or photo-storage flow was found in the reviewed source. Check whether this legacy field is populated and whether existing photo URLs or linked files reveal identifiable information.</li>
+        </ul>
+        <div class="banner caution">
+          <strong>Hosting, backups, and provider contracts are unverified.</strong>
+          No production console, database rows, secret values, account credentials, or backups were accessed. The underlying host, server/data region, backup locations and expiry, TLS/at-rest encryption, recovery tests, and written agreements need provider documentation or confirmation.
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Controls already visible in code</h2>
+        <ul>
+          <li>Public registration is denied; data APIs require an authenticated session and an existing app user.</li>
+          <li>The password-based login uses a server-side PostgreSQL session store and bcrypt password verification. Session cookies are configured HttpOnly, SameSite Lax, secure in production, and expire after one week.</li>
+          <li>Write requests are restricted to same-origin; API responses use <code>Cache-Control: no-store</code>. Security headers include content-type protection and a restrictive referrer policy.</li>
+          <li>Request logs are limited to route/method/status/timing and omit request bodies, query strings, headers, cookies, and user-provided IDs. The shared error handler avoids logging raw error objects.</li>
+        </ul>
+        <p><strong>Still to verify:</strong> HTTPS/TLS enforcement and HSTS at the actual cPanel proxy; database and backup encryption; host staff/support access; backups and restoration; monitoring/log retention at the hosting provider; multi-user and MFA needs; and access/audit history for changes to client records. The code-level session settings alone do not prove these hosting controls are active.</p>
+      </section>
+
+      <section class="section">
+        <h2>Priority risks and decisions</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Priority</th><th>Finding</th><th>Decision or evidence needed</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="status risk">High</span></td>
+                <td>“12 months is the legal minimum” is not confirmed. Dutch statutory consumer rights do not have one fixed period; country rules and second-hand terms can differ.</td>
+                <td>Ask a Dutch consumer-law adviser to review the written warranty, statutory-rights notice, watch condition, and each market where you actively sell.</td>
+              </tr>
+              <tr>
+                <td><span class="status risk">High</span></td>
+                <td>Deleting a Client removes the profile and unlinks watch records, but a sold watch can retain the buyer's name in its free-text sale record. Deleting a watch also deletes linked expenses.</td>
+                <td>Do not present the current Client deletion button as complete erasure. Decide how to separate a retained transaction record from optional profile/contact data before changing deletion.</td>
+              </tr>
+              <tr>
+                <td><span class="status risk">High</span></td>
+                <td>cPanel is reported, but the underlying hosting company, database/backup locations, retention periods, and agreements are unknown. The workspace deployment file still names Replit Autoscale.</td>
+                <td>Identify the company actually paid to host production and PostgreSQL; obtain its security, region, backup, deletion, incident-notification, and processing-contract documents. Confirm whether Replit is also a production processor or only a development service.</td>
+              </tr>
+              <tr>
+                <td><span class="status open">Medium</span></td>
+                <td>Social handle, website, VIP flag, and unconstrained notes add optional personal data; there is no guidance to keep sensitive or irrelevant details out of notes.</td>
+                <td>Confirm each field's purpose. Do not collect special-category details in notes; remove or restrict fields that are not necessary.</td>
+              </tr>
+              <tr>
+                <td><span class="status open">Medium</span></td>
+                <td>There is no in-app privacy-request log, complete client export, approved retention schedule, legal hold, or auditable erasure process.</td>
+                <td>Design an owner-only process with minimal identity checks, response reminders, decisions/retention exceptions, and a record of completion. The general response period is one month; applicable extensions need timely notice.</td>
+              </tr>
+              <tr>
+                <td><span class="status open">Medium</span></td>
+                <td>Accounting retention, warranty evidence, optional profile data, tracking details, and backup retention are not separated into approved schedules.</td>
+                <td>Map retention to record type, purpose, and trigger date. Do not automatically apply an accounting period to every contact field or set deletion dates before advice.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The Dutch Tax Administration describes seven years for many core records and ten years for some specified categories. That is a rule for applicable administrative records, not a blanket instruction to retain every personal profile field for seven years. Have an accountant identify which WRISTBY records are actually part of the required administration and when each period starts.</p>
+      </section>
+
+      <section class="section">
+        <h2>Prioritised feature roadmap</h2>
+        <div class="roadmap">
+          <article class="roadmap-item">
+            <h3><span class="priority">Phase 0</span> Confirm the policy and providers</h3>
+            <p>Prepare a compact record-of-processing inventory: purpose, data subjects, categories, source, access, recipients, lawful-basis candidate, retention trigger/period, security, and transfer. Confirm controller identity/contact, exact EU customer countries, consumer versus business sales, warranty terms, accounting categories, actual host/database/backup providers, and Gemini/Drive/UPS arrangements. Screen whether a formal DPIA is necessary. Have legal/accounting decisions reviewed before encoding them.</p>
+          </article>
+          <article class="roadmap-item">
+            <h3><span class="priority">Phase 1</span> Minimise data and inform customers</h3>
+            <p>Keep only fields with a confirmed purpose; make optional profile fields clearly optional and guide users not to enter sensitive or unnecessary details in free-text notes. Provide a clear privacy notice at or before collection with controller contact, purposes, basis, recipients, periods, rights, and complaint route. A consent checkbox is not a substitute for choosing the correct lawful basis. Add a cookie banner only if the live app uses non-essential cookies or similar tracking.</p>
+          </article>
+          <article class="roadmap-item">
+            <h3><span class="priority">Phase 2</span> Handle privacy requests on time</h3>
+            <p>Add an owner-only request log for access, rectification, restriction, objection, portability, and erasure; track received date, verification completed without saving copies of identity papers, response due date, extension/reason where permitted, outcome, and closure. Generate a secure export covering Client fields and linked buyer/seller transactions, while screening other people's information and statutory exceptions. The normal response period is one month.</p>
+          </article>
+          <article class="roadmap-item">
+            <h3><span class="priority">Phase 3</span> Apply approved retention and legal holds</h3>
+            <p>Separate optional contact/profile data from customer identity and evidence actually required for accounting, warranty, or legal claims. After periods and start dates are approved, apply per-category retention, legal holds, scheduled review, documented deletion or anonymisation, and backup expiry. Preserve required records without keeping every optional detail indefinitely. Do not automate destructive cleanup until policies and recovery are signed off.</p>
+          </article>
+          <article class="roadmap-item">
+            <h3><span class="priority">Phase 4</span> Protect access, suppliers, and response</h3>
+            <p>Confirm HTTPS, encryption, least-privilege access, MFA, session revocation, and backup restoration at the real host. Keep a small audit trail of access/change actions without copying client data into logs. Verify written processor terms and transfers for the actual host, Google services, Drive, and UPS; keep a breach-response register/checklist with escalation and the conditional 72-hour supervisory-authority notification rule.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Owner and adviser decisions before implementation</h2>
+        <ol>
+          <li>The legal name/contact details of the business responsible for the client records, and the channel clients should use for privacy requests.</li>
+          <li>The exact countries in which consumer sales are made, and whether sales are actively offered across borders.</li>
+          <li>The seller's 12-month warranty wording, how it interacts with statutory consumer rights, how second-hand condition is disclosed, and what evidence is needed when a claim is raised.</li>
+          <li>Which financial records form part of Dutch or other applicable accounting records; their approved retention trigger and period; and any litigation or warranty holds.</li>
+          <li>The actual hosting company, server and database regions, backup provider/locations/expiry, encryption and restoration terms. cPanel's own documentation explains that it supplies hosting software; identify the company that actually hosts the website.</li>
+          <li>Whether Google Drive folders hold invoices or customer records; the Google Gemini service/tier and current terms; and the exact personal fields entered into UPS and its terms. Provider roles and any international transfers must be checked from the applicable contracts and notices.</li>
+        </ol>
+      </section>
+
+      <section class="section">
+        <h2>Official sources checked</h2>
+        <ul class="source-list">
+          <li><a href="https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/principles-gdpr_en" target="_blank" rel="noreferrer">European Commission — GDPR principles</a><br><span class="small muted">Lawfulness, purpose limitation, minimisation, accuracy, storage limitation, security, and accountability.</span></li>
+          <li><a href="https://commission.europa.eu/law/law-topic/data-protection/information-individuals_en" target="_blank" rel="noreferrer">European Commission — information and individual rights</a></li>
+          <li><a href="https://commission.europa.eu/law/law-topic/data-protection/rules-business-and-organisations/dealing-individuals-requests/how-should-requests-individuals-exercising-their-data-protection-rights-be-dealt_en" target="_blank" rel="noreferrer">European Commission — responding to rights requests</a><br><span class="small muted">In principle, reply without undue delay and within one month of receiving a request.</span></li>
+          <li><a href="https://www.consuwijzer.nl/garantie-reparatie-geld-terug/gekocht-maar-kapot/wat-zijn-mijn-rechten" target="_blank" rel="noreferrer">ACM ConsuWijzer — statutory guarantee in the Netherlands</a><br><span class="small muted">The statutory term is not fixed; expected product life and purchase circumstances matter.</span></li>
+          <li><a href="https://europa.eu/youreurope/citizens/consumers/shopping/guarantees/index_nl.htm" target="_blank" rel="noreferrer">Your Europe — EU guarantees, including second-hand goods</a></li>
+          <li><a href="https://www.belastingdienst.nl/wps/wcm/connect/bldcontentnl/belastingdienst/zakelijk/ondernemen/administratie/hoelang-moet-u-gegevens-bewaren" target="_blank" rel="noreferrer">Dutch Tax Administration — retention by administrative record category</a></li>
+          <li><a href="https://www.autoriteitpersoonsgegevens.nl/en/themes/basic-gdpr/gdpr-basics/controller-and-processor" target="_blank" rel="noreferrer">Dutch Data Protection Authority — controller and processor responsibilities</a></li>
+          <li><a href="https://autoriteitpersoonsgegevens.nl/en/themes/security/data-breaches/this-is-how-you-report-a-data-breach" target="_blank" rel="noreferrer">Dutch Data Protection Authority — breach reporting</a></li>
+          <li><a href="https://docs.cpanel.net/knowledge-base/cpanel-product/how-to-identify-your-hosting-provider/" target="_blank" rel="noreferrer">cPanel documentation — identify the actual hosting provider</a></li>
+          <li><a href="https://www.ups.com/gb/en/support/shipping-support/legal-terms-conditions/privacy-notice" target="_blank" rel="noreferrer">UPS — EEA/UK privacy notice</a></li>
+          <li><a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noreferrer">Google — Gemini API terms and data-use terms</a></li>
+          <li><a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj" target="_blank" rel="noreferrer">EUR-Lex — General Data Protection Regulation (EU) 2016/679</a></li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      No client records or credentials were read; no database, hosting, or account changes were made. This report is a technical readiness map for review and must not be treated as a legal guarantee.
+    </footer>
+  </div>
+</body>
+</html>

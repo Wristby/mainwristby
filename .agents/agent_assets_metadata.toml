@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "4yLzjmxZqJr58bOh-hOxn"
+uri = "file://docs/gdpr-readiness-map.html"
+type = "html"
+title = "WRISTBY GDPR Readiness Map"
+description = "WRISTBY's data-flow inventory, verified safeguards, open legal/provider decisions, and prioritized roadmap. No client records are included."
+logical_id = "098eb75c-c8ef-423b-b37a-1d36d2eebbdc"
+content_hash = "sha256:a004d00b549f5d740eea656ca9972575e0c24371fc3fb33b6c53c793c420e8b2"
+size = 31806
+mtime_ms = 1792661073371
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:dc971a96-a384-479a-8aa3-8af1e59cd131/098eb75c-c8ef-423b-b37a-1d36d2eebbdc/545ca8f6-47bd-410b-bf0a-954531caf11d"
+storage_version_token = "1792661137028582"
+content_type = "text/html"
