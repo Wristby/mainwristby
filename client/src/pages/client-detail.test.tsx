@@ -28,6 +28,11 @@ vi.mock("@/hooks/use-clients", () => ({
   useDeleteClient: () => ({ mutate: vi.fn() }),
 }));
 vi.mock("@/lib/queryClient", () => ({ queryClient: { invalidateQueries: vi.fn() } }));
+// History/summary tests isolate the independently tested privacy controls.
+vi.mock("@/components/retention-controls", () => ({
+  ClientRetentionDialog: ({ clientId }: { clientId: number }) =>
+    <button aria-label={`Privacy preview for client ${clientId}`}>Privacy preview</button>,
+}));
 
 const watch = (id: number, extra = {}) => ({
   id, brand: "Fixture", model: `Watch-${id}`, referenceNumber: `REF-${id}`,

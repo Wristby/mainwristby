@@ -8,6 +8,18 @@ The user intends to retain some client records for warranty and financial purpos
 
 **How to apply:** Treat warranty and financial records as central retention requirements, but validate their scope and periods with appropriate Dutch legal/accounting sources. Do not infer that all optional Client contact/profile fields should be retained for the same length of time.
 
+Retention purposes, start triggers and periods require the owner's and
+accountant/legal adviser's approval. Permission to build retention safeguards is
+not permission to approve a schedule or claim that the external host's backup
+expiry has been verified.
+
+**Why:** The retention work was explicitly conditioned on those approvals; no
+approved legal periods or verified host backup controls were supplied.
+
+**How to apply:** Leave periods unset until supplied, distinguish approval
+attestations from independently verified sign-off, and keep external backup
+verification pending until the actual hosting provider's controls are confirmed.
+
 Current user-reported context: the live app and database are in a cPanel environment; customers are EU-based, mostly consumers; the seller offers a 12-month watch warranty; and customer shipping details are entered into UPS. The underlying hosting company, database region, and backup location are not yet confirmed.
 
 **Why:** The user provided these business facts while requesting a WRISTBY privacy assessment.

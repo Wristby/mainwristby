@@ -4,6 +4,8 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { storage, SaleBuyerSaveError } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { registerRetentionRoutes, RetentionError } from "./retention";
+import { retentionKey } from "@shared/retention";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -120,6 +122,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Setup Auth
   await setupAuth(app);
+  registerRetentionRoutes(app);
 
   // === API ROUTES ===
 
@@ -166,6 +169,7 @@ export async function registerRoutes(
       await storage.deleteClient(Number(req.params.id));
       res.sendStatus(204);
     } catch (err) {
+      if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
       res.status(404).json({ message: "Client not found" });
     }
   });
@@ -218,6 +222,7 @@ export async function registerRoutes(
       await storage.deleteInventoryItem(Number(req.params.id));
       res.sendStatus(204);
     } catch (err) {
+      if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
       res.status(404).json({ message: "Item not found" });
     }
   });
@@ -263,6 +268,7 @@ export async function registerRoutes(
       const expense = await storage.updateExpense(Number(req.params.id), input);
       res.json(expense);
     } catch (err) {
+      if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
@@ -275,6 +281,7 @@ export async function registerRoutes(
       await storage.deleteExpense(Number(req.params.id));
       res.sendStatus(204);
     } catch (err) {
+      if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
       res.status(404).json({ message: "Expense not found" });
     }
   });
@@ -293,6 +300,7 @@ export async function registerRoutes(
 
   app.put("/api/settings/:key", isAuthenticated, async (req, res) => {
     const key = String(req.params.key);
+    if (key === retentionKey) return res.status(409).json({ message: "Use the dedicated retention schedule approval controls." });
     const { value } = req.body;
     if (value === undefined) {
       return res.status(400).json({ message: "Value is required" });

@@ -45,7 +45,10 @@ export function useUpdateExpense() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to update expense");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to update expense");
+      }
       return api.expenses.update.responses[200].parse(await res.json());
     },
     onSuccess: () => {
@@ -60,7 +63,10 @@ export function useDeleteExpense() {
     mutationFn: async (id: number) => {
       const url = buildUrl(api.expenses.delete.path, { id });
       const res = await fetch(url, { method: api.expenses.delete.method, credentials: "include" });
-      if (!res.ok) throw new Error("Failed to delete expense");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to delete expense");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });

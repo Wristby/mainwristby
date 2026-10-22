@@ -89,7 +89,10 @@ export function useDeleteInventory() {
     mutationFn: async (id: number) => {
       const url = buildUrl(api.inventory.delete.path, { id });
       const res = await fetch(url, { method: api.inventory.delete.method, credentials: "include" });
-      if (!res.ok) throw new Error("Failed to delete inventory item");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to delete inventory item");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });

@@ -49,6 +49,7 @@ import { QuickEstimate } from "@/components/quick-estimate";
 import { DeliveryStatus } from "@/components/delivery-status";
 import { SaleBuyerFields } from "@/components/sale-buyer-fields";
 import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuyerInput } from "@shared/sale-buyer";
+import { TransactionParties } from "@/components/retention-controls";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -675,7 +676,10 @@ export default function InventoryDetail() {
       deleteMutation.mutate(id, {
         onSuccess: () => {
           window.location.href = "/inventory";
-        }
+        },
+        onError: (err) => {
+          toast({ title: "Error", description: err.message, variant: "destructive" });
+        },
       });
     }
   };
@@ -1402,10 +1406,16 @@ export default function InventoryDetail() {
               </form>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={handleDelete} data-testid="button-delete-watch">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={handleDelete} data-testid="button-delete-watch">
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+            <p className="max-w-[300px] text-right text-[11px] leading-4 text-slate-500">
+              Transaction and expense records are protected from deletion. For client profile cleanup, use the{" "}
+              <Link href="/clients" className="font-medium text-emerald-700 underline underline-offset-2">clients privacy preview</Link>.
+            </p>
+          </div>
         </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1684,6 +1694,8 @@ export default function InventoryDetail() {
                   </div>
                 )}
               </div>
+
+              <TransactionParties inventoryId={id} />
 
               {/* Shipping Details - shows when info exists and item is not sold (sold items show in Transaction pillar) */}
               {item.status !== 'sold' && (item.shippingPartner || item.trackingNumber) && (

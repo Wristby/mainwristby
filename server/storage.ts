@@ -8,6 +8,8 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { matchingBuyerContact, sameBuyerContact, type SaleBuyerInput } from "@shared/sale-buyer";
+import { RetentionError } from "./retention";
+import { retentionKey } from "@shared/retention";
 
 export class SaleBuyerSaveError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -99,16 +101,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateClient(id: number, updates: UpdateClientRequest): Promise<Client> {
-    const [client] = await db.update(clients).set(updates).where(eq(clients.id, id)).returning();
+    const [client] = await db.update(clients).set({
+      ...updates, profileUpdatedAt: new Date(), profileClearedAt: null,
+    }).where(eq(clients.id, id)).returning();
     return client;
   }
 
   async deleteClient(id: number): Promise<void> {
-    await db.transaction(async tx => {
-      await tx.update(inventory).set({ clientId: null }).where(eq(inventory.clientId, id));
-      await tx.update(inventory).set({ buyerId: null }).where(eq(inventory.buyerId, id));
-      await tx.delete(clients).where(eq(clients.id, id));
-    });
+    throw new RetentionError("Client deletion is protected. Use the retention preview to clear optional profile details while preserving required transaction records.");
   }
 
   // Inventory
@@ -156,25 +156,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
-    if (saleBuyer) {
-      return db.transaction(async tx => {
-        // Serialize saves of the same watch, including retries after a lost response.
-        const [current] = await tx.select().from(inventory).where(eq(inventory.id, id)).for("update");
-        if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
-        const { buyerId, soldTo } = await resolveSaleBuyer(tx, saleBuyer, current.buyerId);
-        const [item] = await tx.update(inventory).set({ ...updates, buyerId, soldTo })
-          .where(eq(inventory.id, id)).returning();
-        await this.syncWatchFeesToExpenses(item, tx);
-        return item;
-      });
+    // Delivery-only confirmation never rewrites or corrects financial records.
+    if (!saleBuyer && Object.keys(updates).every(key => key === "deliveredDate")) {
+      const [item] = await db.update(inventory).set(updates).where(eq(inventory.id, id)).returning();
+      if (!item) throw new Error("Item not found");
+      return item;
     }
-    const [item] = await db.update(inventory).set(updates).where(eq(inventory.id, id)).returning();
-    if (!item) throw new Error("Item not found");
-    // Delivery confirmation must not rewrite existing financial/expense entries.
-    if (Object.keys(updates).every(key => key === "deliveredDate")) return item;
-    // Sync watch fees to expenses
-    await this.syncWatchFeesToExpenses(item);
-    return item;
+    return db.transaction(async tx => {
+      // Serialize fee corrections as well as buyer changes. Watch and expense
+      // totals commit together; retries cannot append duplicate corrections.
+      const [current] = await tx.select().from(inventory).where(eq(inventory.id, id)).for("update");
+      if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
+      const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer, current.buyerId) : {};
+      const [item] = await tx.update(inventory).set({ ...updates, ...buyer })
+        .where(eq(inventory.id, id)).returning();
+      await this.syncWatchFeesToExpenses(item, tx);
+      return item;
+    });
   }
 
   async updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem> {
@@ -220,40 +218,25 @@ export class DatabaseStorage implements IStorage {
           sql`${expenses.description} LIKE ${`${feeType.label}%`}`
         ));
 
-      const existingExpense = existingExpenses[0];
-
-      if (feeValue > 0) {
-        if (existingExpense) {
-          // Update existing expense
-          await connection.update(expenses)
-            .set({ 
-              amount: feeValue, 
-              description,
-              date: feeDate,
-              category: feeType.category 
-            })
-            .where(eq(expenses.id, existingExpense.id));
-        } else {
-          // Create new expense
-          await connection.insert(expenses).values({
-            inventoryId: item.id,
-            description,
-            amount: feeValue,
-            date: feeDate,
-            category: feeType.category,
-            isRecurring: false
-          });
-        }
-      } else if (existingExpense) {
-        // Remove expense if fee is now 0
-        await connection.delete(expenses).where(eq(expenses.id, existingExpense.id));
+      // Preserve originals, including their amounts and dates. An append-only
+      // correction brings the sum to the current fee, even when it becomes zero.
+      const recordedTotal = existingExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+      const correction = feeValue - recordedTotal;
+      if (correction !== 0) {
+        await connection.insert(expenses).values({
+          inventoryId: item.id,
+          description: existingExpenses.length ? `${description} (correction)` : description,
+          amount: correction,
+          date: existingExpenses.length ? new Date() : feeDate,
+          category: feeType.category,
+          isRecurring: false,
+        });
       }
     }
   }
 
   async deleteInventoryItem(id: number): Promise<void> {
-    await db.delete(expenses).where(eq(expenses.inventoryId, id)); // Cascade delete expenses
-    await db.delete(inventory).where(eq(inventory.id, id));
+    throw new RetentionError("Watch and linked expense records are protected from deletion. Retention expiry requires a separate transaction-record review.");
   }
 
   // Expenses
@@ -284,6 +267,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateExpense(id: number, updates: Partial<InsertExpense>): Promise<Expense> {
+    const original = await this.getExpense(id);
+    if (!original) throw new Error("Expense not found");
+    if (original.inventoryId && FEE_TYPES.some(fee => original.description.startsWith(fee.label))) {
+      throw new RetentionError("Watch-fee expense history is protected. Correct the fee on the watch to record an adjustment without changing the original expense.");
+    }
     const [expense] = await db.update(expenses).set(updates).where(eq(expenses.id, id)).returning();
     if (!expense) {
       throw new Error("Expense not found");
@@ -292,7 +280,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteExpense(id: number): Promise<void> {
-    await db.delete(expenses).where(eq(expenses.id, id));
+    throw new RetentionError("Financial expense records are protected from deletion. Retention expiry requires a separate transaction-record review.");
   }
 
   // Stats
@@ -371,6 +359,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertSetting(key: string, value: any): Promise<Setting> {
+    if (key === retentionKey) throw new RetentionError("Use the dedicated retention schedule approval controls.");
     const [result] = await db
       .insert(settings)
       .values({ key, value })

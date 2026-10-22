@@ -185,16 +185,50 @@ describe("atomic watch buyer persistence", () => {
     expect(state.inventory[0]).toMatchObject({ clientId: 91, buyerId: null, soldTo: null });
     expect(state.clients).toHaveLength(1);
   });
-  it("unlinks both buyer and seller roles when deleting a client, preserving sale history", async () => {
+  it("protects both buyer and seller links against legacy client deletion", async () => {
     state.inventory[0].buyerId = 91;
-    await storage.deleteClient(91);
-    expect(state.inventory[0]).toMatchObject({ buyerId: null, clientId: null, soldTo: "Historical name" });
-    expect(state.clients).toEqual([]);
+    const before = structuredClone(state);
+    await expect(storage.deleteClient(91)).rejects.toThrow("retention preview");
+    expect(state).toEqual(before);
   });
-  it("rolls back unlinking if deleting the client fails", async () => {
+  it("rejects deletion before attempting any database unlink or delete", async () => {
     state.inventory[0].buyerId = 91;
     const before = structuredClone(state); fixture.failure = "delete";
-    await expect(storage.deleteClient(91)).rejects.toThrow("Fixture failure");
+    await expect(storage.deleteClient(91)).rejects.toThrow("protected");
+    expect(fixture.operations).toEqual([]);
+    expect(state).toEqual(before);
+  });
+  it("retains a sold watch's original expense when its fee is edited to zero", async () => {
+    state.inventory[0].serviceFee = 500;
+    state.expenses.push({
+      id: 42, inventoryId: 11, description: "Service Fee - Original invoice",
+      amount: 500, date: new Date("2020-01-01Z"), category: "service", isRecurring: false,
+    });
+    const original = structuredClone(state.expenses[0]);
+    await storage.updateInventoryItem(11, { serviceFee: 0 });
+    expect(state.inventory[0].serviceFee).toBe(0);
+    expect(state.expenses.find(e => e.id === 42)).toEqual(original);
+    expect(state.expenses).toContainEqual(expect.objectContaining({
+      inventoryId: 11, amount: -500, category: "service",
+      description: expect.stringContaining("(correction)"),
+    }));
+    expect(state.expenses.reduce((sum, expense) => sum + expense.amount, 0)).toBe(0);
+    expect(fixture.operations).not.toContain("delete:expenses");
+    const count = state.expenses.length;
+    await storage.updateInventoryItem(11, { serviceFee: 0 });
+    expect(state.expenses).toHaveLength(count);
+    await storage.updateInventoryItem(11, { serviceFee: 300 });
+    expect(state.expenses.find(e => e.id === 42)).toEqual(original);
+    expect(state.expenses.reduce((sum, expense) => sum + expense.amount, 0)).toBe(300);
+    await expect(storage.updateExpense(42, { amount: 0 })).rejects.toThrow("history is protected");
+    expect(state.expenses.find(e => e.id === 42)).toEqual(original);
+  });
+  it("rolls back the watch fee change if its correction cannot be recorded", async () => {
+    state.inventory[0].serviceFee = 500;
+    state.expenses.push({ id: 42, inventoryId: 11, description: "Service Fee - Original", amount: 500 });
+    const before = structuredClone(state);
+    fixture.failure = "expenses";
+    await expect(storage.updateInventoryItem(11, { serviceFee: 0 })).rejects.toThrow("Fixture failure");
     expect(state).toEqual(before);
   });
 });

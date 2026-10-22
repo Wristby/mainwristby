@@ -4,8 +4,10 @@ const mocks = vi.hoisted(() => ({
   saved: {} as Record<string, unknown>,
   updates: {} as Record<string, unknown>,
 }));
-vi.mock("../../../server/db", () => ({
-  db: {
+vi.mock("../../../server/db", () => {
+  const connection: any = {
+    transaction: (callback: (tx: any) => unknown) => callback(connection),
+    select: () => ({ from: () => ({ where: () => ({ for: async () => [mocks.saved] }) }) }),
     update: () => ({
       set: (updates: Record<string, unknown>) => {
         mocks.updates = updates;
@@ -15,8 +17,9 @@ vi.mock("../../../server/db", () => ({
         } }) };
       },
     }),
-  },
-}));
+  };
+  return { db: connection };
+});
 import { DatabaseStorage } from "../../../server/storage";
 import { api } from "@shared/routes";
 

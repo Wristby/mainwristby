@@ -21,6 +21,44 @@ export const settings = pgTable("settings", {
 
 export type Setting = typeof settings.$inferSelect;
 
+// Holds apply to a profile or a watch (including its financial/expense records).
+// recordId intentionally has no FK: a hold must never cascade away.
+export const retentionHolds = pgTable("retention_holds", {
+  id: serial("id").primaryKey(),
+  scope: text("scope", { enum: ["client", "inventory"] }).notNull(),
+  recordId: integer("record_id").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  releasedAt: timestamp("released_at"),
+  releaseReason: text("release_reason"),
+});
+
+// An identity belongs to a transaction, not to its optional CRM profile.
+// Populated on profile cleanup without copying contact details or CRM notes.
+export const transactionParties = pgTable("transaction_parties", {
+  id: serial("id").primaryKey(),
+  inventoryId: integer("inventory_id").references(() => inventory.id).notNull(),
+  role: text("role", { enum: ["buyer", "seller"] }).notNull(),
+  name: text("name").notNull(),
+  retainedAt: timestamp("retained_at").defaultNow().notNull(),
+});
+
+// No names, contacts, hold reasons or approval references in the audit trail.
+export const retentionAudit = pgTable("retention_audit", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(),
+  recordId: integer("record_id"),
+  revision: text("revision"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Append-only evidence of the exact schedule in effect for each audit revision.
+export const retentionPolicies = pgTable("retention_policies", {
+  revision: text("revision").primaryKey(),
+  schedule: jsonb("schedule").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // === CLIENTS ===
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
@@ -34,9 +72,13 @@ export const clients = pgTable("clients", {
   notes: text("notes"),
   isVip: boolean("is_vip").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  profileUpdatedAt: timestamp("profile_updated_at").defaultNow().notNull(),
+  profileClearedAt: timestamp("profile_cleared_at"),
 });
 
-export const insertClientSchema = createInsertSchema(clients).omit({ id: true, createdAt: true });
+export const insertClientSchema = createInsertSchema(clients).omit({
+  id: true, createdAt: true, profileUpdatedAt: true, profileClearedAt: true,
+});
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
 

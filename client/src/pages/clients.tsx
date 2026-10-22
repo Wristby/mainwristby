@@ -1,4 +1,4 @@
-import { useClients, useCreateClient, useDeleteClient } from "@/hooks/use-clients";
+import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
@@ -19,26 +19,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Loader2, Phone, Mail, User, Star, Globe, Trash2 } from "lucide-react";
+import { Search, Plus, Loader2, Phone, Mail, User, Star, Globe } from "lucide-react";
 import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertClientSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { ClientRetentionDialog, RetentionSchedulePanel } from "@/components/retention-controls";
 
 type CreateClientFormValues = z.infer<typeof insertClientSchema>;
 
@@ -72,7 +62,6 @@ export default function Clients() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const { toast } = useToast();
   const createMutation = useCreateClient();
-  const deleteMutation = useDeleteClient();
 
   const form = useForm<CreateClientFormValues>({
     resolver: zodResolver(insertClientSchema),
@@ -95,17 +84,6 @@ export default function Clients() {
         setIsCreateOpen(false);
         form.reset();
         toast({ title: "Success", description: "Client added successfully" });
-      },
-      onError: (err) => {
-        toast({ title: "Error", description: err.message, variant: "destructive" });
-      },
-    });
-  };
-
-  const handleDelete = (id: number) => {
-    deleteMutation.mutate(id, {
-      onSuccess: () => {
-        toast({ title: "Success", description: "Client deleted successfully" });
       },
       onError: (err) => {
         toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -212,6 +190,7 @@ export default function Clients() {
           </DialogContent>
         </Dialog>
       </div>
+      <RetentionSchedulePanel />
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <div className="relative mb-6">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -237,13 +216,13 @@ export default function Clients() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-slate-400">
+                  <TableCell colSpan={5} className="text-center py-8 text-slate-400">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
               ) : filteredClients?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-slate-400">
+                  <TableCell colSpan={5} className="text-center py-8 text-slate-400">
                     No clients found.
                   </TableCell>
                 </TableRow>
@@ -310,30 +289,7 @@ export default function Clients() {
                        {client.createdAt ? new Date(client.createdAt).toLocaleDateString() : '-'}
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-white border-slate-200">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the client and unlink them from any inventory records.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel className="border-slate-200">Cancel</AlertDialogCancel>
-                            <AlertDialogAction 
-                              onClick={() => handleDelete(client.id)}
-                              className="bg-red-500 hover:bg-red-600 text-white"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <ClientRetentionDialog clientId={client.id} />
                     </TableCell>
                   </TableRow>
                 ))
