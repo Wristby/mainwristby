@@ -1,4 +1,5 @@
 import { useClients, useCreateClient } from "@/hooks/use-clients";
+import { LegacyBuyerSync } from "@/components/legacy-buyer-sync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLocation } from "wouter";
@@ -97,6 +98,7 @@ export default function Clients() {
 
   return (
     <div className="space-y-6">
+      <LegacyBuyerSync clients={clients} />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Clients</h2>

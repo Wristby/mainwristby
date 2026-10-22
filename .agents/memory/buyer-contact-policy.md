@@ -8,8 +8,8 @@ Named sale buyers may become Clients with whatever contact information is availa
 
 **How to apply:** Preserve this rule in future buyer-entry flows. Do not make missing phone, country, or email block a named buyer.
 
-Do not silently merge people solely because their names match, overwrite an existing Client through a watch save, or bulk-create Clients from historical name-only sales.
+Do not silently merge people solely because their names match or overwrite an existing Client through a watch save. Historical buyer names may now be backfilled, but possible matches to existing Clients or repeated unlinked buyer names require review before linking or creating a separate Client.
 
-**Why:** Names are not unique; incorrect automatic links can attribute a sale to the wrong person. Historical imports and implicit profile overwrites were outside the approved scope.
+**Why:** Names are not unique; incorrect automatic links can attribute a sale to the wrong person. The user explicitly requested historical buyer backfill and chose “Review possible matches before linking.” Implicit profile overwrites remain outside the approved scope.
 
-**How to apply:** Let the user explicitly select existing Clients. Detect matching contact information before creating a duplicate, while allowing different people to share a name. Keep unrelated edits to legacy sales from changing the Client directory.
+**How to apply:** Let the user explicitly select existing Clients. Detect matching contact information before creating a duplicate, while allowing different people to share a name. Backfill only unlinked historical buyers; never infer missing contact details from notes or restore details cleared by retention.

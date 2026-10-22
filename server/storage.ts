@@ -96,15 +96,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createClient(insertClient: InsertClient): Promise<Client> {
-    const [client] = await db.insert(clients).values(insertClient).returning();
-    return client;
+    return db.transaction(async tx => {
+      await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
+      const [client] = await tx.insert(clients).values(insertClient).returning();
+      return client;
+    });
   }
 
   async updateClient(id: number, updates: UpdateClientRequest): Promise<Client> {
-    const [client] = await db.update(clients).set({
-      ...updates, profileUpdatedAt: new Date(), profileClearedAt: null,
-    }).where(eq(clients.id, id)).returning();
-    return client;
+    return db.transaction(async tx => {
+      await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
+      const [client] = await tx.update(clients).set({
+        ...updates, profileUpdatedAt: new Date(), profileClearedAt: null,
+      }).where(eq(clients.id, id)).returning();
+      return client;
+    });
   }
 
   async deleteClient(id: number): Promise<void> {

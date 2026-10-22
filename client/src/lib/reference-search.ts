@@ -8,8 +8,9 @@ const additionalSearchFields = [
 export type ReferenceWatch = Pick<InventoryItem, "id" | "brand" | "model" | "referenceNumber" | "serialNumber" | "status">
   & Partial<Pick<InventoryItem, typeof additionalSearchFields[number]>>;
 
+const combiningMarks = new RegExp("\\p{M}", "gu");
 const normalize = (value: unknown) => String(value ?? "").normalize("NFKD")
-  .replace(/\p{M}/gu, "").toLowerCase().trim();
+  .replace(combiningMarks, "").toLowerCase().trim();
 
 /** Search watch details across all inventory statuses without mutating source data. */
 export function findReferenceMatches<T extends ReferenceWatch>(watches: readonly T[], query: string): T[] {

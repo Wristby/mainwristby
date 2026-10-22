@@ -6,6 +6,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { registerRetentionRoutes, RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
+import { registerClientBackfillRoutes } from "./client-backfill";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -127,6 +128,7 @@ export async function registerRoutes(
   // === API ROUTES ===
 
   // Clients
+  registerClientBackfillRoutes(app);
   app.get(api.clients.list.path, isAuthenticated, async (req, res) => {
     const clients = await storage.getClients();
     res.json(clients);
