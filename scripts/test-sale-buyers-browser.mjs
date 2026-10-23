@@ -106,6 +106,9 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send("Page.navigate", { url: `${base}/inventory/11` });
   await wait("document.querySelector('main')?.innerText.includes('Historical name')");
+  const pageBackground = await evaluate("getComputedStyle(document.querySelector('.wm-main-scroll')).backgroundColor");
+  assert.equal(pageBackground, "rgb(242, 243, 245)");
+  await writeFile("/tmp/watch-detail-neutral-background.jpg", Buffer.from((await send("Page.captureScreenshot", { format: "jpeg", quality: 80 })).data, "base64"));
   const financialCardColors = await evaluate(`(() => {const card=label=>{const title=[...document.querySelectorAll('p')].find(el=>el.textContent.trim()===label),wrapper=title?.parentElement,value=wrapper?.querySelectorAll('p')[1];return {background:getComputedStyle(wrapper).backgroundColor,value:getComputedStyle(value).color}};return {sale:card('Sale Price'),profit:card('Net Profit')}})()`);
   assert.equal(financialCardColors.profit.background, financialCardColors.sale.background);
   assert.equal(financialCardColors.profit.value, financialCardColors.sale.value);
