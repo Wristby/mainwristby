@@ -1555,11 +1555,11 @@ export default function InventoryDetail() {
                     <p className="text-xl font-bold text-violet-700">{formatCurrency(item.listPrice)}</p>
                   </div>
                 )}
-                <div className="p-4 bg-[#f4f7f4] rounded-xl border border-[#dce7dd]">
+                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
                   <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider mb-1">Sale Price</p>
                   <p className="text-xl font-bold text-emerald-600">{formatCurrency(salePrice)}</p>
                 </div>
-                <div className="p-4 bg-[#f4f7f4] rounded-xl border border-[#dce7dd]">
+                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
                   <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider mb-1">Net Profit</p>
                   <p className="text-xl font-bold text-emerald-600">{formatCurrency(profit)}</p>
                 </div>

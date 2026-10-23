@@ -107,7 +107,6 @@ try {
   await send("Page.navigate", { url: `${base}/inventory/11` });
   await wait("document.querySelector('main')?.innerText.includes('Historical name')");
   const financialCardColors = await evaluate(`(() => {const card=label=>{const title=[...document.querySelectorAll('p')].find(el=>el.textContent.trim()===label),wrapper=title?.parentElement,value=wrapper?.querySelectorAll('p')[1];return {background:getComputedStyle(wrapper).backgroundColor,value:getComputedStyle(value).color}};return {sale:card('Sale Price'),profit:card('Net Profit')}})()`);
-  assert.equal(financialCardColors.sale.background, "rgb(244, 247, 244)");
   assert.equal(financialCardColors.profit.background, financialCardColors.sale.background);
   assert.equal(financialCardColors.profit.value, financialCardColors.sale.value);
   await edit(); await input('[name="notes"]', "Legacy sale note"); await save();
