@@ -180,7 +180,7 @@ try {
   await send("Page.navigate", { url: `${base}/admin` });
   await wait("document.querySelector('main')?.innerText.includes('Archived Watches')", "Admin page loads the archive section");
   await evaluate("document.querySelector('[data-testid=\"section-archived-watches\"]')?.click()");
-  await wait("document.querySelector('[data-testid=\"archived-watch-11\"]')", "archived watch appears in Admin");
+  await wait("!!document.querySelector('[data-testid=\"archived-watch-11\"]')", "archived watch appears in Admin");
   assert((await evaluate("document.querySelector('[data-testid=archived-watch-11]').innerText")).includes("Fixture watch"));
   assert((await evaluate("localStorage.getItem('__archiveConfirmation')")).includes("You can restore it from Admin"));
   await evaluate("document.querySelector('[data-testid=\"button-restore-watch-11\"]')?.click()");
@@ -199,6 +199,8 @@ try {
   assert((await evaluate("localStorage.getItem('__deleteConfirmation')")).includes("kept but unlinked"));
   assert(writes.every(write => (write.path === "/api/inventory/11" && write.method === "PUT")
     || (write.path === "/api/clients/watch-buyers/sync" && write.method === "POST")
+    || (write.path === "/api/inventory/11/archive" && write.method === "POST")
+    || (write.path === "/api/inventory/11/restore" && write.method === "POST")
     || (write.path === "/api/inventory/11" && write.method === "DELETE")));
   assert.deepEqual(errors, []);
   console.log("PASS: buyer profile creation/linking; archive hides the watch while preserving details, Admin lists it, restore returns it to inventory; permanent deletion stays separate; mobile layout and buyer flows. Browser-only API fixtures; no live records/accounts modified.");

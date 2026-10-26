@@ -25,3 +25,9 @@ Current user-reported context: the live app and database are in a cPanel environ
 **Why:** The user provided these business facts while requesting a WRISTBY privacy assessment.
 
 **How to apply:** Treat the 12-month term as the seller’s stated policy, not proof that it meets every statutory consumer guarantee. Dutch consumer-law guidance says there is no single fixed statutory warranty term. Confirm the underlying cPanel host and transfer/vendor details; never assume cPanel itself is the data centre or hosting provider.
+
+Archiving a watch must be nondestructive: hide it from active inventory while preserving its watch details, customer links, and expenses, with a way to restore it. Keep archive separate from permanent deletion.
+
+**Why:** The user explicitly asked for archived watches to retain all other details, including customer information and expenses.
+
+**How to apply:** Archive by marking the watch archived, not by deleting or detaching related records; keep history and client pages accurate, and retain permanent deletion as a distinct action.
