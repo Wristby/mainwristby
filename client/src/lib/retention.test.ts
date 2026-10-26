@@ -19,6 +19,9 @@ vi.mock("../../../server/db", () => {
     update: (table: unknown) => ({ set: (values: any) => ({ where: async () => {
       harness.writes.push({ table, values });
     } }) }),
+    delete: (table: unknown) => ({ where: async () => {
+      harness.writes.push({ table, deleted: true });
+    } }),
     execute: harness.execute,
     transaction: (callback: (tx: unknown) => unknown) => callback(connection),
   };
@@ -27,7 +30,7 @@ vi.mock("../../../server/db", () => {
 vi.mock("../../../server/auth", () => ({ isAuthenticated: vi.fn() }));
 import { clearClient, previewClient, readSchedule } from "../../../server/retention";
 import { DatabaseStorage } from "../../../server/storage";
-import { clients, retentionAudit, transactionParties } from "@shared/schema";
+import { clients, expenses, inventory, retentionAudit, retentionHolds, transactionParties } from "@shared/schema";
 
 const approved: RetentionSchedule = {
   rules: {
@@ -158,10 +161,28 @@ describe("reviewable profile cleanup", () => {
     expect(harness.execute).toHaveBeenCalledTimes(2);
     expect(harness.rows).toHaveLength(0);
   });
-  it("blocks legacy deletion and generic settings bypass without touching the database", async () => {
+  it("keeps a watch protected while an active retention hold exists", async () => {
     const storage = new DatabaseStorage();
+    harness.rows.push([{ id: 11 }], [{ id: 3, scope: "inventory", recordId: 11, releasedAt: null }]);
+    await expect(storage.deleteInventoryItem(11)).rejects.toThrow("active retention hold");
+    expect(harness.writes).toEqual([]);
+  });
+  it("deletes only the watch and keeps linked expense and transaction-party records detached", async () => {
+    const storage = new DatabaseStorage();
+    harness.rows.push([{ id: 11 }], []);
+    await expect(storage.deleteInventoryItem(11)).resolves.toBeUndefined();
+    expect(harness.writes).toEqual([
+      { table: expenses, values: { inventoryId: null } },
+      { table: transactionParties, values: { inventoryId: null } },
+      { table: inventory, deleted: true },
+      { table: retentionAudit, values: { action: "watch_deleted_records_retained", recordId: 11 } },
+    ]);
+  });
+  it("rejects missing watches and generic settings bypass without touching records", async () => {
+    const storage = new DatabaseStorage();
+    harness.rows.push([]);
+    await expect(storage.deleteInventoryItem(11)).rejects.toThrow("Watch not found");
     await expect(storage.deleteClient(1)).rejects.toThrow("retention preview");
-    await expect(storage.deleteInventoryItem(11)).rejects.toThrow("protected");
     await expect(storage.deleteExpense(21)).rejects.toThrow("protected");
     await expect(storage.upsertSetting("client_retention_schedule", approved)).rejects.toThrow("dedicated");
     expect(harness.writes).toEqual([]);

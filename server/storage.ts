@@ -1,12 +1,12 @@
 import { db } from "./db";
 import {
-  clients, inventory, expenses, settings,
+  clients, inventory, expenses, settings, retentionHolds, retentionAudit, transactionParties,
   type Client, type InsertClient, type UpdateClientRequest,
   type InventoryItem, type InsertInventory, type UpdateInventoryRequest,
   type Expense, type InsertExpense,
   type DashboardStats, type Setting
 } from "@shared/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, isNull } from "drizzle-orm";
 import { matchingBuyerContact, sameBuyerContact, type SaleBuyerInput } from "@shared/sale-buyer";
 import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
@@ -242,7 +242,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteInventoryItem(id: number): Promise<void> {
-    throw new RetentionError("Watch and linked expense records are protected from deletion. Retention expiry requires a separate transaction-record review.");
+    await db.transaction(async tx => {
+      // Serialize watch deletion with hold creation/release so an active hold
+      // cannot be added between the check and the delete.
+      await tx.execute(sql`select pg_advisory_xact_lock(73284088)`);
+      const [watch] = await tx.select({ id: inventory.id }).from(inventory).where(eq(inventory.id, id));
+      if (!watch) throw new RetentionError("Watch not found.", 404);
+
+      const [activeHold] = await tx.select({ id: retentionHolds.id }).from(retentionHolds).where(and(
+        eq(retentionHolds.scope, "inventory"),
+        eq(retentionHolds.recordId, id),
+        isNull(retentionHolds.releasedAt),
+      ));
+      if (activeHold) {
+        throw new RetentionError("This watch has an active retention hold and cannot be deleted. Release the hold first.");
+      }
+
+      // Keep financial and transaction evidence; only detach it from inventory.
+      await tx.update(expenses).set({ inventoryId: null }).where(eq(expenses.inventoryId, id));
+      await tx.update(transactionParties).set({ inventoryId: null }).where(eq(transactionParties.inventoryId, id));
+      await tx.delete(inventory).where(eq(inventory.id, id));
+      await tx.insert(retentionAudit).values({ action: "watch_deleted_records_retained", recordId: id });
+    });
   }
 
   // Expenses

@@ -96,6 +96,7 @@ export function useDeleteInventory() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
     },
   });
 }

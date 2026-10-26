@@ -672,7 +672,7 @@ export default function InventoryDetail() {
   if (!item) return <div className="text-slate-600">Item not found</div>;
 
   const handleDelete = () => {
-    if (confirm("Are you sure? This cannot be undone.")) {
+    if (confirm(`Delete ${item.brand} ${item.model}? This permanently removes its inventory details. Linked expenses and buyer/seller transaction records will be kept but unlinked. This cannot be undone.`)) {
       deleteMutation.mutate(id, {
         onSuccess: () => {
           window.location.href = "/inventory";
@@ -1412,8 +1412,7 @@ export default function InventoryDetail() {
               Delete
             </Button>
             <p className="max-w-[300px] text-right text-[11px] leading-4 text-slate-500">
-              Transaction and expense records are protected from deletion. For client profile cleanup, use the{" "}
-              <Link href="/clients" className="font-medium text-emerald-700 underline underline-offset-2">clients privacy preview</Link>.
+              Deleting removes this watch only. Linked expenses and buyer/seller records stay, but are unlinked. Active retention holds prevent deletion.
             </p>
           </div>
         </div>

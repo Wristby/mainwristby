@@ -37,7 +37,7 @@ export const retentionHolds = pgTable("retention_holds", {
 // Populated on profile cleanup without copying contact details or CRM notes.
 export const transactionParties = pgTable("transaction_parties", {
   id: serial("id").primaryKey(),
-  inventoryId: integer("inventory_id").references(() => inventory.id).notNull(),
+  inventoryId: integer("inventory_id").references(() => inventory.id),
   role: text("role", { enum: ["buyer", "seller"] }).notNull(),
   name: text("name").notNull(),
   retainedAt: timestamp("retained_at").defaultNow().notNull(),

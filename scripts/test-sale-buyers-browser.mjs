@@ -45,7 +45,7 @@ try {
     if (request.method !== "GET") writes.push({ path, method: request.method, body: JSON.parse(request.postData || "{}") });
     if (path === "/api/auth/user") data = { id: "fixture-only", username: "fixture-only" };
     else if (path === "/api/settings") data = {};
-    else if (path === "/api/inventory") data = [watch];
+    else if (path === "/api/inventory") data = watch ? [watch] : [];
     else if (path === "/api/clients") data = clients;
     else if (path === "/api/clients/watch-buyers/sync") data = { created: 0, pending: [] };
     else if (path.startsWith("/api/clients/")) data = clients.find(client => client.id === Number(path.split("/").at(-1)));
@@ -70,6 +70,9 @@ try {
             ...(saleBuyer?.mode === "none" ? { buyerId: null, soldTo: null } : {}) };
           data = watch;
         }
+      } else if (request.method === "DELETE") {
+        watch = null;
+        data = {};
       } else data = watch;
     } else if (path === "/api/expenses") data = [];
     if (data === undefined) { console.error(`Fixture has no response for ${request.method} ${path}`); data = { message: "Fixture record not found" }; status = 404; }
@@ -161,10 +164,18 @@ try {
   await writeFile("/tmp/sale-buyer-mobile.jpg", Buffer.from((await send("Page.captureScreenshot", { format: "jpeg", quality: 80 })).data, "base64"));
   await click("Cancel");
   assert.equal(clients.length, clientCount + 1, "cancel creates no client");
+  const clientsBeforeDelete = clients.length;
+  await evaluate("window.confirm=message=>{localStorage.setItem('__deleteConfirmation',message);return true}");
+  await click("Delete");
+  await wait("location.pathname==='/inventory'", "deletion redirects to inventory");
+  assert.equal(watch, null);
+  assert.equal(clients.length, clientsBeforeDelete, "deleting a watch leaves client profiles intact");
+  assert((await evaluate("localStorage.getItem('__deleteConfirmation')")).includes("kept but unlinked"));
   assert(writes.every(write => (write.path === "/api/inventory/11" && write.method === "PUT")
-    || (write.path === "/api/clients/watch-buyers/sync" && write.method === "POST")));
+    || (write.path === "/api/clients/watch-buyers/sync" && write.method === "POST")
+    || (write.path === "/api/inventory/11" && write.method === "DELETE")));
   assert.deepEqual(errors, []);
-  console.log("PASS: legacy sale edit; name/email with no phone; name-only creation; Clients directory and reload persistence; existing-client keyboard selection without profile edits; seller preserved; exact cents; validation; duplicate conflict; failed-save retention/retry; mobile layout and cancel. Browser-only API fixtures; no live records/accounts modified.");
+  console.log("PASS: legacy sale edit; buyer profile creation/linking; preserved seller and client profiles; validation and failed-save retry; mobile layout; watch deletion confirmation and redirect. Browser-only API fixtures; no live records/accounts modified.");
 } finally {
   socket?.close(); chrome.kill("SIGTERM"); await pause(300);
   await rm(profile, { recursive: true, force: true }).catch(() => {});

@@ -225,7 +225,7 @@ export async function registerRoutes(
       res.sendStatus(204);
     } catch (err) {
       if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
-      res.status(404).json({ message: "Item not found" });
+      res.status(500).json({ message: "Could not delete the watch. The database may need the latest update." });
     }
   });
 
