@@ -34,12 +34,14 @@ import {
   GripVertical,
   Search,
   Check,
+  Archive,
   CreditCard,
   Calculator,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { QuickEstimatePlatformFee } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
+import { ArchivedWatchesPanel } from "@/components/archived-watches-panel";
 
 function CollapsibleSection({ title, icon: Icon, children, defaultOpen = true }: {
   title: string;
@@ -878,6 +880,10 @@ export default function Admin() {
             sections={settings.dashboard_sections}
             onSave={(sections) => saveSetting("dashboard_sections", sections)}
           />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Archived Watches" icon={Archive} defaultOpen={false}>
+          <ArchivedWatchesPanel />
         </CollapsibleSection>
       </div>
     </div>

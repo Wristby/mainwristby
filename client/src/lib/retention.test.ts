@@ -4,6 +4,7 @@ import { expiry, scheduleInputSchema, type RetentionSchedule } from "@shared/ret
 const harness = vi.hoisted(() => ({
   rows: [] as any[][],
   writes: [] as { table: unknown; values: any }[],
+  returningRows: [] as any[][],
   execute: vi.fn(),
 }));
 vi.mock("../../../server/db", () => {
@@ -16,8 +17,21 @@ vi.mock("../../../server/db", () => {
       harness.writes.push({ table, values });
       return Promise.resolve();
     } }),
-    update: (table: unknown) => ({ set: (values: any) => ({ where: async () => {
-      harness.writes.push({ table, values });
+    update: (table: unknown) => ({ set: (values: any) => ({ where: () => {
+      let recorded = false;
+      const record = () => {
+        if (!recorded) {
+          harness.writes.push({ table, values });
+          recorded = true;
+        }
+      };
+      const query = Promise.resolve().then(record);
+      return Object.assign(query, {
+        returning: async () => {
+          record();
+          return harness.returningRows.shift() ?? [];
+        },
+      });
     } }) }),
     delete: (table: unknown) => ({ where: async () => {
       harness.writes.push({ table, deleted: true });
@@ -62,6 +76,7 @@ function seed(options: { schedule?: RetentionSchedule | null; client?: any; watc
 beforeEach(() => {
   harness.rows = [];
   harness.writes = [];
+  harness.returningRows = [];
   harness.execute.mockReset();
 });
 
@@ -166,6 +181,30 @@ describe("reviewable profile cleanup", () => {
     harness.rows.push([{ id: 11 }], [{ id: 3, scope: "inventory", recordId: 11, releasedAt: null }]);
     await expect(storage.deleteInventoryItem(11)).rejects.toThrow("active retention hold");
     expect(harness.writes).toEqual([]);
+  });
+  it("archives and restores a watch without changing its other fields", async () => {
+    const storage = new DatabaseStorage();
+    const original = { ...watch, archivedAt: null };
+    const archivedAt = new Date("2026-10-26T12:00:00.000Z");
+
+    harness.rows.push([original]);
+    harness.returningRows.push([{ ...original, archivedAt }]);
+    const archived = await storage.archiveInventoryItem(11);
+    expect(archived).toMatchObject({ id: 11, archivedAt });
+    expect(harness.writes).toEqual([
+      { table: inventory, values: { archivedAt: expect.any(Date) } },
+      { table: retentionAudit, values: { action: "watch_archived", recordId: 11 } },
+    ]);
+
+    harness.writes = [];
+    harness.rows.push([{ ...original, archivedAt }]);
+    harness.returningRows.push([{ ...original, archivedAt: null }]);
+    const restored = await storage.restoreInventoryItem(11);
+    expect(restored).toMatchObject({ id: 11, archivedAt: null });
+    expect(harness.writes).toEqual([
+      { table: inventory, values: { archivedAt: null } },
+      { table: retentionAudit, values: { action: "watch_restored", recordId: 11 } },
+    ]);
   });
   it("deletes only the watch and keeps linked expense and transaction-party records detached", async () => {
     const storage = new DatabaseStorage();

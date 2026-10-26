@@ -122,7 +122,7 @@ export default function Financials() {
   }, [settings.default_tax_rate]);
 
   const { data: expenses, isLoading: expensesLoading } = useExpenses();
-  const { data: inventory, isLoading: inventoryLoading } = useInventory();
+  const { data: inventory, isLoading: inventoryLoading } = useInventory(undefined, true);
   const { toast } = useToast();
   
   const createMutation = useCreateExpense();

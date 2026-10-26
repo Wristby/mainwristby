@@ -1,4 +1,4 @@
-import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory } from "@/hooks/use-inventory";
+import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
@@ -31,7 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Loader2, ArrowLeft, Trash2, Pencil, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus, Sparkles, Copy, ChevronDown } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Archive, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus, Sparkles, Copy, ChevronDown } from "lucide-react";
 import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -177,7 +177,7 @@ export default function InventoryDetail() {
   const id = params ? parseInt(params.id) : 0;
   const [, navigate] = useLocation();
   const { data: item, isLoading } = useInventoryItem(id);
-  const { data: allInventory } = useInventory();
+  const { data: allInventory } = useInventory(undefined, true);
   const { data: clients, isLoading: clientsLoading, isError: clientsUnavailable } = useClients();
   const [buyerDraft, setBuyerDraft] = useState<SaleBuyerDraft>(emptySaleBuyer);
   const [buyerDirty, setBuyerDirty] = useState(false);
@@ -185,6 +185,7 @@ export default function InventoryDetail() {
   const linkedBuyer = clients?.find(client => client.id === item?.buyerId);
   const updateMutation = useUpdateInventory();
   const deleteMutation = useDeleteInventory();
+  const archiveMutation = useArchiveInventory();
   const quickAddClientMutation = useCreateClient();
   const createExpenseMutation = useCreateExpense();
   const deleteExpenseMutation = useDeleteExpense();
@@ -684,6 +685,19 @@ export default function InventoryDetail() {
     }
   };
 
+  const handleArchive = () => {
+    if (confirm(`Archive ${item.brand} ${item.model}? It will leave active inventory, but its details, client links, and expenses will remain. You can restore it from Admin.`)) {
+      archiveMutation.mutate(id, {
+        onSuccess: () => {
+          window.location.href = "/inventory";
+        },
+        onError: (err) => {
+          toast({ title: "Error", description: err.message, variant: "destructive" });
+        },
+      });
+    }
+  };
+
   const onSubmitEdit = (data: EditFormValues) => {
     if (updateMutation.isPending) return;
     let saleBuyer: SaleBuyerInput | undefined;
@@ -891,6 +905,11 @@ export default function InventoryDetail() {
             <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">
               {item.referenceNumber}
             </Badge>
+            {item.archivedAt && (
+              <Badge variant="outline" className="border-slate-300 bg-slate-100 text-slate-700">
+                Archived
+              </Badge>
+            )}
           </h1>
           <p className="text-slate-500 text-sm mt-1">ID: #{item.id} • Serial: {item.serialNumber || 'N/A'}</p>
         </div>
@@ -1407,12 +1426,24 @@ export default function InventoryDetail() {
             </DialogContent>
           </Dialog>
           <div className="flex flex-col items-end gap-1">
+            {!item.archivedAt && (
+              <Button
+                variant="outline"
+                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                onClick={handleArchive}
+                disabled={archiveMutation.isPending}
+                data-testid="button-archive-watch"
+              >
+                {archiveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Archive className="w-4 h-4 mr-2" />}
+                Archive
+              </Button>
+            )}
             <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={handleDelete} data-testid="button-delete-watch">
               <Trash2 className="w-4 h-4 mr-2" />
               Delete
             </Button>
             <p className="max-w-[300px] text-right text-[11px] leading-4 text-slate-500">
-              Deleting removes this watch only. Linked expenses and buyer/seller records stay, but are unlinked. Active retention holds prevent deletion.
+              Archive hides this watch without removing its records. Delete permanently removes the watch details. Active retention holds prevent deletion.
             </p>
           </div>
         </div>

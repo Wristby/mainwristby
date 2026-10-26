@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useInventory } from "@/hooks/use-inventory";
 import { useParams, useLocation } from "wouter";
 import { Client, InventoryItem, insertClientSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,9 +72,7 @@ export default function ClientDetail() {
     queryKey: ["/api/clients"],
   });
 
-  const { data: inventory, isLoading: isLoadingInventory, isError: inventoryError } = useQuery<InventoryItem[]>({
-    queryKey: ["/api/inventory"],
-  });
+  const { data: inventory, isLoading: isLoadingInventory, isError: inventoryError } = useInventory(undefined, true);
 
   const client = clients?.find((c) => c.id === parseInt(id));
 

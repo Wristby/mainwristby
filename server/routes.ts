@@ -179,7 +179,13 @@ export async function registerRoutes(
   // Inventory
   app.get(api.inventory.list.path, isAuthenticated, async (req, res) => {
     const status = req.query.status as string;
-    const items = await storage.getInventoryItems(status);
+    const includeArchived = req.query.includeArchived === "true";
+    const items = await storage.getInventoryItems(status, includeArchived);
+    res.json(items);
+  });
+
+  app.get(api.inventory.archived.path, isAuthenticated, async (_req, res) => {
+    const items = await storage.getArchivedInventoryItems();
     res.json(items);
   });
 
@@ -226,6 +232,26 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
       res.status(500).json({ message: "Could not delete the watch. The database may need the latest update." });
+    }
+  });
+
+  app.post(api.inventory.archive.path, isAuthenticated, async (req, res) => {
+    try {
+      const item = await storage.archiveInventoryItem(Number(req.params.id));
+      res.json(item);
+    } catch (err) {
+      if (err instanceof Error && err.message === "Item not found") return res.status(404).json({ message: "Item not found" });
+      res.status(500).json({ message: "Could not archive this watch. Please try again." });
+    }
+  });
+
+  app.post(api.inventory.restore.path, isAuthenticated, async (req, res) => {
+    try {
+      const item = await storage.restoreInventoryItem(Number(req.params.id));
+      res.json(item);
+    } catch (err) {
+      if (err instanceof Error && err.message === "Item not found") return res.status(404).json({ message: "Item not found" });
+      res.status(500).json({ message: "Could not restore this watch. Please try again." });
     }
   });
 

@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type CreateInventoryRequest, type UpdateInventoryRequest } from "@shared/routes";
 
-export function useInventory(status?: string) {
+export function useInventory(status?: string, includeArchived = false) {
   return useQuery({
-    queryKey: [api.inventory.list.path, status],
+    queryKey: [api.inventory.list.path, status, includeArchived],
     queryFn: async () => {
-      const url = status 
-        ? `${api.inventory.list.path}?status=${status}` 
-        : api.inventory.list.path;
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (includeArchived) params.set("includeArchived", "true");
+      const query = params.toString();
+      const url = query ? `${api.inventory.list.path}?${query}` : api.inventory.list.path;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch inventory");
       return api.inventory.list.responses[200].parse(await res.json());
@@ -98,5 +100,48 @@ export function useDeleteInventory() {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
     },
+  });
+}
+
+export function useArchivedInventory() {
+  return useQuery({
+    queryKey: [api.inventory.archived.path],
+    queryFn: async () => {
+      const res = await fetch(api.inventory.archived.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load archived watches");
+      return api.inventory.archived.responses[200].parse(await res.json());
+    },
+  });
+}
+
+async function postInventoryLifecycleAction(path: string, id: number, fallback: string) {
+  const res = await fetch(buildUrl(path, { id }), { method: "POST", credentials: "include" });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.message || fallback);
+  }
+  return res.json();
+}
+
+function invalidateInventoryLifecycleQueries(queryClient: ReturnType<typeof useQueryClient>, id: number) {
+  queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
+  queryClient.invalidateQueries({ queryKey: [api.inventory.archived.path] });
+  queryClient.invalidateQueries({ queryKey: [api.inventory.get.path, id] });
+  queryClient.invalidateQueries({ queryKey: [api.dashboard.stats.path] });
+}
+
+export function useArchiveInventory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => postInventoryLifecycleAction(api.inventory.archive.path, id, "Failed to archive watch"),
+    onSuccess: (_item, id) => invalidateInventoryLifecycleQueries(queryClient, id),
+  });
+}
+
+export function useRestoreInventory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => postInventoryLifecycleAction(api.inventory.restore.path, id, "Failed to restore watch"),
+    onSuccess: (_item, id) => invalidateInventoryLifecycleQueries(queryClient, id),
   });
 }

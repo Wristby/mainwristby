@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { useSettings } from "@/hooks/use-settings";
+import { useInventory } from "@/hooks/use-inventory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -164,9 +164,7 @@ export default function Analytics() {
   const [quarterYear, setQuarterYear] = useState<string>(getYear(new Date()).toString());
   const [compareQuarterYear, setCompareQuarterYear] = useState<string>(getYear(new Date()).toString());
 
-  const { data: inventory, isLoading: inventoryLoading } = useQuery<InventoryItem[]>({
-    queryKey: ["/api/inventory"],
-  });
+  const { data: inventory, isLoading: inventoryLoading } = useInventory(undefined, true);
 
   const isLoading = inventoryLoading;
 

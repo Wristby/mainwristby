@@ -134,6 +134,7 @@ export const inventory = pgTable("inventory", {
     enum: ["New", "Mint", "Used", "Damaged", "Good", "Very Good", "Excellent", "Like New"],
   }).notNull(),
   status: text("status", { enum: ["in_stock", "sold", "incoming", "servicing", "received"] }).default("incoming").notNull(),
+  archivedAt: timestamp("archived_at"),
   box: boolean("box").default(false).notNull(),
   papers: boolean("papers").default(false).notNull(),
   images: text("images").array(),
@@ -178,7 +179,7 @@ export const inventory = pgTable("inventory", {
   buyerId: integer("buyer_id").references(() => clients.id),
 });
 
-export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true });
+export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, archivedAt: true });
 export type InventoryItem = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 

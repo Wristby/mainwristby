@@ -6,7 +6,7 @@ import {
   type Expense, type InsertExpense,
   type DashboardStats, type Setting
 } from "@shared/schema";
-import { eq, desc, sql, and, isNull } from "drizzle-orm";
+import { eq, desc, sql, and, isNull, isNotNull } from "drizzle-orm";
 import { matchingBuyerContact, sameBuyerContact, type SaleBuyerInput } from "@shared/sale-buyer";
 import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
@@ -60,12 +60,15 @@ export interface IStorage {
   deleteClient(id: number): Promise<void>;
 
   // Inventory
-  getInventoryItems(status?: string): Promise<(InventoryItem & { seller?: Client })[]>;
+  getInventoryItems(status?: string, includeArchived?: boolean): Promise<(InventoryItem & { seller?: Client })[]>;
+  getArchivedInventoryItems(): Promise<(InventoryItem & { seller?: Client })[]>;
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
   createInventoryItem(item: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem>;
   updateCreditInfo(id: number, updates: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null }): Promise<InventoryItem>;
+  archiveInventoryItem(id: number): Promise<InventoryItem>;
+  restoreInventoryItem(id: number): Promise<InventoryItem>;
   deleteInventoryItem(id: number): Promise<void>;
 
   // Expenses
@@ -118,12 +121,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Inventory
-  async getInventoryItems(status?: string): Promise<(InventoryItem & { seller?: Client })[]> {
-    // Simpler query - get all inventory first
+  async getInventoryItems(status?: string, includeArchived = false): Promise<(InventoryItem & { seller?: Client })[]> {
     let items: InventoryItem[];
-    
-    if (status) {
+    if (status && includeArchived) {
       items = await db.select().from(inventory).where(eq(inventory.status, status as any)).orderBy(desc(inventory.purchaseDate));
+    } else if (status) {
+      items = await db.select().from(inventory).where(and(
+        eq(inventory.status, status as any),
+        isNull(inventory.archivedAt),
+      )).orderBy(desc(inventory.purchaseDate));
+    } else if (!includeArchived) {
+      items = await db.select().from(inventory).where(isNull(inventory.archivedAt)).orderBy(desc(inventory.purchaseDate));
     } else {
       items = await db.select().from(inventory).orderBy(desc(inventory.purchaseDate));
     }
@@ -138,6 +146,48 @@ export class DatabaseStorage implements IStorage {
       result.push({ ...item, seller });
     }
     return result;
+  }
+
+  async getArchivedInventoryItems(): Promise<(InventoryItem & { seller?: Client })[]> {
+    const items = await db.select().from(inventory)
+      .where(isNotNull(inventory.archivedAt))
+      .orderBy(desc(inventory.archivedAt));
+    const result: (InventoryItem & { seller?: Client })[] = [];
+    for (const item of items) {
+      const seller = item.clientId ? await this.getClient(item.clientId) : undefined;
+      result.push({ ...item, seller });
+    }
+    return result;
+  }
+
+  private async setInventoryArchived(id: number, archived: boolean): Promise<InventoryItem> {
+    return db.transaction(async tx => {
+      const [current] = await tx.select().from(inventory).where(eq(inventory.id, id));
+      if (!current) throw new Error("Item not found");
+
+      const currentlyArchived = current.archivedAt != null;
+      if (currentlyArchived === archived) return current;
+
+      const [updated] = await tx.update(inventory)
+        .set({ archivedAt: archived ? new Date() : null })
+        .where(eq(inventory.id, id))
+        .returning();
+      if (!updated) throw new Error("Item not found");
+
+      await tx.insert(retentionAudit).values({
+        action: archived ? "watch_archived" : "watch_restored",
+        recordId: id,
+      });
+      return updated;
+    });
+  }
+
+  async archiveInventoryItem(id: number): Promise<InventoryItem> {
+    return this.setInventoryArchived(id, true);
+  }
+
+  async restoreInventoryItem(id: number): Promise<InventoryItem> {
+    return this.setInventoryArchived(id, false);
   }
 
   async getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined> {
@@ -315,7 +365,7 @@ export class DatabaseStorage implements IStorage {
     const currentWrFee = await this.getSetting("watch_register_fee") || 600;
     const allInventory = await db.select().from(inventory);
     
-    const activeInventory = allInventory.filter(i => i.status !== 'sold');
+    const activeInventory = allInventory.filter(i => !i.archivedAt && i.status !== 'sold');
     const soldInventory = allInventory.filter(i => i.status === 'sold');
     
     const totalInventoryValue = activeInventory.reduce((sum, item) => {

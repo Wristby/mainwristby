@@ -101,6 +101,7 @@ export const api = {
       path: '/api/inventory',
       input: z.object({
         status: z.enum(["in_stock", "sold", "incoming", "servicing"]).optional(),
+        includeArchived: z.boolean().optional(),
       }).optional(),
       responses: {
         200: z.array(z.custom<typeof inventory.$inferSelect & { seller?: typeof clients.$inferSelect }>()),
@@ -111,6 +112,29 @@ export const api = {
       path: '/api/inventory/:id',
       responses: {
         200: z.custom<typeof inventory.$inferSelect & { expenses?: typeof expenses.$inferSelect[] }>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    archived: {
+      method: 'GET' as const,
+      path: '/api/inventory/archived',
+      responses: {
+        200: z.array(z.custom<typeof inventory.$inferSelect & { seller?: typeof clients.$inferSelect }>()),
+      },
+    },
+    archive: {
+      method: 'POST' as const,
+      path: '/api/inventory/:id/archive',
+      responses: {
+        200: z.custom<typeof inventory.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    restore: {
+      method: 'POST' as const,
+      path: '/api/inventory/:id/restore',
+      responses: {
+        200: z.custom<typeof inventory.$inferSelect>(),
         404: errorSchemas.notFound,
       },
     },

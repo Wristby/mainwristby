@@ -28,15 +28,15 @@ try {
     condition: "Good", status: "sold", purchasePrice: 100000, targetSellPrice: 170000, salePrice: 180000,
     soldTo: "Historical name", buyerId: null, clientId: 91, box: true, papers: true, year: 2023,
     purchaseDate: "2026-01-01T12:00:00.000Z", soldDate: "2026-10-01T12:00:00.000Z", dateSold: "2026-10-01T12:00:00.000Z",
-    dateListed: "2026-09-01T12:00:00.000Z", purchasedFrom: "Dealer", paidWith: "Debit", expenses: [], notes: "" };
+    dateListed: "2026-09-01T12:00:00.000Z", purchasedFrom: "Dealer", paidWith: "Debit", expenses: [], notes: "", archivedAt: null };
   const send = (method, params = {}) => new Promise((resolve, reject) => {
-    const key = ++id; pending.set(key, { resolve, reject }); socket.send(JSON.stringify({ id: key, method, params }));
+    const key = ++id; pending.set(key, { resolve, reject, method }); socket.send(JSON.stringify({ id: key, method, params }));
   });
   socket.on("message", async raw => {
     const event = JSON.parse(raw);
     if (event.id) {
       const handler = pending.get(event.id); pending.delete(event.id);
-      if (event.error) handler?.reject(new Error(event.error.message)); else handler?.resolve(event.result);
+      if (event.error) handler?.reject(new Error(`${handler?.method || "CDP command"}: ${event.error.message}`)); else handler?.resolve(event.result);
     }
     if (event.method === "Runtime.exceptionThrown") errors.push(event.params.exceptionDetails.exception?.description || event.params.exceptionDetails.text);
     if (event.method !== "Fetch.requestPaused") return;
@@ -45,13 +45,21 @@ try {
     if (request.method !== "GET") writes.push({ path, method: request.method, body: JSON.parse(request.postData || "{}") });
     if (path === "/api/auth/user") data = { id: "fixture-only", username: "fixture-only" };
     else if (path === "/api/settings") data = {};
-    else if (path === "/api/inventory") data = watch ? [watch] : [];
+    else if (path === "/api/inventory") data = watch && !watch.archivedAt ? [watch] : [];
+    else if (path === "/api/inventory/archived") data = watch?.archivedAt ? [watch] : [];
     else if (path === "/api/clients") data = clients;
     else if (path === "/api/clients/watch-buyers/sync") data = { created: 0, pending: [] };
     else if (path.startsWith("/api/clients/")) data = clients.find(client => client.id === Number(path.split("/").at(-1)));
     else if (path === "/api/retention/schedule") data = null;
     else if (path === "/api/retention/holds") data = [];
     else if (path === "/api/retention/inventory/11/parties") data = [];
+    else if (path === "/api/inventory/11/archive" && request.method === "POST") {
+      watch = { ...watch, archivedAt: "2026-10-26T12:00:00.000Z" };
+      data = watch;
+    } else if (path === "/api/inventory/11/restore" && request.method === "POST") {
+      watch = { ...watch, archivedAt: null };
+      data = watch;
+    }
     else if (path === "/api/inventory/11") {
       if (request.method === "PUT") {
         const { saleBuyer, ...updates } = writes.at(-1).body;
@@ -164,6 +172,24 @@ try {
   await writeFile("/tmp/sale-buyer-mobile.jpg", Buffer.from((await send("Page.captureScreenshot", { format: "jpeg", quality: 80 })).data, "base64"));
   await click("Cancel");
   assert.equal(clients.length, clientCount + 1, "cancel creates no client");
+  await evaluate("window.confirm=message=>{localStorage.setItem('__archiveConfirmation',message);return true}");
+  await click("Archive");
+  await wait("location.pathname==='/inventory'", "archived watch returns to inventory");
+  assert(watch.archivedAt, "archive sets an archive date");
+  await wait("!!document.querySelector('main') && !document.querySelector('main').innerText.includes('Fixture watch')", "archived watch is hidden from active inventory");
+  await send("Page.navigate", { url: `${base}/admin` });
+  await wait("document.querySelector('main')?.innerText.includes('Archived Watches')", "Admin page loads the archive section");
+  await evaluate("document.querySelector('[data-testid=\"section-archived-watches\"]')?.click()");
+  await wait("document.querySelector('[data-testid=\"archived-watch-11\"]')", "archived watch appears in Admin");
+  assert((await evaluate("document.querySelector('[data-testid=archived-watch-11]').innerText")).includes("Fixture watch"));
+  assert((await evaluate("localStorage.getItem('__archiveConfirmation')")).includes("You can restore it from Admin"));
+  await evaluate("document.querySelector('[data-testid=\"button-restore-watch-11\"]')?.click()");
+  await wait("!document.querySelector('[data-testid=\"archived-watch-11\"]')", "restore removes watch from archive list");
+  assert.equal(watch.archivedAt, null);
+  await send("Page.navigate", { url: `${base}/inventory` });
+  await wait("document.querySelector('main')?.innerText.includes('Fixture watch')", "restored watch returns to inventory");
+  await send("Page.navigate", { url: `${base}/inventory/11` });
+  await wait("document.querySelector('main')?.innerText.includes('Fixture watch')");
   const clientsBeforeDelete = clients.length;
   await evaluate("window.confirm=message=>{localStorage.setItem('__deleteConfirmation',message);return true}");
   await click("Delete");
@@ -175,7 +201,7 @@ try {
     || (write.path === "/api/clients/watch-buyers/sync" && write.method === "POST")
     || (write.path === "/api/inventory/11" && write.method === "DELETE")));
   assert.deepEqual(errors, []);
-  console.log("PASS: legacy sale edit; buyer profile creation/linking; preserved seller and client profiles; validation and failed-save retry; mobile layout; watch deletion confirmation and redirect. Browser-only API fixtures; no live records/accounts modified.");
+  console.log("PASS: buyer profile creation/linking; archive hides the watch while preserving details, Admin lists it, restore returns it to inventory; permanent deletion stays separate; mobile layout and buyer flows. Browser-only API fixtures; no live records/accounts modified.");
 } finally {
   socket?.close(); chrome.kill("SIGTERM"); await pause(300);
   await rm(profile, { recursive: true, force: true }).catch(() => {});

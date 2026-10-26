@@ -96,7 +96,7 @@ const METHOD_COLORS = [
 type FilterType = "all" | "credit" | "debit_wire" | "unpaid_credit";
 
 export default function Payments() {
-  const { data: inventory, isLoading } = useInventory();
+  const { data: inventory, isLoading } = useInventory(undefined, true);
   const { settings } = useSettings();
   const { toast } = useToast();
 
