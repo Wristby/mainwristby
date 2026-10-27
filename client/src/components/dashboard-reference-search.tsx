@@ -154,8 +154,10 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     : aggregateResult
       ? aggregateResult.type === "count"
         ? "Verified total calculated from matching inventory records."
-          : aggregateResult.type === "grouped_count"
-            ? "Verified group totals calculated from matching inventory records."
+        : aggregateResult.type === "grouped_count"
+          ? "Verified group totals calculated from matching inventory records."
+          : aggregateResult.type === "grouped_asking_price_total"
+            ? "Asking-price totals by group calculated from matching inventory records."
             : "Asking-price total calculated from matching inventory records."
       : matches.length === 0
       ? `No watches found for “${query.trim()}”.`
@@ -236,6 +238,8 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
               ? "Verified inventory total"
               : aggregateResult.type === "grouped_count"
                 ? `Inventory count by ${aggregateResult.field}`
+                : aggregateResult.type === "grouped_asking_price_total"
+                  ? `Asking-price total by ${aggregateResult.field}`
                 : "Total asking price"}
           </p>
           {aggregateResult.type === "grouped_count" ? (
@@ -249,6 +253,34 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
                     <li key={group.label} className="flex items-center justify-between gap-3 py-1.5 text-sm">
                       <span className="truncate text-slate-700">{group.label}</span>
                       <span className="shrink-0 font-semibold tabular-nums text-slate-900">{group.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">No matching watches.</p>
+              )}
+            </>
+          ) : aggregateResult.type === "grouped_asking_price_total" ? (
+            <>
+              <p className="mt-1 text-sm text-slate-600">
+                Totals across {aggregateResult.total} matching {aggregateResult.total === 1 ? "watch" : "watches"}
+              </p>
+              {aggregateResult.groups.length > 0 ? (
+                <ul className="mt-2 divide-y divide-emerald-100" aria-label={`Asking-price totals by ${aggregateResult.field}`}>
+                  {aggregateResult.groups.map((group) => (
+                    <li key={group.label} className="py-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="truncate text-slate-700">{group.label}</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-slate-900">
+                          {group.pricedCount === 0
+                            ? "No asking prices recorded"
+                            : new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(group.valueInCents / 100)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        Based on {group.pricedCount} of {group.watchCount} watches with a recorded asking price.
+                        {group.missingPriceCount > 0 && ` Excludes ${group.missingPriceCount} without a recorded asking price.`}
+                      </p>
                     </li>
                   ))}
                 </ul>

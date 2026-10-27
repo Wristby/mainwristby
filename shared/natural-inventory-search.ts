@@ -34,8 +34,8 @@ export const naturalInventorySearchIntentSchema = z.object({
   aggregate: naturalInventoryAggregateSchema.optional(),
   groupBy: naturalInventoryGroupBySchema.optional(),
 }).strict().refine(
-  (intent) => intent.groupBy === undefined || intent.aggregate === "count",
-  { message: "Grouped inventory summaries must use the count aggregate.", path: ["aggregate"] },
+  (intent) => intent.groupBy === undefined || intent.aggregate !== undefined,
+  { message: "Grouped inventory summaries require an aggregate.", path: ["aggregate"] },
 );
 
 export type NaturalInventoryFilters = z.infer<typeof naturalInventoryFiltersSchema>;
@@ -45,7 +45,13 @@ export type NaturalInventoryGroupBy = z.infer<typeof naturalInventoryGroupBySche
 export type NaturalInventoryAggregateResult =
   | { type: "count"; value: number }
   | { type: "grouped_count"; field: NaturalInventoryGroupBy; groups: { label: string; count: number }[]; total: number }
-  | { type: "asking_price_total"; valueInCents: number; pricedCount: number; missingPriceCount: number };
+  | { type: "asking_price_total"; valueInCents: number; pricedCount: number; missingPriceCount: number }
+  | {
+    type: "grouped_asking_price_total";
+    field: NaturalInventoryGroupBy;
+    groups: { label: string; valueInCents: number; pricedCount: number; missingPriceCount: number; watchCount: number }[];
+    total: number;
+  };
 
 const combiningMarks = new RegExp("\\p{M}", "gu");
 const normalize = (value: unknown) => String(value ?? "")
@@ -110,7 +116,43 @@ export function getNaturalInventoryAggregate<T extends InventoryItem>(
       else groupedCounts.set(key, { label, count: 1 });
     }
     const groups = Array.from(groupedCounts.values()).sort((a, b) => a.label.localeCompare(b.label));
-    return { type: "grouped_count", field: groupBy, groups, total: matches.length };
+    if (aggregate === "count") return { type: "grouped_count", field: groupBy, groups, total: matches.length };
+
+    const groupedPrices = new Map<string, {
+      label: string;
+      valueInCents: number;
+      pricedCount: number;
+      missingPriceCount: number;
+      watchCount: number;
+    }>();
+    for (const watch of matches) {
+      const rawValue = watch[groupBy];
+      const label = typeof rawValue === "string" && rawValue.trim()
+        ? groupBy === "status" ? rawValue.replace(/_/g, " ") : rawValue.trim()
+        : "Unknown";
+      const key = normalize(label);
+      const group = groupedPrices.get(key) ?? {
+        label,
+        valueInCents: 0,
+        pricedCount: 0,
+        missingPriceCount: 0,
+        watchCount: 0,
+      };
+      group.watchCount += 1;
+      if (watch.listPrice == null) {
+        group.missingPriceCount += 1;
+      } else {
+        group.valueInCents += watch.listPrice;
+        group.pricedCount += 1;
+      }
+      groupedPrices.set(key, group);
+    }
+    return {
+      type: "grouped_asking_price_total",
+      field: groupBy,
+      groups: Array.from(groupedPrices.values()).sort((a, b) => a.label.localeCompare(b.label)),
+      total: matches.length,
+    };
   }
   if (aggregate === "count") return { type: "count", value: matches.length };
 

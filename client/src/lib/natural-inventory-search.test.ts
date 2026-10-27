@@ -162,6 +162,31 @@ describe("natural inventory search and summaries", () => {
     });
   });
 
+  it("totals recorded asking prices by an allowed group and reports missing prices per group", () => {
+    const records = [
+      makeWatch({ id: 1, brand: "Rolex", listPrice: 1050000 }),
+      makeWatch({ id: 2, brand: "rolex", listPrice: 50000 }),
+      makeWatch({ id: 3, brand: "Cartier", listPrice: 900000 }),
+      makeWatch({ id: 4, brand: "Cartier", listPrice: null }),
+    ];
+
+    expect(getNaturalInventoryAggregate(records, {}, "asking_price_total", "brand")).toEqual({
+      type: "grouped_asking_price_total",
+      field: "brand",
+      groups: [
+        { label: "Cartier", valueInCents: 900000, pricedCount: 1, missingPriceCount: 1, watchCount: 2 },
+        { label: "Rolex", valueInCents: 1100000, pricedCount: 2, missingPriceCount: 0, watchCount: 2 },
+      ],
+      total: 4,
+    });
+    expect(getNaturalInventoryAggregate([], {}, "asking_price_total", "brand")).toEqual({
+      type: "grouped_asking_price_total",
+      field: "brand",
+      groups: [],
+      total: 0,
+    });
+  });
+
   it("rejects unsupported filters, aggregates, and inverted ranges", () => {
     expect(naturalInventoryFiltersSchema.safeParse({ status: "in_stock", sql: "anything" }).success).toBe(false);
     expect(naturalInventoryFiltersSchema.safeParse({ minYear: 2025, maxYear: 2020 }).success).toBe(false);
@@ -170,7 +195,8 @@ describe("natural inventory search and summaries", () => {
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "average_price" }).success).toBe(false);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, total: 5 }).success).toBe(false);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "brand" }).success).toBe(true);
-    expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "asking_price_total", groupBy: "brand" }).success).toBe(false);
+    expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "asking_price_total", groupBy: "brand" }).success).toBe(true);
+    expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, groupBy: "brand" }).success).toBe(false);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "serialNumber" }).success).toBe(false);
   });
 });
