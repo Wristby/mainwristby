@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import type { InventoryItem } from "@shared/schema";
 import { DashboardReferenceSearch } from "./dashboard-reference-search";
 
 vi.mock("wouter", () => ({
@@ -10,7 +11,7 @@ vi.mock("wouter", () => ({
 
 describe("dashboard search shell", () => {
   it("labels the search accessibly without listing all inventory before typing", () => {
-    const html = renderToStaticMarkup(<DashboardReferenceSearch watches={[{ id: 1, brand: "Rolex", model: "Explorer", referenceNumber: "124270", serialNumber: null, status: "sold" }]}/>);
+    const html = renderToStaticMarkup(<DashboardReferenceSearch watches={[{ id: 1, brand: "Rolex", model: "Explorer", referenceNumber: "124270", serialNumber: null, status: "sold" } as InventoryItem]}/>);
     expect(html).toContain("Inventory search");
     expect(html).toContain("Search inventory by brand, model, reference, or serial number");
     expect(html).toContain("role=\"search\"");

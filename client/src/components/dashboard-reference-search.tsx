@@ -1,15 +1,27 @@
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useLocation } from "wouter";
+import { LoaderCircle, Sparkles } from "lucide-react";
+import type { InventoryItem } from "@shared/schema";
 import { findReferenceMatches, type ReferenceWatch } from "@/lib/reference-search";
+import { findNaturalInventoryMatches, type NaturalInventoryFilters } from "@shared/natural-inventory-search";
 
-export function DashboardReferenceSearch({ watches, unavailable = false }: { watches: ReferenceWatch[]; unavailable?: boolean }) {
+export function DashboardReferenceSearch({ watches, unavailable = false }: { watches: InventoryItem[]; unavailable?: boolean }) {
   const [query, setQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<"keyword" | "natural">("keyword");
+  const [naturalFilters, setNaturalFilters] = useState<NaturalInventoryFilters | null>(null);
+  const [isAiSearching, setIsAiSearching] = useState(false);
+  const [aiError, setAiError] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const [dismissed, setDismissed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
   const [, setLocation] = useLocation();
-  const matches = useMemo(() => findReferenceMatches(watches, query), [watches, query]);
+  const matches = useMemo(
+    () => searchMode === "natural" && naturalFilters
+      ? findNaturalInventoryMatches(watches, naturalFilters)
+      : findReferenceMatches(watches, query),
+    [watches, query, searchMode, naturalFilters],
+  );
   const hasQuery = query.trim().length > 0;
   const resultsVisible = hasQuery && !dismissed;
 
@@ -61,17 +73,66 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
 
   const handleQueryChange = (value: string) => {
     setQuery(value);
+    setSearchMode("keyword");
+    setNaturalFilters(null);
+    setAiError("");
     setActiveIndex(-1);
     setDismissed(false);
   };
 
+  const askAiToSearch = async () => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery || isAiSearching) return;
+    setIsAiSearching(true);
+    setAiError("");
+    setActiveIndex(-1);
+    setDismissed(false);
+    try {
+      const response = await fetch("/api/ai/inventory-search", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: trimmedQuery }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.message || "AI search failed.");
+      setNaturalFilters(payload.filters);
+      setSearchMode("natural");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "AI search failed. Please try again.");
+    } finally {
+      setIsAiSearching(false);
+    }
+  };
+
+  const naturalFilterLabels = naturalFilters ? [
+    naturalFilters.brand && `Brand: ${naturalFilters.brand}`,
+    naturalFilters.model && `Model: ${naturalFilters.model}`,
+    naturalFilters.referenceNumber && `Reference: ${naturalFilters.referenceNumber}`,
+    naturalFilters.serialNumber && `Serial: ${naturalFilters.serialNumber}`,
+    naturalFilters.status && `Status: ${naturalFilters.status.replace(/_/g, " ")}`,
+    naturalFilters.condition && `Condition: ${naturalFilters.condition}`,
+    naturalFilters.minYear !== undefined && `Year from ${naturalFilters.minYear}`,
+    naturalFilters.maxYear !== undefined && `Year to ${naturalFilters.maxYear}`,
+    naturalFilters.minPriceEuro !== undefined && `From €${naturalFilters.minPriceEuro}`,
+    naturalFilters.maxPriceEuro !== undefined && `Up to €${naturalFilters.maxPriceEuro}`,
+    (naturalFilters.minPriceEuro !== undefined || naturalFilters.maxPriceEuro !== undefined)
+      && `Price type: ${(naturalFilters.priceField || "listPrice").replace(/([A-Z])/g, " $1").toLowerCase()}`,
+    naturalFilters.box !== undefined && `Box: ${naturalFilters.box ? "yes" : "no"}`,
+    naturalFilters.papers !== undefined && `Papers: ${naturalFilters.papers ? "yes" : "no"}`,
+  ].filter(Boolean) as string[] : [];
+
   const resultMessage = unavailable
     ? "Inventory could not be loaded. Refresh the page to try again."
+    : isAiSearching
+      ? "Understanding your inventory question…"
+      : aiError
+        ? aiError
     : !hasQuery
-    ? "Search by brand, model, reference, serial number, or other watch details."
+    ? "Search by keyword, or ask a question like “Which Rolex watches are in stock?”"
     : matches.length === 0
       ? `No watches found for “${query.trim()}”.`
-      : `${matches.length} ${matches.length === 1 ? "watch" : "watches"} found.`;
+      : `${matches.length} ${matches.length === 1 ? "watch" : "watches"} found${searchMode === "natural" ? " from your AI filters" : ""}.`;
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="reference-search-title">
@@ -79,7 +140,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
         <h2 id="reference-search-title" className="text-base font-semibold tracking-tight text-slate-900">
           Inventory search
         </h2>
-        <p className="mt-1 text-sm text-slate-500">Find any current or sold watch in your inventory.</p>
+        <p className="mt-1 text-sm text-slate-500">Find a watch by keyword, or ask a question about your inventory.</p>
       </div>
 
       <form onSubmit={handleSubmit} role="search" className="relative">
@@ -101,7 +162,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
             id="dashboard-reference-search"
             type="search"
             autoComplete="off"
-            disabled={unavailable}
+            disabled={unavailable || isAiSearching}
             aria-describedby="reference-search-message"
             value={query}
             onChange={(event) => handleQueryChange(event.currentTarget.value)}
@@ -124,11 +185,33 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
             </button>
           )}
         </div>
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={askAiToSearch}
+            disabled={unavailable || !hasQuery || isAiSearching}
+            className="inline-flex min-h-9 items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+          >
+            {isAiSearching ? <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Sparkles aria-hidden="true" className="h-4 w-4" />}
+            {isAiSearching ? "Searching…" : "Ask AI"}
+          </button>
+        </div>
       </form>
 
       <p id="reference-search-message" className="mt-2 min-h-5 text-xs text-slate-500" aria-live="polite" aria-atomic="true">
         {resultMessage}
       </p>
+
+      {searchMode === "natural" && naturalFilterLabels.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5" aria-label="AI interpreted filters">
+          <span className="text-xs font-medium text-slate-500">Filters:</span>
+          {naturalFilterLabels.map((label) => (
+            <span key={label} className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800">
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {resultsVisible && matches.length > 0 && (
         <ul ref={resultsRef} aria-label="Matching watches" className="mt-2 max-h-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-sm">

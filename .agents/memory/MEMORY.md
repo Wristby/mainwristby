@@ -8,3 +8,4 @@
 - [Buyer contact policy](buyer-contact-policy.md) — a name is enough; contact fields are optional, and matching names must not silently merge people
 - [Client spending policy](client-spending-policy.md) — disclose missing sale amounts; distinguish unknown totals, recorded zero, and no purchases
 - [Client retention scope](client-retention-scope.md) — warranty and financial records matter, but validate which personal data must be kept and for how long
+- [Natural-language inventory search](natural-inventory-search.md) — send only the query to Gemini; validate structured filters and match against app data deterministically
