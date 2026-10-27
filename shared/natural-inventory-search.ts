@@ -28,7 +28,7 @@ export const naturalInventoryFiltersSchema = z.object({
 );
 
 export const naturalInventoryAggregateSchema = z.enum(["count", "asking_price_total"]);
-export const naturalInventoryGroupBySchema = z.enum(["brand", "status", "condition"]);
+export const naturalInventoryGroupBySchema = z.enum(["brand", "model", "year", "status", "condition"]);
 export const naturalInventorySearchIntentSchema = z.object({
   filters: naturalInventoryFiltersSchema,
   aggregate: naturalInventoryAggregateSchema.optional(),
@@ -59,6 +59,36 @@ const normalize = (value: unknown) => String(value ?? "")
   .replace(combiningMarks, "")
   .toLowerCase()
   .trim();
+
+function getInventoryGroup(watch: InventoryItem, field: NaturalInventoryGroupBy) {
+  const rawValue = watch[field];
+  if (field === "year") {
+    return typeof rawValue === "number" && Number.isFinite(rawValue)
+      ? { key: `year:${rawValue}`, label: String(rawValue), missing: false }
+      : { key: "missing:year", label: "Year not recorded", missing: true };
+  }
+
+  const label = typeof rawValue === "string" && rawValue.trim()
+    ? field === "status" ? rawValue.replace(/_/g, " ") : rawValue.trim()
+    : field === "model" ? "Model not recorded" : "Unknown";
+  const missing = typeof rawValue !== "string" || !rawValue.trim();
+  return {
+    key: missing ? `missing:${field}` : `${field}:${normalize(label)}`,
+    label,
+    missing,
+  };
+}
+
+function sortInventoryGroups<T extends { label: string; missing?: boolean }>(
+  groups: T[],
+  field: NaturalInventoryGroupBy,
+): T[] {
+  return groups.sort((a, b) => {
+    if (field === "year" && a.missing !== b.missing) return a.missing ? 1 : -1;
+    if (field === "year" && !a.missing && !b.missing) return Number(a.label) - Number(b.label);
+    return a.label.localeCompare(b.label);
+  });
+}
 
 /** Applies only validated, explicit filters to inventory already loaded by the app. */
 export function findNaturalInventoryMatches<T extends InventoryItem>(
@@ -104,19 +134,22 @@ export function getNaturalInventoryAggregate<T extends InventoryItem>(
 ): NaturalInventoryAggregateResult {
   const matches = findNaturalInventoryMatches(watches, filters);
   if (groupBy) {
-    const groupedCounts = new Map<string, { label: string; count: number }>();
+    const groupedCounts = new Map<string, { label: string; count: number; missing: boolean }>();
     for (const watch of matches) {
-      const rawValue = watch[groupBy];
-      const label = typeof rawValue === "string" && rawValue.trim()
-        ? groupBy === "status" ? rawValue.replace(/_/g, " ") : rawValue.trim()
-        : "Unknown";
-      const key = normalize(label);
-      const group = groupedCounts.get(key);
+      const descriptor = getInventoryGroup(watch, groupBy);
+      const group = groupedCounts.get(descriptor.key);
       if (group) group.count += 1;
-      else groupedCounts.set(key, { label, count: 1 });
+      else groupedCounts.set(descriptor.key, { ...descriptor, count: 1 });
     }
-    const groups = Array.from(groupedCounts.values()).sort((a, b) => a.label.localeCompare(b.label));
-    if (aggregate === "count") return { type: "grouped_count", field: groupBy, groups, total: matches.length };
+    const groups = sortInventoryGroups(Array.from(groupedCounts.values()), groupBy);
+    if (aggregate === "count") {
+      return {
+        type: "grouped_count",
+        field: groupBy,
+        groups: groups.map(({ label, count }) => ({ label, count })),
+        total: matches.length,
+      };
+    }
 
     const groupedPrices = new Map<string, {
       label: string;
@@ -124,15 +157,12 @@ export function getNaturalInventoryAggregate<T extends InventoryItem>(
       pricedCount: number;
       missingPriceCount: number;
       watchCount: number;
+      missing: boolean;
     }>();
     for (const watch of matches) {
-      const rawValue = watch[groupBy];
-      const label = typeof rawValue === "string" && rawValue.trim()
-        ? groupBy === "status" ? rawValue.replace(/_/g, " ") : rawValue.trim()
-        : "Unknown";
-      const key = normalize(label);
-      const group = groupedPrices.get(key) ?? {
-        label,
+      const descriptor = getInventoryGroup(watch, groupBy);
+      const group = groupedPrices.get(descriptor.key) ?? {
+        ...descriptor,
         valueInCents: 0,
         pricedCount: 0,
         missingPriceCount: 0,
@@ -145,12 +175,19 @@ export function getNaturalInventoryAggregate<T extends InventoryItem>(
         group.valueInCents += watch.listPrice;
         group.pricedCount += 1;
       }
-      groupedPrices.set(key, group);
+      groupedPrices.set(descriptor.key, group);
     }
     return {
       type: "grouped_asking_price_total",
       field: groupBy,
-      groups: Array.from(groupedPrices.values()).sort((a, b) => a.label.localeCompare(b.label)),
+      groups: sortInventoryGroups(Array.from(groupedPrices.values()), groupBy)
+        .map(({ label, valueInCents, pricedCount, missingPriceCount, watchCount }) => ({
+          label,
+          valueInCents,
+          pricedCount,
+          missingPriceCount,
+          watchCount,
+        })),
       total: matches.length,
     };
   }

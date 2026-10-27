@@ -147,6 +147,44 @@ describe("natural inventory search and summaries", () => {
     });
   });
 
+  it("groups filtered records by model and production year with clear missing-year labels", () => {
+    const records = [
+      makeWatch({ id: 1, model: "Submariner Date", year: 2022, status: "in_stock" }),
+      makeWatch({ id: 2, model: "submariner date", year: 2020, status: "in_stock" }),
+      makeWatch({ id: 3, model: "Santos", year: null, status: "sold" }),
+      makeWatch({ id: 4, model: "  ", year: null, status: "in_stock" }),
+    ];
+
+    expect(getNaturalInventoryAggregate(records, { status: "in_stock" }, "count", "model")).toEqual({
+      type: "grouped_count",
+      field: "model",
+      groups: [
+        { label: "Model not recorded", count: 1 },
+        { label: "Submariner Date", count: 2 },
+      ],
+      total: 3,
+    });
+    expect(getNaturalInventoryAggregate(records, {}, "count", "year")).toEqual({
+      type: "grouped_count",
+      field: "year",
+      groups: [
+        { label: "2020", count: 1 },
+        { label: "2022", count: 1 },
+        { label: "Year not recorded", count: 2 },
+      ],
+      total: 4,
+    });
+    expect(getNaturalInventoryAggregate(records, {}, "asking_price_total", "year")).toMatchObject({
+      type: "grouped_asking_price_total",
+      field: "year",
+      groups: [
+        { label: "2020", watchCount: 1 },
+        { label: "2022", watchCount: 1 },
+        { label: "Year not recorded", watchCount: 2 },
+      ],
+    });
+  });
+
   it("totals recorded asking prices and reports records with missing prices", () => {
     const records = [
       makeWatch({ id: 1, listPrice: 1050000 }),
@@ -196,6 +234,8 @@ describe("natural inventory search and summaries", () => {
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, total: 5 }).success).toBe(false);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "brand" }).success).toBe(true);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "asking_price_total", groupBy: "brand" }).success).toBe(true);
+    expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "model" }).success).toBe(true);
+    expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "year" }).success).toBe(true);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, groupBy: "brand" }).success).toBe(false);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "serialNumber" }).success).toBe(false);
   });

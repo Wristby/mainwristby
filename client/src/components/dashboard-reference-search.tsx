@@ -143,6 +143,10 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     naturalFilters.papers !== undefined && `Papers: ${naturalFilters.papers ? "yes" : "no"}`,
   ].filter(Boolean) as string[] : [];
 
+  const aggregateGroupByLabel = aggregateResult?.type === "grouped_count" || aggregateResult?.type === "grouped_asking_price_total"
+    ? aggregateResult.field === "year" ? "production year" : aggregateResult.field
+    : null;
+
   const resultMessage = unavailable
     ? "Inventory could not be loaded. Refresh the page to try again."
     : isAiSearching
@@ -237,9 +241,9 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
             {aggregateResult.type === "count"
               ? "Verified inventory total"
               : aggregateResult.type === "grouped_count"
-                ? `Inventory count by ${aggregateResult.field}`
+                ? `Inventory count by ${aggregateGroupByLabel}`
                 : aggregateResult.type === "grouped_asking_price_total"
-                  ? `Asking-price total by ${aggregateResult.field}`
+                  ? `Asking-price total by ${aggregateGroupByLabel}`
                 : "Total asking price"}
           </p>
           {aggregateResult.type === "grouped_count" ? (
@@ -248,7 +252,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
                 {aggregateResult.total} {aggregateResult.total === 1 ? "watch" : "watches"} across {aggregateResult.groups.length} {aggregateResult.groups.length === 1 ? "group" : "groups"}
               </p>
               {aggregateResult.groups.length > 0 ? (
-                <ul className="mt-2 divide-y divide-emerald-100" aria-label={`Watch counts by ${aggregateResult.field}`}>
+                <ul className="mt-2 divide-y divide-emerald-100" aria-label={`Watch counts by ${aggregateGroupByLabel}`}>
                   {aggregateResult.groups.map((group) => (
                     <li key={group.label} className="flex items-center justify-between gap-3 py-1.5 text-sm">
                       <span className="truncate text-slate-700">{group.label}</span>
@@ -266,7 +270,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
                 Totals across {aggregateResult.total} matching {aggregateResult.total === 1 ? "watch" : "watches"}
               </p>
               {aggregateResult.groups.length > 0 ? (
-                <ul className="mt-2 divide-y divide-emerald-100" aria-label={`Asking-price totals by ${aggregateResult.field}`}>
+                <ul className="mt-2 divide-y divide-emerald-100" aria-label={`Asking-price totals by ${aggregateGroupByLabel}`}>
                   {aggregateResult.groups.map((group) => (
                     <li key={group.label} className="py-2 text-sm">
                       <div className="flex items-center justify-between gap-3">
