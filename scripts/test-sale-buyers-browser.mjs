@@ -117,6 +117,8 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send("Page.navigate", { url: `${base}/inventory/11` });
   await wait("document.querySelector('main')?.innerText.includes('Historical name')");
+  assert.equal(await evaluate("document.body.innerText.includes('Transaction and expense records are protected from deletion')"), false, "delete notice is removed from watch details");
+  assert.equal(await evaluate("document.body.innerText.includes('Active retention holds prevent deletion')"), false, "retention warning is removed from watch details");
   const pageBackground = await evaluate("getComputedStyle(document.querySelector('.wm-main-scroll')).backgroundColor");
   assert.equal(pageBackground, "rgb(245, 246, 247)");
   await writeFile("/tmp/watch-detail-neutral-background.jpg", Buffer.from((await send("Page.captureScreenshot", { format: "jpeg", quality: 80 })).data, "base64"));

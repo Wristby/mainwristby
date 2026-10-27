@@ -231,7 +231,28 @@ export async function registerRoutes(
       res.sendStatus(204);
     } catch (err) {
       if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
-      res.status(500).json({ message: "Could not delete the watch. The database may need the latest update." });
+      const databaseError = err as { code?: string; table?: string; column?: string };
+      if (databaseError.code === "23502" && databaseError.column === "inventory_id") {
+        return res.status(409).json({
+          message: "The cPanel database needs migration 0009_detach_transaction_parties_on_watch_delete.sql before watches with transaction history can be deleted.",
+        });
+      }
+      if (databaseError.code === "42P01") {
+        return res.status(409).json({
+          message: "The cPanel database is missing retention tables. Apply migration 0008_client_retention.sql and the later database migrations, then retry.",
+        });
+      }
+      if (databaseError.code === "23503") {
+        return res.status(409).json({
+          message: "A linked record still blocks deletion. Verify migration 0009_detach_transaction_parties_on_watch_delete.sql is applied, then retry.",
+        });
+      }
+      console.error("Watch deletion failed", {
+        code: databaseError.code ?? "unknown",
+        table: databaseError.table ?? "unknown",
+        column: databaseError.column ?? "unknown",
+      });
+      res.status(500).json({ message: "Could not delete the watch. Check the cPanel database migrations and server error log, then retry." });
     }
   });
 

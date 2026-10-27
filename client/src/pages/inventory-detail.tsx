@@ -1438,13 +1438,10 @@ export default function InventoryDetail() {
                 Archive
               </Button>
             )}
-            <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={handleDelete} data-testid="button-delete-watch">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete
+            <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={handleDelete} disabled={deleteMutation.isPending} data-testid="button-delete-watch">
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </Button>
-            <p className="max-w-[300px] text-right text-[11px] leading-4 text-slate-500">
-              Archive hides this watch without removing its records. Delete permanently removes the watch details. Active retention holds prevent deletion.
-            </p>
           </div>
         </div>
       </div>
