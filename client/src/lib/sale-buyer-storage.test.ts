@@ -185,17 +185,26 @@ describe("atomic watch buyer persistence", () => {
     expect(state.inventory[0]).toMatchObject({ clientId: 91, buyerId: null, soldTo: null });
     expect(state.clients).toHaveLength(1);
   });
-  it("protects both buyer and seller links against legacy client deletion", async () => {
+  it("deletes only the selected client profile and clears links without changing watch history", async () => {
     state.inventory[0].buyerId = 91;
-    const before = structuredClone(state);
-    await expect(storage.deleteClient(91)).rejects.toThrow("retention preview");
-    expect(state).toEqual(before);
+    const watchBefore = structuredClone(state.inventory[0]);
+    await expect(storage.deleteClient(91)).resolves.toBeUndefined();
+    expect(state.clients).toEqual([]);
+    expect(state.inventory).toHaveLength(1);
+    expect(state.inventory[0]).toMatchObject({
+      ...watchBefore,
+      clientId: null,
+      buyerId: null,
+    });
+    expect(state.inventory[0].soldTo).toBe(watchBefore.soldTo);
+    expect(state.expenses).toEqual([]);
   });
-  it("rejects deletion before attempting any database unlink or delete", async () => {
+  it("rolls back client-link changes if deleting the selected profile fails", async () => {
     state.inventory[0].buyerId = 91;
     const before = structuredClone(state); fixture.failure = "delete";
-    await expect(storage.deleteClient(91)).rejects.toThrow("protected");
-    expect(fixture.operations).toEqual([]);
+    await expect(storage.deleteClient(91)).rejects.toThrow("Fixture failure");
+    expect(fixture.operations).toContain("update:inventory");
+    expect(fixture.operations).toContain("delete:clients");
     expect(state).toEqual(before);
   });
   it("retains a sold watch's original expense when its fee is edited to zero", async () => {

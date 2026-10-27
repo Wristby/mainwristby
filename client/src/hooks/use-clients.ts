@@ -73,7 +73,10 @@ export function useDeleteClient() {
         method: api.clients.delete.method,
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to delete client");
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to delete client");
+      }
       return true;
     },
     onSuccess: () => {

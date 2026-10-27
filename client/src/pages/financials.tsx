@@ -185,6 +185,8 @@ export default function Financials() {
   };
 
   const handleDelete = (id: number) => {
+    const expense = expenses?.find((item) => item.id === id);
+    if (!confirm(`Delete ${expense?.description || "this expense"}? Only this expense record will be removed; linked watches and other records will remain. This cannot be undone.`)) return;
     deleteMutation.mutate(id, {
       onSuccess: () => {
         toast({ title: "Success", description: "Expense deleted" });

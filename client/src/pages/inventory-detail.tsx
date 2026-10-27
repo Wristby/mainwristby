@@ -239,6 +239,7 @@ export default function InventoryDetail() {
   };
 
   const handleDeleteExpense = (expenseId: number) => {
+    if (!confirm("Delete this expense only? The watch and other financial records will remain. This cannot be undone.")) return;
     deleteExpenseMutation.mutate(expenseId, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
@@ -673,7 +674,7 @@ export default function InventoryDetail() {
   if (!item) return <div className="text-slate-600">Item not found</div>;
 
   const handleDelete = () => {
-    if (confirm(`Delete ${item.brand} ${item.model}? This permanently removes its inventory details. Linked expenses and buyer/seller transaction records will be kept but unlinked. This cannot be undone.`)) {
+    if (confirm(`Delete ${item.brand} ${item.model}? Only this watch record will be removed. Linked expenses and transaction records will remain but become unlinked. This cannot be undone.`)) {
       deleteMutation.mutate(id, {
         onSuccess: () => {
           window.location.href = "/inventory";

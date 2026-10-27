@@ -5,7 +5,7 @@ import { Client, InventoryItem, insertClientSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Phone, Mail, Globe, User, Star, ArrowLeft, Watch, History, TrendingUp, ExternalLink, Pencil, Check } from "lucide-react";
+import { Loader2, Phone, Mail, Globe, User, Star, ArrowLeft, Watch, History, TrendingUp, ExternalLink, Pencil, Check, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { RowLink } from "@/components/row-link";
 import {
@@ -45,12 +45,11 @@ import { format } from "date-fns";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useUpdateClient } from "@/hooks/use-clients";
+import { useDeleteClient, useUpdateClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { ClientSalesHistory } from "@/components/client-sales-history";
 import { getSaleAmount } from "@/lib/sale-amount";
-import { ClientRetentionDialog } from "@/components/retention-controls";
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
@@ -67,6 +66,7 @@ export default function ClientDetail() {
   const { toast } = useToast();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const updateClientMutation = useUpdateClient();
+  const deleteClientMutation = useDeleteClient();
 
   const { data: clients, isLoading: isLoadingClients, isError: clientsError } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
@@ -147,6 +147,17 @@ export default function ClientDetail() {
       onError: (error: any) => {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       }
+    });
+  };
+
+  const handleDeleteClient = () => {
+    if (!confirm(`Delete ${client.name}? Only this client profile will be removed. Linked watches and financial records will remain, but their client association will be cleared. This cannot be undone.`)) return;
+    deleteClientMutation.mutate(client.id, {
+      onSuccess: () => {
+        toast({ title: "Client deleted", description: "Linked watches and financial records were kept." });
+        setLocation("/clients");
+      },
+      onError: (error) => toast({ title: "Error", description: error.message, variant: "destructive" }),
     });
   };
 
@@ -356,7 +367,15 @@ export default function ClientDetail() {
               </Form>
             </DialogContent>
           </Dialog>
-          <ClientRetentionDialog clientId={client.id} />
+          <Button
+            variant="outline"
+            onClick={handleDeleteClient}
+            disabled={deleteClientMutation.isPending}
+            className="border-red-200 text-red-600 hover:bg-red-50"
+          >
+            {deleteClientMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            {deleteClientMutation.isPending ? "Deleting…" : "Delete"}
+          </Button>
         </div>
       </div>
 

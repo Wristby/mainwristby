@@ -31,3 +31,9 @@ Archiving a watch must be nondestructive: hide it from active inventory while pr
 **Why:** The user explicitly asked for archived watches to retain all other details, including customer information and expenses.
 
 **How to apply:** Archive by marking the watch archived, not by deleting or detaching related records; keep history and client pages accurate, and retain permanent deletion as a distinct action.
+
+For permanent deletion, remove only the record the user selected and require a confirmation. Preserve linked records; clear only foreign-key links that must be detached to delete the selected row.
+
+**Why:** The user clarified that they want to delete selected records without deleting any linked records.
+
+**How to apply:** This applies to watch, client, and expense deletions. Keep watches, expenses, and transaction snapshots intact when another linked record is removed, and explain any association that must be cleared.

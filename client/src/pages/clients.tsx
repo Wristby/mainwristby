@@ -1,4 +1,4 @@
-import { useClients, useCreateClient } from "@/hooks/use-clients";
+import { useClients, useCreateClient, useDeleteClient } from "@/hooks/use-clients";
 import { LegacyBuyerSync } from "@/components/legacy-buyer-sync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,14 +22,13 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Loader2, Phone, Mail, User, Star, Globe } from "lucide-react";
+import { Search, Plus, Loader2, Phone, Mail, User, Star, Globe, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertClientSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { ClientRetentionDialog, RetentionSchedulePanel } from "@/components/retention-controls";
 
 type CreateClientFormValues = z.infer<typeof insertClientSchema>;
 
@@ -63,6 +62,7 @@ export default function Clients() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const { toast } = useToast();
   const createMutation = useCreateClient();
+  const deleteMutation = useDeleteClient();
 
   const form = useForm<CreateClientFormValues>({
     resolver: zodResolver(insertClientSchema),
@@ -89,6 +89,14 @@ export default function Clients() {
       onError: (err) => {
         toast({ title: "Error", description: err.message, variant: "destructive" });
       },
+    });
+  };
+
+  const handleDeleteClient = (clientId: number, clientName: string) => {
+    if (!confirm(`Delete ${clientName}? Only this client profile will be removed. Linked watches and financial records will remain, but their client association will be cleared. This cannot be undone.`)) return;
+    deleteMutation.mutate(clientId, {
+      onSuccess: () => toast({ title: "Client deleted", description: "Linked watches and financial records were kept." }),
+      onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
     });
   };
 
@@ -192,7 +200,6 @@ export default function Clients() {
           </DialogContent>
         </Dialog>
       </div>
-      <RetentionSchedulePanel />
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <div className="relative mb-6">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -290,8 +297,19 @@ export default function Clients() {
                     <TableCell className="text-right text-slate-400 text-xs">
                        {client.createdAt ? new Date(client.createdAt).toLocaleDateString() : '-'}
                     </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <ClientRetentionDialog clientId={client.id} />
+                    <TableCell onClick={(e) => e.stopPropagation()} className="text-right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Delete ${client.name}`}
+                        title="Delete client"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => handleDeleteClient(client.id, client.name)}
+                        className="h-8 w-8 text-red-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
