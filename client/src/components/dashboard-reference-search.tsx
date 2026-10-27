@@ -6,8 +6,10 @@ import { findReferenceMatches, type ReferenceWatch } from "@/lib/reference-searc
 import {
   findNaturalInventoryMatches,
   getNaturalInventoryAggregate,
+  naturalInventoryGroupBySchema,
   type NaturalInventoryAggregate,
   type NaturalInventoryFilters,
+  type NaturalInventoryGroupBy,
 } from "@shared/natural-inventory-search";
 
 export function DashboardReferenceSearch({ watches, unavailable = false }: { watches: InventoryItem[]; unavailable?: boolean }) {
@@ -15,6 +17,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
   const [searchMode, setSearchMode] = useState<"keyword" | "natural">("keyword");
   const [naturalFilters, setNaturalFilters] = useState<NaturalInventoryFilters | null>(null);
   const [naturalAggregate, setNaturalAggregate] = useState<NaturalInventoryAggregate | null>(null);
+  const [naturalGroupBy, setNaturalGroupBy] = useState<NaturalInventoryGroupBy | null>(null);
   const [isAiSearching, setIsAiSearching] = useState(false);
   const [aiError, setAiError] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -30,9 +33,9 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
   );
   const aggregateResult = useMemo(
     () => searchMode === "natural" && naturalFilters && naturalAggregate && !unavailable
-      ? getNaturalInventoryAggregate(watches, naturalFilters, naturalAggregate)
+      ? getNaturalInventoryAggregate(watches, naturalFilters, naturalAggregate, naturalGroupBy ?? undefined)
       : null,
-    [watches, searchMode, naturalFilters, naturalAggregate, unavailable],
+    [watches, searchMode, naturalFilters, naturalAggregate, naturalGroupBy, unavailable],
   );
   const hasQuery = query.trim().length > 0;
   const resultsVisible = hasQuery && !dismissed;
@@ -88,6 +91,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     setSearchMode("keyword");
     setNaturalFilters(null);
     setNaturalAggregate(null);
+    setNaturalGroupBy(null);
     setAiError("");
     setActiveIndex(-1);
     setDismissed(false);
@@ -111,6 +115,8 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       if (!response.ok) throw new Error(payload?.message || "AI search failed.");
       setNaturalFilters(payload.filters);
       setNaturalAggregate(payload.aggregate === "count" || payload.aggregate === "asking_price_total" ? payload.aggregate : null);
+      const groupBy = naturalInventoryGroupBySchema.safeParse(payload.groupBy);
+      setNaturalGroupBy(groupBy.success ? groupBy.data : null);
       setSearchMode("natural");
     } catch (error) {
       setAiError(error instanceof Error ? error.message : "AI search failed. Please try again.");
@@ -148,7 +154,9 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     : aggregateResult
       ? aggregateResult.type === "count"
         ? "Verified total calculated from matching inventory records."
-        : "Asking-price total calculated from matching inventory records."
+          : aggregateResult.type === "grouped_count"
+            ? "Verified group totals calculated from matching inventory records."
+            : "Asking-price total calculated from matching inventory records."
       : matches.length === 0
       ? `No watches found for “${query.trim()}”.`
       : `${matches.length} ${matches.length === 1 ? "watch" : "watches"} found${searchMode === "natural" ? " from your AI filters" : ""}.`;
@@ -224,15 +232,39 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       {resultsVisible && aggregateResult && (
         <section className="mb-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3" aria-label="Verified inventory summary">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-            {aggregateResult.type === "count" ? "Verified inventory total" : "Total asking price"}
-          </p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
             {aggregateResult.type === "count"
-              ? `${aggregateResult.value} ${aggregateResult.value === 1 ? "watch" : "watches"}`
-              : aggregateResult.pricedCount === 0 && matches.length > 0
-                ? "No asking prices recorded"
-                : new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(aggregateResult.valueInCents / 100)}
+              ? "Verified inventory total"
+              : aggregateResult.type === "grouped_count"
+                ? `Inventory count by ${aggregateResult.field}`
+                : "Total asking price"}
           </p>
+          {aggregateResult.type === "grouped_count" ? (
+            <>
+              <p className="mt-1 text-sm text-slate-600">
+                {aggregateResult.total} {aggregateResult.total === 1 ? "watch" : "watches"} across {aggregateResult.groups.length} {aggregateResult.groups.length === 1 ? "group" : "groups"}
+              </p>
+              {aggregateResult.groups.length > 0 ? (
+                <ul className="mt-2 divide-y divide-emerald-100" aria-label={`Watch counts by ${aggregateResult.field}`}>
+                  {aggregateResult.groups.map((group) => (
+                    <li key={group.label} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                      <span className="truncate text-slate-700">{group.label}</span>
+                      <span className="shrink-0 font-semibold tabular-nums text-slate-900">{group.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">No matching watches.</p>
+              )}
+            </>
+          ) : (
+            <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
+              {aggregateResult.type === "count"
+                ? `${aggregateResult.value} ${aggregateResult.value === 1 ? "watch" : "watches"}`
+                : aggregateResult.pricedCount === 0 && matches.length > 0
+                  ? "No asking prices recorded"
+                  : new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(aggregateResult.valueInCents / 100)}
+            </p>
+          )}
           {aggregateResult.type === "asking_price_total" && (
             <p className="mt-1 text-xs text-slate-600">
               {matches.length === 0
@@ -257,7 +289,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
 
       {resultsVisible && matches.length > 0 && (
         <div>
-          {aggregateResult && <h3 className="mb-1 text-xs font-semibold text-slate-600">Matching watches ({matches.length})</h3>}
+          {(aggregateResult || naturalGroupBy) && <h3 className="mb-1 text-xs font-semibold text-slate-600">Matching watches ({matches.length})</h3>}
           <ul ref={resultsRef} aria-label="Matching watches" className="mt-2 max-h-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-sm">
             {matches.map((watch, index) => (
               <li key={`${watch.id}-${watch.referenceNumber}`}>
