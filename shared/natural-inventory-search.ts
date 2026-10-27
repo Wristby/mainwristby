@@ -10,6 +10,7 @@ export const naturalInventoryFiltersSchema = z.object({
   condition: z.enum(["New", "Mint", "Used", "Damaged", "Good", "Very Good", "Excellent", "Like New"]).optional(),
   minYear: z.number().int().min(1800).max(2200).optional(),
   maxYear: z.number().int().min(1800).max(2200).optional(),
+  soldYear: z.number().int().min(1800).max(2200).optional(),
   minPriceEuro: z.number().finite().min(0).max(100_000_000).optional(),
   maxPriceEuro: z.number().finite().min(0).max(100_000_000).optional(),
   priceField: z.enum(["purchasePrice", "listPrice", "salePrice"]).optional(),
@@ -21,9 +22,23 @@ export const naturalInventoryFiltersSchema = z.object({
 ).refine(
   (filters) => filters.minPriceEuro === undefined || filters.maxPriceEuro === undefined || filters.minPriceEuro <= filters.maxPriceEuro,
   { message: "Minimum price cannot be greater than maximum price." },
+).refine(
+  (filters) => filters.soldYear === undefined || filters.status === "sold",
+  { message: "A sold year requires sold status." },
 );
 
+export const naturalInventoryAggregateSchema = z.enum(["count", "asking_price_total"]);
+export const naturalInventorySearchIntentSchema = z.object({
+  filters: naturalInventoryFiltersSchema,
+  aggregate: naturalInventoryAggregateSchema.optional(),
+}).strict();
+
 export type NaturalInventoryFilters = z.infer<typeof naturalInventoryFiltersSchema>;
+export type NaturalInventoryAggregate = z.infer<typeof naturalInventoryAggregateSchema>;
+
+export type NaturalInventoryAggregateResult =
+  | { type: "count"; value: number }
+  | { type: "asking_price_total"; valueInCents: number; pricedCount: number; missingPriceCount: number };
 
 const combiningMarks = new RegExp("\\p{M}", "gu");
 const normalize = (value: unknown) => String(value ?? "")
@@ -48,6 +63,11 @@ export function findNaturalInventoryMatches<T extends InventoryItem>(
     if (filters.condition && normalize(watch.condition) !== normalize(filters.condition)) return false;
     if (filters.minYear !== undefined && (watch.year == null || watch.year < filters.minYear)) return false;
     if (filters.maxYear !== undefined && (watch.year == null || watch.year > filters.maxYear)) return false;
+    if (filters.soldYear !== undefined) {
+      const soldDate = watch.soldDate || watch.dateSold;
+      const soldTimestamp = soldDate ? new Date(soldDate).getTime() : Number.NaN;
+      if (watch.status !== "sold" || !Number.isFinite(soldTimestamp) || new Date(soldTimestamp).getUTCFullYear() !== filters.soldYear) return false;
+    }
     if (filters.box !== undefined && watch.box !== filters.box) return false;
     if (filters.papers !== undefined && watch.papers !== filters.papers) return false;
 
@@ -60,4 +80,22 @@ export function findNaturalInventoryMatches<T extends InventoryItem>(
     }
     return true;
   });
+}
+
+/** Computes supported summaries from matching application records, never from model output. */
+export function getNaturalInventoryAggregate<T extends InventoryItem>(
+  watches: readonly T[],
+  filters: NaturalInventoryFilters,
+  aggregate: NaturalInventoryAggregate,
+): NaturalInventoryAggregateResult {
+  const matches = findNaturalInventoryMatches(watches, filters);
+  if (aggregate === "count") return { type: "count", value: matches.length };
+
+  const priced = matches.filter((watch) => watch.listPrice != null);
+  return {
+    type: "asking_price_total",
+    valueInCents: priced.reduce((total, watch) => total + watch.listPrice!, 0),
+    pricedCount: priced.length,
+    missingPriceCount: matches.length - priced.length,
+  };
 }

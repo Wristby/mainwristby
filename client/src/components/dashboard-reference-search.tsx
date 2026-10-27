@@ -3,12 +3,18 @@ import { Link, useLocation } from "wouter";
 import { LoaderCircle, Sparkles } from "lucide-react";
 import type { InventoryItem } from "@shared/schema";
 import { findReferenceMatches, type ReferenceWatch } from "@/lib/reference-search";
-import { findNaturalInventoryMatches, type NaturalInventoryFilters } from "@shared/natural-inventory-search";
+import {
+  findNaturalInventoryMatches,
+  getNaturalInventoryAggregate,
+  type NaturalInventoryAggregate,
+  type NaturalInventoryFilters,
+} from "@shared/natural-inventory-search";
 
 export function DashboardReferenceSearch({ watches, unavailable = false }: { watches: InventoryItem[]; unavailable?: boolean }) {
   const [query, setQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"keyword" | "natural">("keyword");
   const [naturalFilters, setNaturalFilters] = useState<NaturalInventoryFilters | null>(null);
+  const [naturalAggregate, setNaturalAggregate] = useState<NaturalInventoryAggregate | null>(null);
   const [isAiSearching, setIsAiSearching] = useState(false);
   const [aiError, setAiError] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -21,6 +27,12 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       ? findNaturalInventoryMatches(watches, naturalFilters)
       : findReferenceMatches(watches, query),
     [watches, query, searchMode, naturalFilters],
+  );
+  const aggregateResult = useMemo(
+    () => searchMode === "natural" && naturalFilters && naturalAggregate && !unavailable
+      ? getNaturalInventoryAggregate(watches, naturalFilters, naturalAggregate)
+      : null,
+    [watches, searchMode, naturalFilters, naturalAggregate, unavailable],
   );
   const hasQuery = query.trim().length > 0;
   const resultsVisible = hasQuery && !dismissed;
@@ -75,6 +87,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     setQuery(value);
     setSearchMode("keyword");
     setNaturalFilters(null);
+    setNaturalAggregate(null);
     setAiError("");
     setActiveIndex(-1);
     setDismissed(false);
@@ -97,6 +110,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.message || "AI search failed.");
       setNaturalFilters(payload.filters);
+      setNaturalAggregate(payload.aggregate === "count" || payload.aggregate === "asking_price_total" ? payload.aggregate : null);
       setSearchMode("natural");
     } catch (error) {
       setAiError(error instanceof Error ? error.message : "AI search failed. Please try again.");
@@ -114,6 +128,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     naturalFilters.condition && `Condition: ${naturalFilters.condition}`,
     naturalFilters.minYear !== undefined && `Year from ${naturalFilters.minYear}`,
     naturalFilters.maxYear !== undefined && `Year to ${naturalFilters.maxYear}`,
+    naturalFilters.soldYear !== undefined && `Sold in ${naturalFilters.soldYear}`,
     naturalFilters.minPriceEuro !== undefined && `From €${naturalFilters.minPriceEuro}`,
     naturalFilters.maxPriceEuro !== undefined && `Up to €${naturalFilters.maxPriceEuro}`,
     (naturalFilters.minPriceEuro !== undefined || naturalFilters.maxPriceEuro !== undefined)
@@ -130,7 +145,11 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
         ? aiError
     : !hasQuery
     ? "Search by keyword, or ask a question like “Which Rolex watches are in stock?”"
-    : matches.length === 0
+    : aggregateResult
+      ? aggregateResult.type === "count"
+        ? "Verified total calculated from matching inventory records."
+        : "Asking-price total calculated from matching inventory records."
+      : matches.length === 0
       ? `No watches found for “${query.trim()}”.`
       : `${matches.length} ${matches.length === 1 ? "watch" : "watches"} found${searchMode === "natural" ? " from your AI filters" : ""}.`;
 
@@ -202,6 +221,29 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
         {resultMessage}
       </p>
 
+      {resultsVisible && aggregateResult && (
+        <section className="mb-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3" aria-label="Verified inventory summary">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+            {aggregateResult.type === "count" ? "Verified inventory total" : "Total asking price"}
+          </p>
+          <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
+            {aggregateResult.type === "count"
+              ? `${aggregateResult.value} ${aggregateResult.value === 1 ? "watch" : "watches"}`
+              : aggregateResult.pricedCount === 0 && matches.length > 0
+                ? "No asking prices recorded"
+                : new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR" }).format(aggregateResult.valueInCents / 100)}
+          </p>
+          {aggregateResult.type === "asking_price_total" && (
+            <p className="mt-1 text-xs text-slate-600">
+              {matches.length === 0
+                ? "No matching watches."
+                : `Based on ${aggregateResult.pricedCount} of ${matches.length} matching ${matches.length === 1 ? "watch" : "watches"} with a recorded asking price.`}
+              {aggregateResult.missingPriceCount > 0 && ` Excludes ${aggregateResult.missingPriceCount} without a recorded asking price.`}
+            </p>
+          )}
+        </section>
+      )}
+
       {searchMode === "natural" && naturalFilterLabels.length > 0 && (
         <div className="mb-2 flex flex-wrap items-center gap-1.5" aria-label="AI interpreted filters">
           <span className="text-xs font-medium text-slate-500">Filters:</span>
@@ -214,69 +256,72 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       )}
 
       {resultsVisible && matches.length > 0 && (
-        <ul ref={resultsRef} aria-label="Matching watches" className="mt-2 max-h-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-sm">
-          {matches.map((watch, index) => (
-            <li key={`${watch.id}-${watch.referenceNumber}`}>
-              <Link
-                href={`/inventory/${watch.id}`}
-                onFocus={() => setActiveIndex(index)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setDismissed(true);
-                    setActiveIndex(-1);
-                    inputRef.current?.focus();
-                  } else if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    focusMatch((index + 1) % matches.length);
-                  } else if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    if (index === 0) { setActiveIndex(-1); inputRef.current?.focus(); }
-                    else focusMatch(index - 1);
-                  } else if (event.key === "Home" || event.key === "End") {
-                    event.preventDefault();
-                    focusMatch(event.key === "Home" ? 0 : matches.length - 1);
-                  }
-                }}
-                className={`block min-h-14 border-b border-slate-100 px-3 py-3 last:border-b-0 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${
-                  activeIndex === index ? "bg-emerald-50/70" : "bg-white hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-1">
-                  <span className="min-w-0 flex-1 break-words text-sm font-semibold leading-5 text-slate-900">
-                    {watch.brand} <span className="font-medium">{watch.model}</span>
-                  </span>
-                  <span
-                    className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
-                      watch.status?.toLowerCase() === "sold"
-                        ? "bg-slate-100 text-slate-600"
-                        : "bg-emerald-50 text-emerald-700"
-                    }`}
-                  >
-                    {watch.status?.replace(/_/g, " ") || "Status unavailable"}
-                  </span>
-                </div>
-                <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 text-slate-500">
-                  <span className="min-w-0 break-all">
-                    Ref. <span className="font-mono font-medium text-slate-700">{watch.referenceNumber}</span>
-                  </span>
-                  {watch.serialNumber && (
-                    <span className="break-all">
-                      Serial <span className="font-mono text-slate-600">{watch.serialNumber}</span>
+        <div>
+          {aggregateResult && <h3 className="mb-1 text-xs font-semibold text-slate-600">Matching watches ({matches.length})</h3>}
+          <ul ref={resultsRef} aria-label="Matching watches" className="mt-2 max-h-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-sm">
+            {matches.map((watch, index) => (
+              <li key={`${watch.id}-${watch.referenceNumber}`}>
+                <Link
+                  href={`/inventory/${watch.id}`}
+                  onFocus={() => setActiveIndex(index)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setDismissed(true);
+                      setActiveIndex(-1);
+                      inputRef.current?.focus();
+                    } else if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      focusMatch((index + 1) % matches.length);
+                    } else if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      if (index === 0) { setActiveIndex(-1); inputRef.current?.focus(); }
+                      else focusMatch(index - 1);
+                    } else if (event.key === "Home" || event.key === "End") {
+                      event.preventDefault();
+                      focusMatch(event.key === "Home" ? 0 : matches.length - 1);
+                    }
+                  }}
+                  className={`block min-h-14 border-b border-slate-100 px-3 py-3 last:border-b-0 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${
+                    activeIndex === index ? "bg-emerald-50/70" : "bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                    <span className="min-w-0 flex-1 break-words text-sm font-semibold leading-5 text-slate-900">
+                      {watch.brand} <span className="font-medium">{watch.model}</span>
                     </span>
-                  )}
-                  {watch.internalSerial && (
-                    <span className="break-all">
-                      Internal <span className="font-mono text-slate-600">{watch.internalSerial}</span>
+                    <span
+                      className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                        watch.status?.toLowerCase() === "sold"
+                          ? "bg-slate-100 text-slate-600"
+                          : "bg-emerald-50 text-emerald-700"
+                      }`}
+                    >
+                      {watch.status?.replace(/_/g, " ") || "Status unavailable"}
                     </span>
-                  )}
-                  {watch.year && <span>{watch.year}</span>}
-                  <span className="font-mono text-slate-400">Record #{watch.id}</span>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                  </div>
+                  <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 text-slate-500">
+                    <span className="min-w-0 break-all">
+                      Ref. <span className="font-mono font-medium text-slate-700">{watch.referenceNumber}</span>
+                    </span>
+                    {watch.serialNumber && (
+                      <span className="break-all">
+                        Serial <span className="font-mono text-slate-600">{watch.serialNumber}</span>
+                      </span>
+                    )}
+                    {watch.internalSerial && (
+                      <span className="break-all">
+                        Internal <span className="font-mono text-slate-600">{watch.internalSerial}</span>
+                      </span>
+                    )}
+                    {watch.year && <span>{watch.year}</span>}
+                    <span className="font-mono text-slate-400">Record #{watch.id}</span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   );

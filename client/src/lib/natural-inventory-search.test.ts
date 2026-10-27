@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { InventoryItem } from "./schema";
+import type { InventoryItem } from "@shared/schema";
 import {
   findNaturalInventoryMatches,
+  getNaturalInventoryAggregate,
   naturalInventoryFiltersSchema,
+  naturalInventorySearchIntentSchema,
   type NaturalInventoryFilters,
-} from "./natural-inventory-search";
+} from "@shared/natural-inventory-search";
 
 function makeWatch(overrides: Partial<InventoryItem> = {}): InventoryItem {
   return {
@@ -58,7 +60,7 @@ function makeWatch(overrides: Partial<InventoryItem> = {}): InventoryItem {
   } as InventoryItem;
 }
 
-describe("natural inventory filters", () => {
+describe("natural inventory search and summaries", () => {
   const watches = [
     makeWatch(),
     makeWatch({
@@ -66,6 +68,7 @@ describe("natural inventory filters", () => {
       brand: "Cartier",
       model: "Santos",
       referenceNumber: "WSSA0037",
+      internalSerial: null,
       year: 2021,
       status: "sold",
       purchasePrice: 700000,
@@ -98,9 +101,39 @@ describe("natural inventory filters", () => {
     expect(findNaturalInventoryMatches(watches, { serialNumber: "wr-001" }).map((watch) => watch.id)).toEqual([1]);
   });
 
-  it("rejects unsupported filter keys and inverted ranges", () => {
+  it("counts sold watches in a requested year using their sale date", () => {
+    const records = [
+      makeWatch({ id: 1, status: "sold", soldDate: new Date("2026-04-10T12:00:00Z") }),
+      makeWatch({ id: 2, status: "sold", soldDate: null, dateSold: new Date("2025-12-31T12:00:00Z") }),
+      makeWatch({ id: 3, status: "in_stock", soldDate: new Date("2026-04-10T12:00:00Z") }),
+    ];
+    const filters = { status: "sold", soldYear: 2026 } as const;
+
+    expect(findNaturalInventoryMatches(records, filters).map((watch) => watch.id)).toEqual([1]);
+    expect(getNaturalInventoryAggregate(records, filters, "count")).toEqual({ type: "count", value: 1 });
+  });
+
+  it("totals recorded asking prices and reports records with missing prices", () => {
+    const records = [
+      makeWatch({ id: 1, listPrice: 1050000 }),
+      makeWatch({ id: 2, listPrice: 50000 }),
+      makeWatch({ id: 3, listPrice: null }),
+    ];
+
+    expect(getNaturalInventoryAggregate(records, { brand: "Rolex" }, "asking_price_total")).toEqual({
+      type: "asking_price_total",
+      valueInCents: 1100000,
+      pricedCount: 2,
+      missingPriceCount: 1,
+    });
+  });
+
+  it("rejects unsupported filters, aggregates, and inverted ranges", () => {
     expect(naturalInventoryFiltersSchema.safeParse({ status: "in_stock", sql: "anything" }).success).toBe(false);
     expect(naturalInventoryFiltersSchema.safeParse({ minYear: 2025, maxYear: 2020 }).success).toBe(false);
     expect(naturalInventoryFiltersSchema.safeParse({ minPriceEuro: 200, maxPriceEuro: 100 }).success).toBe(false);
+    expect(naturalInventoryFiltersSchema.safeParse({ soldYear: 2026 }).success).toBe(false);
+    expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "average_price" }).success).toBe(false);
+    expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, total: 5 }).success).toBe(false);
   });
 });
