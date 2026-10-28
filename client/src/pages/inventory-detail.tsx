@@ -44,6 +44,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn, parsePriceInput } from "@/lib/utils";
 import { computeVat } from "@/lib/vat-calculations";
+import { calculateCogsMarginTargetPrice, COGS_MARGIN_TARGETS } from "@/lib/margin-presets";
 import { useSettings } from "@/hooks/use-settings";
 import { QuickEstimate } from "@/components/quick-estimate";
 import { DeliveryStatus } from "@/components/delivery-status";
@@ -1588,6 +1589,42 @@ export default function InventoryDetail() {
                   <p className="text-xl font-bold text-amber-700">{formatCurrency(vatAmount)}</p>
                 </div>
               </div>
+
+              <section
+                className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-4"
+                aria-labelledby="cogs-margin-presets-title"
+                data-testid="cogs-margin-presets"
+              >
+                <div className="mb-3">
+                  <h3 id="cogs-margin-presets-title" className="text-sm font-semibold text-slate-800">
+                    Target Sale Price by Margin
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Based on COGS only; fees and other expenses are excluded.
+                  </p>
+                </div>
+                {item.purchasePrice > 0 ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {COGS_MARGIN_TARGETS.map((targetMargin) => {
+                      const targetPrice = calculateCogsMarginTargetPrice(item.purchasePrice, targetMargin);
+                      return (
+                        <div
+                          key={targetMargin}
+                          className="rounded-lg border border-white bg-white/80 px-3 py-3"
+                          data-testid={`cogs-margin-target-${targetMargin}`}
+                        >
+                          <p className="text-xs font-medium text-slate-500">{targetMargin}% margin</p>
+                          <p className="mt-1 text-lg font-bold text-emerald-700">
+                            {targetPrice === null ? "—" : formatCurrency(targetPrice)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Add a COGS amount to see target prices.</p>
+                )}
+              </section>
 
               {/* Financial Pillars - 2 Row Layout */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
