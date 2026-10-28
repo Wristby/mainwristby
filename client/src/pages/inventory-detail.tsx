@@ -1408,7 +1408,7 @@ export default function InventoryDetail() {
             {!item.archivedAt && (
               <Button
                 variant="outline"
-                className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                className="w-28 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                 onClick={handleArchive}
                 disabled={archiveMutation.isPending}
                 data-testid="button-archive-watch"
@@ -1417,7 +1417,7 @@ export default function InventoryDetail() {
                 Archive
               </Button>
             )}
-            <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={handleDelete} disabled={deleteMutation.isPending} data-testid="button-delete-watch">
+            <Button variant="outline" className="w-28 border-red-200 text-red-600 hover:bg-red-50" onClick={handleDelete} disabled={deleteMutation.isPending} data-testid="button-delete-watch">
               {deleteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
               {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </Button>
