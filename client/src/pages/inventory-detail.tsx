@@ -1,4 +1,4 @@
-import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory } from "@/hooks/use-inventory";
+import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory, useInventorySerialMatches } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
@@ -51,6 +51,8 @@ import { DeliveryStatus } from "@/components/delivery-status";
 import { SaleBuyerFields } from "@/components/sale-buyer-fields";
 import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuyerInput } from "@shared/sale-buyer";
 import { COUNTRIES } from "@/lib/countries";
+import { normalizeWatchSerial } from "@shared/serial-match";
+import { SerialMatchNotice } from "@/components/watch-intake/serial-match-notice";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -175,6 +177,7 @@ export default function InventoryDetail() {
   const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
   const EXPENSE_CATEGORIES = settings.expense_categories;
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [serialLookup, setSerialLookup] = useState({ serialNumber: "", internalSerial: "" });
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [scrollToSaleOnOpen, setScrollToSaleOnOpen] = useState(false);
   const salesSectionRef = useRef<HTMLDivElement>(null);
@@ -291,9 +294,32 @@ export default function InventoryDetail() {
   });
 
   const watchedStatus = form.watch("status");
+  const watchedSerialNumber = form.watch("serialNumber") ?? "";
+  const watchedInternalSerial = form.watch("internalSerial") ?? "";
+  const serialMatches = useInventorySerialMatches(
+    serialLookup.serialNumber,
+    serialLookup.internalSerial,
+    isEditOpen,
+    id,
+  );
+  const serialLookupIsCurrent =
+    normalizeWatchSerial(watchedSerialNumber) === normalizeWatchSerial(serialLookup.serialNumber) &&
+    normalizeWatchSerial(watchedInternalSerial) === normalizeWatchSerial(serialLookup.internalSerial);
   const watchedSalePrice = Number(form.watch("salePrice"));
   const watchedSoldPlatform = form.watch("soldPlatform");
   const watchedChrono24FeeRate = form.watch("chrono24FeeRate");
+
+  useEffect(() => {
+    if (!isEditOpen) {
+      setSerialLookup({ serialNumber: "", internalSerial: "" });
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setSerialLookup({ serialNumber: watchedSerialNumber, internalSerial: watchedInternalSerial }),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [isEditOpen, watchedSerialNumber, watchedInternalSerial]);
 
   useEffect(() => {
     if (watchedStatus === "sold") {
@@ -933,6 +959,12 @@ export default function InventoryDetail() {
                       <Label>Movement Serial Number</Label>
                       <Input {...form.register("internalSerial")} className="bg-white border-slate-200" />
                     </div>
+                    {serialLookupIsCurrent && <SerialMatchNotice
+                      matches={serialMatches.data ?? []}
+                      loading={serialMatches.isFetching}
+                      error={serialMatches.isError}
+                      action="update"
+                    />}
                     <div className="space-y-2">
                       <Label>Year</Label>
                       <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("year")} className="bg-white border-slate-200" />

@@ -23,16 +23,18 @@ export function SerialMatchNotice({
   matches,
   loading = false,
   error = false,
+  action = "add",
 }: {
   matches: InventorySerialMatch[];
   loading?: boolean;
   error?: boolean;
+  action?: "add" | "update";
 }) {
   if (loading) {
     return <p role="status" className="text-xs text-slate-500 sm:col-span-2">Checking saved watch records for a serial match…</p>;
   }
   if (error) {
-    return <p role="status" className="text-xs text-amber-800 sm:col-span-2">Could not check saved serial numbers. You can still add this watch.</p>;
+    return <p role="status" className="text-xs text-amber-800 sm:col-span-2">Could not check saved serial numbers. You can still {action === "add" ? "add" : "save"} this watch.</p>;
   }
   if (!matches.length) return null;
 
@@ -43,7 +45,7 @@ export function SerialMatchNotice({
         <h4 className="text-sm font-semibold text-amber-950">Possible repeat watch</h4>
         <p className="mt-0.5 text-xs leading-5 text-amber-900">
           {matches.length === 1 ? "This serial matches a watch already in your records." : `These serials match ${matches.length} watches already in your records.`}
-          {" "}Review the match before adding; this does not prevent saving.
+          {" "}Review the match before {action === "add" ? "adding" : "saving"}; this does not prevent saving.
         </p>
       </div>
     </div>

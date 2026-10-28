@@ -45,4 +45,10 @@ describe("serial match notice", () => {
     const html = renderToStaticMarkup(<SerialMatchNotice matches={[]} error/>);
     expect(html).toContain("You can still add this watch.");
   });
+
+  it("uses update-specific copy while keeping matching advisory", () => {
+    const html = renderToStaticMarkup(<SerialMatchNotice matches={[match]} action="update"/>);
+    expect(html).toContain("Review the match before saving; this does not prevent saving.");
+    expect(html).not.toContain("before adding");
+  });
 });

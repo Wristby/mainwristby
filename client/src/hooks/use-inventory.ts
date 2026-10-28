@@ -2,15 +2,21 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type CreateInventoryRequest, type UpdateInventoryRequest } from "@shared/routes";
 import { normalizeWatchSerial } from "@shared/serial-match";
 
-export function useInventorySerialMatches(serialNumber?: string | null, internalSerial?: string | null, enabled = true) {
+export function useInventorySerialMatches(
+  serialNumber?: string | null,
+  internalSerial?: string | null,
+  enabled = true,
+  excludeId?: number | null,
+) {
   const normalizedSerial = normalizeWatchSerial(serialNumber);
   const normalizedInternalSerial = normalizeWatchSerial(internalSerial);
   return useQuery({
-    queryKey: [api.inventory.serialMatches.path, normalizedSerial, normalizedInternalSerial],
+    queryKey: [api.inventory.serialMatches.path, normalizedSerial, normalizedInternalSerial, excludeId ?? null],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (serialNumber?.trim()) params.set("serialNumber", serialNumber.trim());
       if (internalSerial?.trim()) params.set("internalSerial", internalSerial.trim());
+      if (excludeId != null) params.set("excludeId", String(excludeId));
       const response = await fetch(`${api.inventory.serialMatches.path}?${params.toString()}`, { credentials: "include" });
       if (!response.ok) throw new Error("Could not check saved watch serial numbers.");
       return api.inventory.serialMatches.responses[200].parse(await response.json());

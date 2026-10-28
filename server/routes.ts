@@ -181,10 +181,15 @@ export async function registerRoutes(
   app.get(api.inventory.serialMatches.path, isAuthenticated, async (req, res) => {
     const serialNumber = typeof req.query.serialNumber === "string" ? req.query.serialNumber : "";
     const internalSerial = typeof req.query.internalSerial === "string" ? req.query.internalSerial : "";
+    const excludeIdParam = req.query.excludeId;
+    const excludeId = typeof excludeIdParam === "string" ? Number(excludeIdParam) : undefined;
     if (serialNumber.length > 100 || internalSerial.length > 100) {
       return res.status(400).json({ message: "Serial numbers must be 100 characters or fewer." });
     }
-    const matches = await storage.findInventorySerialMatches([serialNumber, internalSerial]);
+    if (excludeIdParam !== undefined && (!Number.isInteger(excludeId) || excludeId! <= 0)) {
+      return res.status(400).json({ message: "The excluded watch ID must be a positive integer." });
+    }
+    const matches = await storage.findInventorySerialMatches([serialNumber, internalSerial], excludeId);
     res.json(matches);
   });
 

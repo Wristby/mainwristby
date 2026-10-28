@@ -6,7 +6,7 @@ import {
   type Expense, type InsertExpense,
   type DashboardStats, type Setting
 } from "@shared/schema";
-import { eq, desc, sql, and, isNull, isNotNull, inArray, or } from "drizzle-orm";
+import { eq, desc, sql, and, isNull, isNotNull, inArray, or, ne } from "drizzle-orm";
 import { matchingBuyerContact, sameBuyerContact, type SaleBuyerInput } from "@shared/sale-buyer";
 import { getMatchingSerialFields, normalizeWatchSerial } from "@shared/serial-match";
 import { RetentionError } from "./retention";
@@ -62,7 +62,7 @@ export interface IStorage {
 
   // Inventory
   getInventoryItems(status?: string, includeArchived?: boolean): Promise<(InventoryItem & { seller?: Client })[]>;
-  findInventorySerialMatches(serials: unknown[]): Promise<Array<Pick<InventoryItem, "id" | "brand" | "model" | "referenceNumber" | "serialNumber" | "internalSerial" | "status" | "dateSold" | "soldDate" | "archivedAt"> & { matchedFields: Array<"serialNumber" | "internalSerial"> }>>;
+  findInventorySerialMatches(serials: unknown[], excludeId?: number): Promise<Array<Pick<InventoryItem, "id" | "brand" | "model" | "referenceNumber" | "serialNumber" | "internalSerial" | "status" | "dateSold" | "soldDate" | "archivedAt"> & { matchedFields: Array<"serialNumber" | "internalSerial"> }>>;
   getArchivedInventoryItems(): Promise<(InventoryItem & { seller?: Client })[]>;
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
   createInventoryItem(item: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
@@ -132,12 +132,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Inventory
-  async findInventorySerialMatches(serials: unknown[]) {
+  async findInventorySerialMatches(serials: unknown[], excludeId?: number) {
     const normalizedSerials = Array.from(new Set(serials.map(normalizeWatchSerial).filter(Boolean)));
     if (!normalizedSerials.length) return [];
 
     const serialNumberMatch = sql`regexp_replace(lower(coalesce(${inventory.serialNumber}, '')), '[^a-z0-9]', '', 'g')`;
     const internalSerialMatch = sql`regexp_replace(lower(coalesce(${inventory.internalSerial}, '')), '[^a-z0-9]', '', 'g')`;
+    const serialCondition = or(
+      inArray(serialNumberMatch, normalizedSerials),
+      inArray(internalSerialMatch, normalizedSerials),
+    );
     const matches = await db.select({
       id: inventory.id,
       brand: inventory.brand,
@@ -149,10 +153,9 @@ export class DatabaseStorage implements IStorage {
       dateSold: inventory.dateSold,
       soldDate: inventory.soldDate,
       archivedAt: inventory.archivedAt,
-    }).from(inventory).where(or(
-      inArray(serialNumberMatch, normalizedSerials),
-      inArray(internalSerialMatch, normalizedSerials),
-    )).orderBy(desc(inventory.purchaseDate));
+    }).from(inventory).where(
+      excludeId == null ? serialCondition : and(serialCondition, ne(inventory.id, excludeId)),
+    ).orderBy(desc(inventory.purchaseDate));
 
     return matches.map((watch) => ({
       ...watch,
