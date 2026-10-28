@@ -2,16 +2,63 @@ import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calculator, TrendingUp, Percent, Wallet } from "lucide-react";
 import { useSettings, type QuickEstimatePlatformFee } from "@/hooks/use-settings";
+import { computeVat } from "@/lib/vat-calculations";
 
 type QuickEstimateProps = {
   /** Optional saved COGS value in cents, used to prefill the estimate's Buy Price. */
   initialBuyPriceCents?: number;
 };
+
+type QuickEstimateCalculationInput = {
+  buyPrice: number;
+  serviceCost: number;
+  salePrice: number;
+  shipping: number;
+  selectedPlatform: QuickEstimatePlatformFee | null;
+  watchRegister: boolean;
+  watchRegisterFeeCents: number;
+  vatRate: number;
+};
+
+export function calculateQuickEstimate({
+  buyPrice,
+  serviceCost,
+  salePrice,
+  shipping,
+  selectedPlatform,
+  watchRegister,
+  watchRegisterFeeCents,
+  vatRate,
+}: QuickEstimateCalculationInput) {
+  let platformFee = 0;
+  if (selectedPlatform) {
+    platformFee = selectedPlatform.type === "percentage"
+      ? salePrice * (selectedPlatform.amount / 100)
+      : selectedPlatform.amount / 100;
+  }
+
+  const watchRegisterFee = watchRegister ? watchRegisterFeeCents / 100 : 0;
+  const totalCost = buyPrice + serviceCost + platformFee + shipping + watchRegisterFee;
+  const vatResult = computeVat({
+    salePrice: Math.round(salePrice * 100),
+    totalCosts: Math.round(totalCost * 100),
+    vatRate,
+  });
+  const profitBeforeVat = vatResult.profit / 100;
+
+  return {
+    profitBeforeVat,
+    vatAmount: vatResult.vatAmount / 100,
+    netAfterVat: vatResult.netAfterVat / 100,
+    margin: salePrice > 0 ? (profitBeforeVat / salePrice) * 100 : 0,
+    roi: buyPrice > 0 ? (profitBeforeVat / buyPrice) * 100 : 0,
+    platformFee,
+  };
+}
 
 export function QuickEstimate({ initialBuyPriceCents }: QuickEstimateProps) {
   const { settings } = useSettings();
@@ -40,8 +87,8 @@ export function QuickEstimate({ initialBuyPriceCents }: QuickEstimateProps) {
     return new Intl.NumberFormat("de-DE", {
       style: "currency",
       currency: "EUR",
-      maximumFractionDigits: 0,
-      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2,
     }).format(val);
   };
 
@@ -57,31 +104,17 @@ export function QuickEstimate({ initialBuyPriceCents }: QuickEstimateProps) {
     const service = parseFloat(serviceCost || "0");
     const sale = parseFloat(salePrice || "0");
     const ship = parseFloat(shipping || "0");
-
-    let platformFee = 0;
-    if (selectedPlatform) {
-      if (selectedPlatform.type === "percentage") {
-        platformFee = sale * (selectedPlatform.amount / 100);
-      } else {
-        // flat fee stored in cents
-        platformFee = selectedPlatform.amount / 100;
-      }
-    }
-
-    const wrFee = watchRegister ? settings.watch_register_fee / 100 : 0;
-
-    const totalCost = buy + service + platformFee + ship + wrFee;
-    const netProfit = sale > 0 ? sale - totalCost : 0;
-    const margin = sale > 0 ? (netProfit / sale) * 100 : 0;
-    const roi = buy > 0 ? (netProfit / buy) * 100 : 0;
-
-    return {
-      netProfit,
-      margin,
-      roi,
-      platformFee,
-    };
-  }, [buyPrice, serviceCost, salePrice, platformId, watchRegister, shipping, selectedPlatform, settings.watch_register_fee]);
+    return calculateQuickEstimate({
+      buyPrice: buy,
+      serviceCost: service,
+      salePrice: sale,
+      shipping: ship,
+      selectedPlatform,
+      watchRegister,
+      watchRegisterFeeCents: settings.watch_register_fee,
+      vatRate: settings.vat_rate,
+    });
+  }, [buyPrice, serviceCost, salePrice, platformId, watchRegister, shipping, selectedPlatform, settings.watch_register_fee, settings.vat_rate]);
 
   const platformFeeLabel = selectedPlatform
     ? selectedPlatform.type === "percentage"
@@ -196,16 +229,34 @@ export function QuickEstimate({ initialBuyPriceCents }: QuickEstimateProps) {
           <div className={selectedPlatform ? "flex justify-between items-center border-t border-slate-200 pt-2" : "flex justify-between items-center"}>
             <div className="flex items-center gap-2">
               <Wallet className="w-4 h-4 text-emerald-600" />
-              <span className="text-sm font-medium text-slate-600">Net Profit</span>
+              <span className="text-sm font-medium text-slate-600">Profit Before VAT</span>
             </div>
-            <span className="text-lg font-bold text-emerald-600 tabular-nums">
-              {formatCurrency(calculate.netProfit)}
+            <span data-testid="estimate-profit-before-vat" className="text-lg font-bold text-emerald-600 tabular-nums">
+              {formatCurrency(calculate.profitBeforeVat)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+            <div className="flex items-center gap-2">
+              <Percent className="w-4 h-4 text-amber-600" />
+              <span className="text-sm font-medium text-slate-600">Estimated VAT ({settings.vat_rate}%)</span>
+            </div>
+            <span data-testid="estimate-vat" className="text-lg font-bold text-amber-700 tabular-nums">
+              {formatCurrency(calculate.vatAmount)}
+            </span>
+          </div>
+          <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-emerald-700" />
+              <span className="text-sm font-medium text-slate-600">Net After VAT</span>
+            </div>
+            <span data-testid="estimate-net-after-vat" className="text-lg font-bold text-emerald-700 tabular-nums">
+              {formatCurrency(calculate.netAfterVat)}
             </span>
           </div>
           <div className="flex justify-between items-center border-t border-slate-200 pt-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-emerald-600" />
-              <span className="text-sm font-medium text-slate-600">ROI</span>
+              <span className="text-sm font-medium text-slate-600">ROI Before VAT</span>
             </div>
             <span className="text-lg font-bold text-emerald-600 tabular-nums">
               {calculate.roi.toFixed(1)}%
@@ -214,7 +265,7 @@ export function QuickEstimate({ initialBuyPriceCents }: QuickEstimateProps) {
           <div className="flex justify-between items-center border-t border-slate-200 pt-2">
             <div className="flex items-center gap-2">
               <Percent className="w-4 h-4 text-emerald-600" />
-              <span className="text-sm font-medium text-slate-600">Margin</span>
+              <span className="text-sm font-medium text-slate-600">Margin Before VAT</span>
             </div>
             <span className="text-lg font-bold text-emerald-600 tabular-nums">
               {calculate.margin.toFixed(1)}%
@@ -222,9 +273,6 @@ export function QuickEstimate({ initialBuyPriceCents }: QuickEstimateProps) {
           </div>
         </div>
 
-        <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 rounded-xl mt-2 shadow-sm transition-all active:scale-[0.98]">
-          Calculate Estimate
-        </Button>
       </CardContent>
     </Card>
   );
