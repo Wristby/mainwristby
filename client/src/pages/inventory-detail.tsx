@@ -1547,7 +1547,7 @@ export default function InventoryDetail() {
 
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Financials</CardTitle>
+              <CardTitle className="text-lg text-slate-900">Deal Overview</CardTitle>
             </CardHeader>
             <CardContent className="space-y-8">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
