@@ -1916,7 +1916,7 @@ export default function InventoryDetail() {
             <CardContent className="space-y-6">
               <div className="space-y-4">
                 <div>
-                  <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Current State</Label>
+                  <p className="text-xs text-slate-500">Current Status</p>
                   <div className="mt-2 flex">
                     <Popover open={isStatusPopoverOpen} onOpenChange={(open) => {
                       if (!open) resetStatusPopover();
