@@ -9,7 +9,8 @@ import {
   BarChart3,
   DollarSign,
   Settings,
-  CreditCard
+  CreditCard,
+  Orbit,
 } from "lucide-react";
 import logoPng from "@assets/WRISTBY-login-logo_1770424094780.png";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { icon: DollarSign, label: "Financials", href: "/financials" },
   { icon: CreditCard, label: "Payments", href: "/payments" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
+  { icon: Orbit, label: "Watch Universe", href: "/watch-universe" },
   { icon: Settings, label: "Admin", href: "/admin" },
 ];
 
