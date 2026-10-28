@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { COUNTRIES } from "@/lib/countries";
 
 type Props = {
   value: SaleBuyerDraft;
@@ -95,13 +96,23 @@ export function SaleBuyerFields({ value, onChange, clients, loading, unavailable
       <div className="grid gap-4 sm:grid-cols-2">
         {([
           ["name", "Buyer name", "text"], ["email", "Email", "email"],
-          ["phone", "Phone", "tel"], ["country", "Country", "text"],
+          ["phone", "Phone", "tel"],
         ] as const).map(([field, label, type]) => <div key={field} className="space-y-1">
           <Label htmlFor={`sale-buyer-${field}`}>{label}</Label>
-          <Input id={`sale-buyer-${field}`} type={type} value={value[field]} autoComplete={field === "country" ? "country-name" : field === "phone" ? "tel" : field}
+          <Input id={`sale-buyer-${field}`} type={type} value={value[field]} autoComplete={field === "phone" ? "tel" : field}
             aria-describedby="sale-buyer-help" aria-invalid={Boolean(error) || undefined}
             onChange={event => onChange({ ...value, [field]: event.target.value })}/>
         </div>)}
+        <div className="space-y-1">
+          <Label htmlFor="sale-buyer-country">Country</Label>
+          <select id="sale-buyer-country" value={value.country} autoComplete="country-name"
+            aria-describedby="sale-buyer-help" aria-invalid={Boolean(error) || undefined}
+            onChange={event => onChange({ ...value, country: event.target.value })}
+            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50">
+            <option value="">Select Country</option>
+            {COUNTRIES.map(country => <option key={country} value={country}>{country}</option>)}
+          </select>
+        </div>
       </div>
       {!dirty && value.name.trim() && <Button type="button" variant="outline" onClick={() => onChange({ ...value })}>Create Client from this buyer when saving</Button>}
       {dirty && value.name.trim() && <p className="text-xs text-emerald-700">A new Client will be created when you save.</p>}

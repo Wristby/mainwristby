@@ -11,7 +11,10 @@ const client = { id: 12, name: "Saved buyer", email: "saved@example.invalid", ph
 describe("sale buyer form", () => {
   it("labels each field and explains optional contact details", () => {
     const html = renderToStaticMarkup(<SaleBuyerFields value={emptySaleBuyer()} onChange={() => {}} clients={[]} dirty={false}/>);
-    for (const field of ["name", "email", "phone", "country"]) expect(html).toContain(`id="sale-buyer-${field}"`);
+    for (const field of ["name", "email", "phone"]) expect(html).toContain(`id="sale-buyer-${field}"`);
+    expect(html).toMatch(/<select[^>]*id="sale-buyer-country"/);
+    expect(html).toContain('value="Netherlands">Netherlands</option>');
+    expect(html).not.toContain('<input id="sale-buyer-country"');
     expect(html).toContain("Email, phone, and country are optional");
     expect(html).not.toContain("required=");
   });
