@@ -50,7 +50,6 @@ import { QuickEstimate } from "@/components/quick-estimate";
 import { DeliveryStatus } from "@/components/delivery-status";
 import { SaleBuyerFields } from "@/components/sale-buyer-fields";
 import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuyerInput } from "@shared/sale-buyer";
-import { TransactionParties } from "@/components/retention-controls";
 import { COUNTRIES } from "@/lib/countries";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
@@ -1737,8 +1736,6 @@ export default function InventoryDetail() {
                   </div>
                 )}
               </div>
-
-              <TransactionParties inventoryId={id} />
 
               {/* Shipping Details - shows when info exists and item is not sold (sold items show in Transaction pillar) */}
               {item.status !== 'sold' && (item.shippingPartner || item.trackingNumber) && (
