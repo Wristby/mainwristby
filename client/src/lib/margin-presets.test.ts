@@ -14,7 +14,15 @@ describe("COGS margin presets", () => {
 
     expect(COGS_MARGIN_TARGETS.map(target =>
       calculateCogsMarginTargetPrice(cogsCents, target)
-    )).toEqual([11_111, 11_765, 12_500]);
+    )).toEqual([11_112, 11_765, 12_500]);
+  });
+
+  it("includes the platform fee when calculating the required sale price", () => {
+    const cogsCents = 10_000;
+
+    expect(COGS_MARGIN_TARGETS.map(target =>
+      calculateCogsMarginTargetPrice(cogsCents, target, 6.5)
+    )).toEqual([11_977, 12_739, 13_606]);
   });
 
   it("updates the target prices when COGS changes", () => {
@@ -27,5 +35,7 @@ describe("COGS margin presets", () => {
     expect(calculateCogsMarginTargetPrice(Number.NaN, 10)).toBeNull();
     expect(calculateCogsMarginTargetPrice(10_000, 100)).toBeNull();
     expect(calculateCogsMarginTargetPrice(10_000, Number.NaN)).toBeNull();
+    expect(calculateCogsMarginTargetPrice(10_000, 95, 6.5)).toBeNull();
+    expect(calculateCogsMarginTargetPrice(10_000, 10, -1)).toBeNull();
   });
 });

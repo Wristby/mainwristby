@@ -1599,13 +1599,17 @@ export default function InventoryDetail() {
                     Target Sale Price by Margin
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Based on COGS only; fees and other expenses are excluded.
+                    Based on COGS and includes a {settings.chrono24_commission.toFixed(1)}% Chrono24 fee; other fees and expenses are excluded.
                   </p>
                 </div>
                 {item.purchasePrice > 0 ? (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {COGS_MARGIN_TARGETS.map((targetMargin) => {
-                      const targetPrice = calculateCogsMarginTargetPrice(item.purchasePrice, targetMargin);
+                      const targetPrice = calculateCogsMarginTargetPrice(
+                        item.purchasePrice,
+                        targetMargin,
+                        settings.chrono24_commission,
+                      );
                       return (
                         <div
                           key={targetMargin}
