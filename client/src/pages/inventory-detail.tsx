@@ -879,9 +879,9 @@ export default function InventoryDetail() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-900 flex flex-wrap items-center gap-3">
             {item.brand} {item.model}
-            <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">
+            <Badge variant="outline" className="px-3 py-1 text-sm font-semibold text-emerald-600 border-emerald-200 bg-emerald-50">
               {item.referenceNumber}
             </Badge>
             {item.archivedAt && (
