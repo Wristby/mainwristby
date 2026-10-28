@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses, type InventoryItem } from './schema';
+import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses, inventoryPriceHistory, type InventoryItem } from './schema';
 import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
 
@@ -122,6 +122,14 @@ export const api = {
       path: '/api/inventory/:id',
       responses: {
         200: z.custom<typeof inventory.$inferSelect & { expenses?: typeof expenses.$inferSelect[] }>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    priceHistory: {
+      method: 'GET' as const,
+      path: '/api/inventory/:id/price-history',
+      responses: {
+        200: z.array(z.custom<typeof inventoryPriceHistory.$inferSelect>()),
         404: errorSchemas.notFound,
       },
     },

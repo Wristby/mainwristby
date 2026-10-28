@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS inventory (
     date_listed TIMESTAMP,
     sold_date TIMESTAMP,
     date_sold TIMESTAMP,
+    list_price INTEGER,
     
     -- Details
     condition TEXT NOT NULL CHECK (condition IN ('New', 'Mint', 'Used', 'Damaged')),
@@ -110,6 +111,18 @@ CREATE TABLE IF NOT EXISTS inventory (
     client_id INTEGER REFERENCES clients(id),
     buyer_id INTEGER REFERENCES clients(id)
 );
+
+-- Price Listed At history; inventory_id is detached when a watch is deleted,
+-- preserving the history without retaining a link to the deleted watch.
+CREATE TABLE IF NOT EXISTS inventory_price_history (
+    id SERIAL PRIMARY KEY,
+    inventory_id INTEGER REFERENCES inventory(id),
+    list_price INTEGER NOT NULL,
+    recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS inventory_price_history_watch_date_idx
+    ON inventory_price_history (inventory_id, recorded_at);
 
 -- =============================================
 -- EXPENSES TABLE

@@ -1,14 +1,15 @@
 import { db } from "./db";
 import {
-  clients, inventory, expenses, settings, retentionAudit, transactionParties,
+  clients, inventory, expenses, inventoryPriceHistory, settings, retentionAudit, transactionParties,
   type Client, type InsertClient, type UpdateClientRequest,
-  type InventoryItem, type InsertInventory, type UpdateInventoryRequest,
+  type InventoryItem, type InsertInventory, type UpdateInventoryRequest, type InventoryPriceHistory,
   type Expense, type InsertExpense,
   type DashboardStats, type Setting
 } from "@shared/schema";
 import { eq, desc, sql, and, isNull, isNotNull, inArray, or, ne } from "drizzle-orm";
 import { matchingBuyerContact, sameBuyerContact, type SaleBuyerInput } from "@shared/sale-buyer";
 import { getMatchingSerialFields, normalizeWatchSerial } from "@shared/serial-match";
+import { shouldRecordListedPrice } from "@shared/price-history";
 import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
 
@@ -65,6 +66,7 @@ export interface IStorage {
   findInventorySerialMatches(serials: unknown[], excludeId?: number): Promise<Array<Pick<InventoryItem, "id" | "brand" | "model" | "referenceNumber" | "serialNumber" | "internalSerial" | "status" | "dateSold" | "soldDate" | "archivedAt"> & { matchedFields: Array<"serialNumber" | "internalSerial"> }>>;
   getArchivedInventoryItems(): Promise<(InventoryItem & { seller?: Client })[]>;
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
+  getInventoryPriceHistory(id: number): Promise<InventoryPriceHistory[]>;
   createInventoryItem(item: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem>;
@@ -240,6 +242,12 @@ export class DatabaseStorage implements IStorage {
     return { ...item, expenses: itemExpenses };
   }
 
+  async getInventoryPriceHistory(id: number): Promise<InventoryPriceHistory[]> {
+    return db.select().from(inventoryPriceHistory)
+      .where(eq(inventoryPriceHistory.inventoryId, id))
+      .orderBy(desc(inventoryPriceHistory.recordedAt), desc(inventoryPriceHistory.id));
+  }
+
   async createInventoryItem(insertItem: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
     // Snapshot the current watch_register_fee so future admin-panel changes
     // don't retroactively affect this item's cost calculations.
@@ -248,6 +256,9 @@ export class DatabaseStorage implements IStorage {
     return db.transaction(async tx => {
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer) : {};
       const [item] = await tx.insert(inventory).values({ ...itemWithSnapshot, ...buyer }).returning();
+      if (shouldRecordListedPrice(null, item.listPrice)) {
+        await tx.insert(inventoryPriceHistory).values({ inventoryId: item.id, listPrice: item.listPrice! });
+      }
       await this.syncWatchFeesToExpenses(item, tx);
       return item;
     });
@@ -268,6 +279,9 @@ export class DatabaseStorage implements IStorage {
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer, current.buyerId) : {};
       const [item] = await tx.update(inventory).set({ ...updates, ...buyer })
         .where(eq(inventory.id, id)).returning();
+      if (shouldRecordListedPrice(current.listPrice, updates.listPrice)) {
+        await tx.insert(inventoryPriceHistory).values({ inventoryId: id, listPrice: updates.listPrice! });
+      }
       await this.syncWatchFeesToExpenses(item, tx);
       return item;
     });
@@ -341,6 +355,7 @@ export class DatabaseStorage implements IStorage {
       // Keep linked records, but clear their pointer to the deleted watch.
       await tx.update(expenses).set({ inventoryId: null }).where(eq(expenses.inventoryId, id));
       await tx.update(transactionParties).set({ inventoryId: null }).where(eq(transactionParties.inventoryId, id));
+      await tx.update(inventoryPriceHistory).set({ inventoryId: null }).where(eq(inventoryPriceHistory.inventoryId, id));
       await tx.delete(inventory).where(eq(inventory.id, id));
     });
   }

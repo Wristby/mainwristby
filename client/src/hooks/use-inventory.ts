@@ -57,6 +57,20 @@ export function useInventoryItem(id: number) {
   });
 }
 
+export function useInventoryPriceHistory(id: number) {
+  return useQuery({
+    queryKey: [api.inventory.priceHistory.path, id],
+    queryFn: async () => {
+      const url = buildUrl(api.inventory.priceHistory.path, { id });
+      const response = await fetch(url, { credentials: "include" });
+      if (response.status === 404) return [];
+      if (!response.ok) throw new Error("Could not load listed price history.");
+      return api.inventory.priceHistory.responses[200].parse(await response.json());
+    },
+    enabled: !!id,
+  });
+}
+
 export function useCreateInventory() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -103,6 +117,7 @@ export function useUpdateInventory() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.get.path, data.id] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.priceHistory.path, data.id] });
       if (variables.saleBuyer) {
         queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
         queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });

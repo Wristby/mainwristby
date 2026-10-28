@@ -179,9 +179,18 @@ export const inventory = pgTable("inventory", {
   buyerId: integer("buyer_id").references(() => clients.id),
 });
 
+export const inventoryPriceHistory = pgTable("inventory_price_history", {
+  id: serial("id").primaryKey(),
+  // Kept nullable so removing a watch does not remove its saved price history.
+  inventoryId: integer("inventory_id").references(() => inventory.id),
+  listPrice: integer("list_price").notNull(),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+}, (table) => [index("inventory_price_history_watch_date_idx").on(table.inventoryId, table.recordedAt)]);
+
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, archivedAt: true });
 export type InventoryItem = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
+export type InventoryPriceHistory = typeof inventoryPriceHistory.$inferSelect;
 
 // === EXPENSES ===
 export const expenses = pgTable("expenses", {
@@ -216,6 +225,14 @@ export const inventoryRelations = relations(inventory, ({ one, many }) => ({
     relationName: "buyer",
   }),
   expenses: many(expenses),
+  priceHistory: many(inventoryPriceHistory),
+}));
+
+export const inventoryPriceHistoryRelations = relations(inventoryPriceHistory, ({ one }) => ({
+  inventory: one(inventory, {
+    fields: [inventoryPriceHistory.inventoryId],
+    references: [inventory.id],
+  }),
 }));
 
 export const expensesRelations = relations(expenses, ({ one }) => ({

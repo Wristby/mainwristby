@@ -211,6 +211,17 @@ export async function registerRoutes(
     res.json(item);
   });
 
+  app.get(api.inventory.priceHistory.path, isAuthenticated, async (req, res) => {
+    const inventoryId = Number(req.params.id);
+    if (!Number.isInteger(inventoryId) || inventoryId < 1) {
+      return res.status(400).json({ message: "Invalid watch ID." });
+    }
+    const item = await storage.getInventoryItem(inventoryId);
+    if (!item) return res.status(404).json({ message: "Item not found" });
+    const history = await storage.getInventoryPriceHistory(inventoryId);
+    res.json(history);
+  });
+
   app.post(api.inventory.create.path, isAuthenticated, async (req, res) => {
     try {
       // Coerce numeric fields from strings if necessary (though zod schema should handle types if frontend sends JSON)

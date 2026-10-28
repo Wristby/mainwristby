@@ -1,4 +1,4 @@
-import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory, useInventorySerialMatches } from "@/hooks/use-inventory";
+import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory, useInventorySerialMatches, useInventoryPriceHistory } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
@@ -53,6 +53,7 @@ import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuye
 import { COUNTRIES } from "@/lib/countries";
 import { normalizeWatchSerial } from "@shared/serial-match";
 import { SerialMatchNotice } from "@/components/watch-intake/serial-match-notice";
+import { PriceHistoryCard } from "@/components/price-history-card";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -157,6 +158,7 @@ export default function InventoryDetail() {
   const id = params ? parseInt(params.id) : 0;
   const [, navigate] = useLocation();
   const { data: item, isLoading } = useInventoryItem(id);
+  const priceHistoryQuery = useInventoryPriceHistory(id);
   const { data: allInventory } = useInventory(undefined, true);
   const { data: clients, isLoading: clientsLoading, isError: clientsUnavailable } = useClients();
   const [buyerDraft, setBuyerDraft] = useState<SaleBuyerDraft>(emptySaleBuyer);
@@ -2139,6 +2141,13 @@ export default function InventoryDetail() {
               </div>
             </CardContent>
           </Card>
+
+          <PriceHistoryCard
+            history={priceHistoryQuery.data}
+            currentListPrice={item.listPrice ?? null}
+            isLoading={priceHistoryQuery.isLoading}
+            isError={priceHistoryQuery.isError}
+          />
 
           {(linkedBuyer || item.buyerId || item.soldTo) && (
             <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-watch-buyer">

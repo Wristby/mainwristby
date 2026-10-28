@@ -57,7 +57,7 @@ vi.mock("../../../server/db", () => {
 vi.mock("../../../server/auth", () => ({ isAuthenticated: vi.fn() }));
 import { clearClient, previewClient, readSchedule } from "../../../server/retention";
 import { DatabaseStorage } from "../../../server/storage";
-import { clients, expenses, inventory, retentionAudit, retentionHolds, transactionParties } from "@shared/schema";
+import { clients, expenses, inventory, inventoryPriceHistory, retentionAudit, retentionHolds, transactionParties } from "@shared/schema";
 
 const approved: RetentionSchedule = {
   rules: {
@@ -196,6 +196,7 @@ describe("reviewable profile cleanup", () => {
     expect(harness.writes).toEqual([
       { table: expenses, values: { inventoryId: null } },
       { table: transactionParties, values: { inventoryId: null } },
+      { table: inventoryPriceHistory, values: { inventoryId: null } },
       { table: inventory, deleted: true },
     ]);
   });
@@ -230,6 +231,7 @@ describe("reviewable profile cleanup", () => {
     expect(harness.writes).toEqual([
       { table: expenses, values: { inventoryId: null } },
       { table: transactionParties, values: { inventoryId: null } },
+      { table: inventoryPriceHistory, values: { inventoryId: null } },
       { table: inventory, deleted: true },
     ]);
   });
