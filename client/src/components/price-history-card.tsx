@@ -71,9 +71,6 @@ export function PriceHistoryCard({
                 </li>;
               })}
             </ol>}
-      {history.length > 0 && <p className="border-t border-slate-100 pt-3 text-[11px] leading-4 text-slate-400">
-        Existing prices start as a baseline when tracking begins; earlier price changes aren’t available.
-      </p>}
     </CardContent>
   </Card>;
 }

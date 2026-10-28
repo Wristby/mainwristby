@@ -27,7 +27,7 @@ describe("pricing history card", () => {
     expect(html).toContain("750,00");
     expect(html).toContain("5.0%");
     expect(html).toContain("Tracking baseline");
-    expect(html).toContain("earlier price changes aren’t available");
+    expect(html).not.toContain("earlier price changes aren’t available");
   });
 
   it("shows an increase when a saved asking price rises", () => {
