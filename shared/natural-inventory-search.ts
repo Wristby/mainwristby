@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { InventoryItem } from "./schema";
+import type { Client, InventoryItem } from "./schema";
 
 export const naturalInventoryFiltersSchema = z.object({
   brand: z.string().trim().min(1).max(80).optional(),
@@ -29,18 +29,74 @@ export const naturalInventoryFiltersSchema = z.object({
 
 export const naturalInventoryAggregateSchema = z.enum(["count", "asking_price_total"]);
 export const naturalInventoryGroupBySchema = z.enum(["brand", "model", "year", "status", "condition"]);
+export const naturalClientFiltersSchema = z.object({
+  search: z.string().trim().min(1).max(250).optional(),
+  name: z.string().trim().min(1).max(120).optional(),
+  email: z.string().trim().min(1).max(254).optional(),
+  phone: z.string().trim().min(1).max(50).optional(),
+  country: z.string().trim().min(1).max(100).optional(),
+  type: z.enum(["client", "dealer"]).optional(),
+  isVip: z.boolean().optional(),
+}).strict();
 export const naturalInventorySearchIntentSchema = z.object({
+  entity: z.enum(["watches", "clients"]).default("watches"),
   filters: naturalInventoryFiltersSchema,
+  clientFilters: naturalClientFiltersSchema.optional(),
   aggregate: naturalInventoryAggregateSchema.optional(),
   groupBy: naturalInventoryGroupBySchema.optional(),
 }).strict().refine(
   (intent) => intent.groupBy === undefined || intent.aggregate !== undefined,
   { message: "Grouped inventory summaries require an aggregate.", path: ["aggregate"] },
+).refine(
+  (intent) => intent.entity !== "clients" || (
+    intent.clientFilters !== undefined
+    && Object.keys(intent.filters).length === 0
+    && intent.aggregate === undefined
+    && intent.groupBy === undefined
+  ),
+  { message: "Client searches require client filters and do not support inventory summaries.", path: ["clientFilters"] },
+).refine(
+  (intent) => intent.entity !== "watches" || intent.clientFilters === undefined,
+  { message: "Client filters are only valid for client searches.", path: ["clientFilters"] },
 );
 
 export type NaturalInventoryFilters = z.infer<typeof naturalInventoryFiltersSchema>;
 export type NaturalInventoryAggregate = z.infer<typeof naturalInventoryAggregateSchema>;
 export type NaturalInventoryGroupBy = z.infer<typeof naturalInventoryGroupBySchema>;
+export type NaturalClientFilters = z.infer<typeof naturalClientFiltersSchema>;
+export type NaturalSearchEntity = "watches" | "clients";
+
+/** Builds safe client-search filters locally so names and contact details never reach Gemini. */
+export function buildLocalClientSearchFilters(query: string): NaturalClientFilters {
+  let remaining = query.trim();
+  const filters: NaturalClientFilters = {};
+
+  const email = remaining.match(/[^\s<>,"']+@[^\s<>,"']+\.[^\s<>,"']+/);
+  if (email) {
+    filters.email = email[0].replace(/[.,;!?]+$/, "");
+    remaining = remaining.replace(email[0], " ");
+  }
+
+  const phone = remaining.match(/\+?\d[\d\s().-]{4,}\d/);
+  if (phone) {
+    const digits = normalizePhone(phone[0]);
+    if (digits.length >= 5) filters.phone = phone[0].trim();
+    remaining = remaining.replace(phone[0], " ");
+  }
+
+  if (/\b(?:non[- ]?vip|not vip)\b/i.test(remaining)) filters.isVip = false;
+  else if (/\bvip\b/i.test(remaining)) filters.isVip = true;
+  if (/\bdealers?\b/i.test(remaining)) filters.type = "dealer";
+  else if (/\bcustomers?\b/i.test(remaining)) filters.type = "client";
+
+  const search = remaining
+    .replace(/\b(?:find|show|list|search|look(?:ing)?\s+up|lookup|all|the|me|please|client|clients|customer|customers|dealer|dealers|people|person|records?|with|in|from|based|located|named|name|email|phone|country|vip|non[- ]?vip|not)\b/gi, " ")
+    .replace(/[,:;!?()[\]{}"']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (search) filters.search = search;
+  return filters;
+}
 
 export type NaturalInventoryAggregateResult =
   | { type: "count"; value: number }
@@ -59,6 +115,43 @@ const normalize = (value: unknown) => String(value ?? "")
   .replace(combiningMarks, "")
   .toLowerCase()
   .trim();
+
+const normalizePhone = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+
+/** Searches all searchable client profile details locally. */
+export function findNaturalClientMatches<T extends Client>(
+  clients: readonly T[],
+  filters: NaturalClientFilters,
+): T[] {
+  return clients.filter((client) => {
+    if (filters.search) {
+      const searchable = [
+        client.name,
+        client.email,
+        client.phone,
+        client.country,
+        client.socialHandle,
+        client.website,
+        client.notes,
+        client.type,
+        client.isVip ? "vip" : "not vip",
+        client.id,
+      ].map(normalize);
+      const terms = normalize(filters.search).split(/\s+/).filter(Boolean);
+      if (!terms.every((term) => searchable.some((value) => value.includes(term)))) return false;
+    }
+    if (filters.name && !normalize(client.name).includes(normalize(filters.name))) return false;
+    if (filters.email && !normalize(client.email).includes(normalize(filters.email))) return false;
+    if (filters.phone) {
+      const phoneQuery = normalizePhone(filters.phone);
+      if (!phoneQuery || !normalizePhone(client.phone).includes(phoneQuery)) return false;
+    }
+    if (filters.country && !normalize(client.country).includes(normalize(filters.country))) return false;
+    if (filters.type && client.type !== filters.type) return false;
+    if (filters.isVip !== undefined && client.isVip !== filters.isVip) return false;
+    return true;
+  });
+}
 
 function getInventoryGroup(watch: InventoryItem, field: NaturalInventoryGroupBy) {
   const rawValue = watch[field];

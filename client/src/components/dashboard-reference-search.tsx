@@ -1,20 +1,26 @@
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { LoaderCircle, Sparkles } from "lucide-react";
-import type { InventoryItem } from "@shared/schema";
+import type { Client, InventoryItem } from "@shared/schema";
 import { findReferenceMatches, type ReferenceWatch } from "@/lib/reference-search";
+import { useClients } from "@/hooks/use-clients";
 import {
+  findNaturalClientMatches,
   findNaturalInventoryMatches,
+  buildLocalClientSearchFilters,
   getNaturalInventoryAggregate,
   naturalInventoryGroupBySchema,
   type NaturalInventoryAggregate,
   type NaturalInventoryFilters,
   type NaturalInventoryGroupBy,
+  type NaturalSearchEntity,
 } from "@shared/natural-inventory-search";
 
 export function DashboardReferenceSearch({ watches, unavailable = false }: { watches: InventoryItem[]; unavailable?: boolean }) {
   const [query, setQuery] = useState("");
+  const [searchScope, setSearchScope] = useState<NaturalSearchEntity>("watches");
   const [searchMode, setSearchMode] = useState<"keyword" | "natural">("keyword");
+  const [naturalEntity, setNaturalEntity] = useState<NaturalSearchEntity>("watches");
   const [naturalFilters, setNaturalFilters] = useState<NaturalInventoryFilters | null>(null);
   const [naturalAggregate, setNaturalAggregate] = useState<NaturalInventoryAggregate | null>(null);
   const [naturalGroupBy, setNaturalGroupBy] = useState<NaturalInventoryGroupBy | null>(null);
@@ -25,17 +31,28 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLUListElement>(null);
   const [, setLocation] = useLocation();
+  const isClientScope = searchScope === "clients";
+  const { data: clients = [], isLoading: clientsLoading, isError: clientsUnavailable } = useClients({ enabled: isClientScope });
   const matches = useMemo(
-    () => searchMode === "natural" && naturalFilters
-      ? findNaturalInventoryMatches(watches, naturalFilters)
-      : findReferenceMatches(watches, query),
-    [watches, query, searchMode, naturalFilters],
+    () => isClientScope
+      ? []
+      : searchMode === "natural" && naturalFilters
+        ? findNaturalInventoryMatches(watches, naturalFilters)
+        : findReferenceMatches(watches, query),
+    [watches, query, searchMode, naturalFilters, isClientScope],
   );
+  const clientMatches = useMemo(
+    () => isClientScope && query.trim()
+      ? findNaturalClientMatches(clients, buildLocalClientSearchFilters(query))
+      : [],
+    [clients, isClientScope, query],
+  );
+  const resultCount = isClientScope ? clientMatches.length : matches.length;
   const aggregateResult = useMemo(
-    () => searchMode === "natural" && naturalFilters && naturalAggregate && !unavailable
+    () => searchMode === "natural" && naturalEntity === "watches" && naturalFilters && naturalAggregate && !unavailable
       ? getNaturalInventoryAggregate(watches, naturalFilters, naturalAggregate, naturalGroupBy ?? undefined)
       : null,
-    [watches, searchMode, naturalFilters, naturalAggregate, naturalGroupBy, unavailable],
+    [watches, searchMode, naturalEntity, naturalFilters, naturalAggregate, naturalGroupBy, unavailable],
   );
   const hasQuery = query.trim().length > 0;
   const resultsVisible = hasQuery && !dismissed;
@@ -44,8 +61,14 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     setLocation(`/inventory/${watch.id}`);
   };
 
+  const navigateToClient = (client: Pick<Client, "id">) => {
+    setLocation(`/clients/${client.id}`);
+  };
+
   const selectActiveOrOnlyMatch = () => {
-    if (matches.length === 1) navigateTo(matches[0]);
+    if (resultCount !== 1) return;
+    if (isClientScope) navigateToClient(clientMatches[0]);
+    else navigateTo(matches[0]);
   };
 
   const focusMatch = (index: number) => {
@@ -64,7 +87,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       return;
     }
 
-    if (!resultsVisible || matches.length === 0) {
+    if (!resultsVisible || resultCount === 0) {
       if (event.key === "Enter") event.preventDefault();
       return;
     }
@@ -74,7 +97,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       focusMatch(0);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      focusMatch(matches.length - 1);
+      focusMatch(resultCount - 1);
     } else if (event.key === "Enter") {
       event.preventDefault();
       selectActiveOrOnlyMatch();
@@ -89,6 +112,19 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
   const handleQueryChange = (value: string) => {
     setQuery(value);
     setSearchMode("keyword");
+    setNaturalEntity("watches");
+    setNaturalFilters(null);
+    setNaturalAggregate(null);
+    setNaturalGroupBy(null);
+    setAiError("");
+    setActiveIndex(-1);
+    setDismissed(false);
+  };
+
+  const handleScopeChange = (scope: NaturalSearchEntity) => {
+    setSearchScope(scope);
+    setSearchMode("keyword");
+    setNaturalEntity(scope);
     setNaturalFilters(null);
     setNaturalAggregate(null);
     setNaturalGroupBy(null);
@@ -113,6 +149,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.message || "AI search failed.");
+      setNaturalEntity("watches");
       setNaturalFilters(payload.filters);
       setNaturalAggregate(payload.aggregate === "count" || payload.aggregate === "asking_price_total" ? payload.aggregate : null);
       const groupBy = naturalInventoryGroupBySchema.safeParse(payload.groupBy);
@@ -147,14 +184,22 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     ? aggregateResult.field === "year" ? "production year" : aggregateResult.field
     : null;
 
-  const resultMessage = unavailable
+  const resultMessage = unavailable && !isClientScope
     ? "Inventory could not be loaded. Refresh the page to try again."
     : isAiSearching
-      ? "Understanding your inventory question…"
+      ? "Understanding your search…"
       : aiError
         ? aiError
+        : isClientScope && clientsLoading
+          ? "Loading client records…"
+          : isClientScope && clientsUnavailable
+            ? "Client records could not be loaded. Refresh the page to try again."
     : !hasQuery
-    ? "Search by keyword, or ask a question like “Which Rolex watches are in stock?”"
+      ? isClientScope ? "Type to search saved client records." : "Search watches by keyword, or choose Clients to search client records."
+    : isClientScope
+      ? clientMatches.length === 0
+        ? `No clients found for “${query.trim()}”.`
+        : `${clientMatches.length} ${clientMatches.length === 1 ? "client" : "clients"} found.`
     : aggregateResult
       ? aggregateResult.type === "count"
         ? "Verified total calculated from matching inventory records."
@@ -171,14 +216,32 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="reference-search-title">
       <div className="mb-3">
         <h2 id="reference-search-title" className="text-base font-semibold tracking-tight text-slate-900">
-          Inventory search
+          Inventory & client search
         </h2>
-        <p className="mt-1 text-sm text-slate-500">Find a watch by keyword, or ask a question about your inventory.</p>
+        <p className="mt-1 text-sm text-slate-500">Search watches by keyword or ask AI about inventory. Client search updates as you type.</p>
+      </div>
+
+      <div className="mb-3 flex gap-2" role="group" aria-label="Search category">
+        {(["watches", "clients"] as const).map((scope) => (
+          <button
+            key={scope}
+            type="button"
+            aria-pressed={searchScope === scope}
+            onClick={() => handleScopeChange(scope)}
+            className={`min-h-9 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+              searchScope === scope
+                ? "bg-emerald-700 text-white"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {scope === "watches" ? "Watches" : "Clients"}
+          </button>
+        ))}
       </div>
 
       <form onSubmit={handleSubmit} role="search" className="relative">
         <label htmlFor="dashboard-reference-search" className="sr-only">
-          Search inventory by brand, model, reference, or serial number
+          {searchScope === "clients" ? "Search clients by any saved detail" : "Search watches by brand, model, reference, or serial number"}
         </label>
         <div className="relative">
           <svg
@@ -195,7 +258,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
             id="dashboard-reference-search"
             type="search"
             autoComplete="off"
-            disabled={unavailable || isAiSearching}
+            disabled={isAiSearching}
             aria-describedby="reference-search-message"
             value={query}
             onChange={(event) => handleQueryChange(event.currentTarget.value)}
@@ -205,7 +268,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
           {query.length > 0 && (
             <button
               type="button"
-              aria-label="Clear inventory search"
+              aria-label="Clear search"
               onClick={() => {
                 handleQueryChange("");
                 inputRef.current?.focus();
@@ -218,17 +281,17 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
             </button>
           )}
         </div>
-        <div className="mt-2 flex justify-end">
+        {searchScope === "watches" && <div className="mt-2 flex justify-end">
           <button
             type="button"
             onClick={askAiToSearch}
-            disabled={unavailable || !hasQuery || isAiSearching}
+            disabled={!hasQuery || isAiSearching}
             className="inline-flex min-h-9 items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
           >
             {isAiSearching ? <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Sparkles aria-hidden="true" className="h-4 w-4" />}
             {isAiSearching ? "Searching…" : "Ask AI"}
           </button>
-        </div>
+        </div>}
       </form>
 
       <p id="reference-search-message" className="mt-2 min-h-5 text-xs text-slate-500" aria-live="polite" aria-atomic="true">
@@ -320,6 +383,59 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
               {label}
             </span>
           ))}
+        </div>
+      )}
+
+      {resultsVisible && isClientScope && !clientsLoading && !clientsUnavailable && clientMatches.length > 0 && (
+        <div>
+          <h3 className="mb-1 text-xs font-semibold text-slate-600">Matching clients ({clientMatches.length})</h3>
+          <ul ref={resultsRef} aria-label="Matching clients" className="mt-2 max-h-72 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white shadow-sm">
+            {clientMatches.map((client, index) => {
+              const contactDetails = [client.email, client.phone, client.country].filter(Boolean);
+              return (
+                <li key={client.id}>
+                  <Link
+                    href={`/clients/${client.id}`}
+                    onFocus={() => setActiveIndex(index)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setDismissed(true);
+                        setActiveIndex(-1);
+                        inputRef.current?.focus();
+                      } else if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        focusMatch((index + 1) % clientMatches.length);
+                      } else if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        if (index === 0) { setActiveIndex(-1); inputRef.current?.focus(); }
+                        else focusMatch(index - 1);
+                      } else if (event.key === "Home" || event.key === "End") {
+                        event.preventDefault();
+                        focusMatch(event.key === "Home" ? 0 : clientMatches.length - 1);
+                      }
+                    }}
+                    className={`block min-h-14 border-b border-slate-100 px-3 py-3 last:border-b-0 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${
+                      activeIndex === index ? "bg-emerald-50/70" : "bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                      <span className="break-words text-sm font-semibold text-slate-900">{client.name}</span>
+                      <span className="flex items-center gap-2">
+                        {client.isVip && <span className="rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">VIP</span>}
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">{client.type}</span>
+                      </span>
+                    </div>
+                    {contactDetails.length > 0 && (
+                      <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 text-xs leading-4 text-slate-500">
+                        {contactDetails.map((detail) => <span key={detail} className="break-all">{detail}</span>)}
+                      </div>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

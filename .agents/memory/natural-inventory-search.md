@@ -3,8 +3,8 @@ name: Natural-language inventory search
 description: Privacy and correctness boundary for AI-assisted inventory search
 ---
 
-Gemini should translate a user's inventory question into a strict, allowlisted filter object. The application validates those filters and performs matching against its own inventory data; watch records and client details are not sent to Gemini.
+Gemini translates watch-inventory questions into strict, allowlisted filters. Client search is instant and local across saved profile details, with no client-information search blocks. The app is single-user; preserve the user's full access to client records.
 
-**Why:** Search results need to be grounded in saved records, while keeping personal or business inventory data out of the prompt and preventing generated SQL or arbitrary query behavior.
+**Why:** The user is the only app user and explicitly wants to search all stored client information without restrictions.
 
-**How to apply:** Keep the model limited to intent parsing. Validate every field, enum, and range before applying filters in application code or parameterized database queries. Treat any future aggregate answers as deterministic calculations over the records.
+**How to apply:** Client lookup should update as the user types and match saved profile fields locally. Do not add privacy gates that block client searches. Keep existing sign-in intact unless the user separately asks to change authentication. Validate watch AI filters and calculate any results from saved records.

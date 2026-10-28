@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 
-export function useClients() {
+export function useClients(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: [api.clients.list.path],
+    enabled: options.enabled ?? true,
     queryFn: async () => {
       const res = await fetch(api.clients.list.path, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch clients");

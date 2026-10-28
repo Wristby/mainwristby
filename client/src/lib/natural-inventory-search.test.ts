@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { InventoryItem } from "@shared/schema";
 import {
+  buildLocalClientSearchFilters,
+  findNaturalClientMatches,
   findNaturalInventoryMatches,
   getNaturalInventoryAggregate,
+  naturalClientFiltersSchema,
   naturalInventoryFiltersSchema,
   naturalInventorySearchIntentSchema,
   type NaturalInventoryFilters,
@@ -238,5 +241,51 @@ describe("natural inventory search and summaries", () => {
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "year" }).success).toBe(true);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, groupBy: "brand" }).success).toBe(false);
     expect(naturalInventorySearchIntentSchema.safeParse({ filters: {}, aggregate: "count", groupBy: "serialNumber" }).success).toBe(false);
+  });
+
+  it("searches saved clients by profile fields and normalizes phone-number formatting", () => {
+    const clients = [
+      { id: 1, name: "Élodie Dupont", email: "elodie@example.invalid", phone: "+31 (0)6 1234 5678", country: "Netherlands", type: "client", isVip: true, socialHandle: "@elodie", website: null, notes: "Likes vintage watches" },
+      { id: 2, name: "Rolex Dealer", email: "sales@example.invalid", phone: null, country: "Belgium", type: "dealer", isVip: false, socialHandle: null, website: "dealer.example.invalid", notes: "Pre-owned watches" },
+    ] as const;
+
+    expect(findNaturalClientMatches(clients as any, { name: "elodie" }).map((client) => client.id)).toEqual([1]);
+    expect(findNaturalClientMatches(clients as any, { email: "EXAMPLE.INVALID", country: "netherlands" }).map((client) => client.id)).toEqual([1]);
+    expect(findNaturalClientMatches(clients as any, { phone: "06-1234-5678", isVip: true }).map((client) => client.id)).toEqual([1]);
+    expect(findNaturalClientMatches(clients as any, { type: "dealer" }).map((client) => client.id)).toEqual([2]);
+    expect(findNaturalClientMatches(clients as any, { search: "vintage" }).map((client) => client.id)).toEqual([1]);
+    expect(findNaturalClientMatches(clients as any, { search: "dealer.example.invalid" }).map((client) => client.id)).toEqual([2]);
+  });
+
+  it("turns client-language searches into local filters without needing AI", () => {
+    expect(buildLocalClientSearchFilters("Find VIP client Ava in Netherlands")).toEqual({
+      search: "Ava Netherlands",
+      isVip: true,
+    });
+    expect(buildLocalClientSearchFilters("find client jane@example.invalid")).toEqual({
+      email: "jane@example.invalid",
+    });
+    expect(buildLocalClientSearchFilters("show dealers")).toEqual({ type: "dealer" });
+    expect(buildLocalClientSearchFilters("Jean Dupont")).toEqual({ search: "Jean Dupont" });
+  });
+
+  it("validates client search intent separately from watch filters", () => {
+    expect(naturalClientFiltersSchema.safeParse({ name: "Client", rawSql: "select" }).success).toBe(false);
+    expect(naturalInventorySearchIntentSchema.safeParse({
+      entity: "clients",
+      filters: {},
+      clientFilters: { name: "Ava", country: "Netherlands" },
+    }).success).toBe(true);
+    expect(naturalInventorySearchIntentSchema.safeParse({
+      entity: "clients",
+      filters: { brand: "Rolex" },
+      clientFilters: { name: "Ava" },
+    }).success).toBe(false);
+    expect(naturalInventorySearchIntentSchema.safeParse({
+      entity: "clients",
+      filters: {},
+      clientFilters: { name: "Ava" },
+      aggregate: "count",
+    }).success).toBe(false);
   });
 });
