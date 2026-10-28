@@ -178,6 +178,16 @@ export async function registerRoutes(
   });
 
   // Inventory
+  app.get(api.inventory.serialMatches.path, isAuthenticated, async (req, res) => {
+    const serialNumber = typeof req.query.serialNumber === "string" ? req.query.serialNumber : "";
+    const internalSerial = typeof req.query.internalSerial === "string" ? req.query.internalSerial : "";
+    if (serialNumber.length > 100 || internalSerial.length > 100) {
+      return res.status(400).json({ message: "Serial numbers must be 100 characters or fewer." });
+    }
+    const matches = await storage.findInventorySerialMatches([serialNumber, internalSerial]);
+    res.json(matches);
+  });
+
   app.get(api.inventory.list.path, isAuthenticated, async (req, res) => {
     const status = req.query.status as string;
     const includeArchived = req.query.includeArchived === "true";

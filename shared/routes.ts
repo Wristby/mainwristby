@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses } from './schema';
+import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses, type InventoryItem } from './schema';
 import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
 
@@ -96,6 +96,16 @@ export const api = {
     },
   },
   inventory: {
+    serialMatches: {
+      method: 'GET' as const,
+      path: '/api/inventory/serial-matches',
+      responses: {
+        200: z.array(z.custom<Pick<InventoryItem, "id" | "brand" | "model" | "referenceNumber" | "serialNumber" | "internalSerial" | "status" | "dateSold" | "soldDate" | "archivedAt"> & {
+          matchedFields: Array<"serialNumber" | "internalSerial">;
+        }>()),
+        400: errorSchemas.validation,
+      },
+    },
     list: {
       method: 'GET' as const,
       path: '/api/inventory',

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateInventory } from "@/hooks/use-inventory";
+import { useCreateInventory, useInventorySerialMatches } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useSettings } from "@/hooks/use-settings";
 import { insertClientSchema } from "@shared/schema";
@@ -19,6 +19,8 @@ import { Card, CheckRow, DateField, Field, Money } from "./fields";
 import { IntakeReview } from "./review";
 import { SaleBuyerFields } from "@/components/sale-buyer-fields";
 import { emptySaleBuyer, type SaleBuyerDraft } from "@shared/sale-buyer";
+import { normalizeWatchSerial } from "@shared/serial-match";
+import { SerialMatchNotice } from "./serial-match-notice";
 const tabs = [
   { name: "Watch", hint: "Identity & condition" },
   { name: "Purchase", hint: "Acquisition & costs" },
@@ -56,8 +58,24 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
   const form = useForm<WatchIntakeValues>({ resolver: zodResolver(watchIntakeSchema), defaultValues: watchIntakeDefaults, mode: "onSubmit" });
   const { isDirty } = form.formState;
   const values = form.watch();
+  const serialNumber = values.serialNumber ?? "";
+  const internalSerial = values.internalSerial ?? "";
+  const [serialLookup, setSerialLookup] = useState({ serialNumber: "", internalSerial: "" });
+  const serialMatches = useInventorySerialMatches(serialLookup.serialNumber, serialLookup.internalSerial, open);
+  const serialLookupIsCurrent =
+    normalizeWatchSerial(serialNumber) === normalizeWatchSerial(serialLookup.serialNumber) &&
+    normalizeWatchSerial(internalSerial) === normalizeWatchSerial(serialLookup.internalSerial);
   const purchaseChannel = form.watch("purchasedFrom");
   const sellerOptions = useMemo(() => (clients as Array<{id:number;name:string;type:string}>).filter(c => purchaseChannel !== "Dealer" || c.type === "dealer"), [clients, purchaseChannel]);
+
+  useEffect(() => {
+    if (!open) {
+      setSerialLookup({ serialNumber: "", internalSerial: "" });
+      return;
+    }
+    const timeout = window.setTimeout(() => setSerialLookup({ serialNumber, internalSerial }), 250);
+    return () => window.clearTimeout(timeout);
+  }, [open, serialNumber, internalSerial]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,6 +179,11 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
               <Field name="brand" label="Brand" required options={settings.watch_brands}/><Field name="model" label="Model" required/>
               <Field name="referenceNumber" label="Reference number" required/><Field name="year" label="Production year" type="number"/>
               <Field name="serialNumber" label="Serial number"/><Field name="internalSerial" label="Movement / internal serial"/>
+              {serialLookupIsCurrent && <SerialMatchNotice
+                matches={serialMatches.data ?? []}
+                loading={serialMatches.isFetching}
+                error={serialMatches.isError}
+              />}
               <Field name="linkCount" label="Bracelet link count" type="number"/><Field name="condition" label="Condition" options={[...watchIntakeConditions]}/>
             </div><div className="mt-4 grid gap-3 sm:grid-cols-2"><CheckRow name="box" label="Box included"/><CheckRow name="papers" label="Papers included"/></div></Card>
             <Card title="Reference materials"><Field name="gdriveLink" label="Google Drive link" placeholder="https://drive.google.com/…" labelAction={
