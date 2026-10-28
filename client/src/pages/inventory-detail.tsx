@@ -1673,7 +1673,7 @@ export default function InventoryDetail() {
                   </div>
                 </div>
 
-                {/* Pillar C: Transaction (Exit) - Shown on second row if sold */}
+                {/* Pillar C: Transaction (Exit) */}
                 {item.status === 'sold' && (
                   <div className="p-5 bg-emerald-50/30 rounded-xl border border-emerald-100/50">
                     <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-4">The Transaction</h4>
@@ -1700,7 +1700,16 @@ export default function InventoryDetail() {
                         <span className="text-emerald-700">Net Profit</span>
                         <span className={profit >= 0 ? "text-emerald-600" : "text-red-600"}>{formatCurrency(profit)}</span>
                       </div>
-                      <Separator className="my-3" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Buyer, shipping, and return details are kept separate from sale financials. */}
+                {item.status === 'sold' && (
+                  <div className="p-5 bg-slate-50/50 rounded-xl border border-slate-100">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Buyer &amp; Delivery</h4>
+                    <p className="text-xs text-slate-400 mb-4">Buyer contact, shipment, and return-window details</p>
+                    <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-500">Sold To</span>
                         {linkedBuyer ? <Link href={`/clients/${linkedBuyer.id}`} className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:underline">
@@ -1713,6 +1722,7 @@ export default function InventoryDetail() {
                         <span className="shrink-0 text-slate-500">{label}</span><span className="min-w-0 break-words text-right font-medium">{value}</span>
                       </div>)}
                       {item.buyerId && clientsUnavailable && <p className="text-xs text-red-600">Buyer contact details could not be loaded.</p>}
+                      <Separator className="my-3" />
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-500">Shipper</span>
                         <span className="font-medium">{item.shippingPartner || 'N/A'}</span>
