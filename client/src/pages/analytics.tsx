@@ -781,7 +781,7 @@ export default function Analytics() {
         </div>
       </div>
       {/* Profit Per Day Card */}
-      <Card className="bg-gradient-to-r from-emerald-600 to-emerald-500 border-emerald-500" data-testid="card-profit-per-day">
+      <Card className="bg-emerald-600 border-emerald-600 shadow-sm" data-testid="card-profit-per-day">
         <CardContent className="py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
