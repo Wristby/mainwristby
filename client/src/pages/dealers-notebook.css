@@ -1,0 +1,91 @@
+.dealer-notebook {
+  --dn-ink: #20352e;
+  --dn-muted: #738179;
+  --dn-line: #dce5dc;
+  --dn-paper: #fbfcf7;
+  --dn-wash: #eef3ec;
+  --dn-forest: #234b3d;
+  --dn-gold: #c69b55;
+  color: var(--dn-ink);
+}
+
+.dealer-notebook .dn-eyebrow {
+  color: #718276;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+
+.dealer-notebook .dn-panel {
+  border: 1px solid var(--dn-line);
+  border-radius: 16px;
+  background: var(--dn-paper);
+  box-shadow: 0 3px 10px rgba(25, 50, 39, .035);
+}
+
+.dealer-notebook .dn-control {
+  min-height: 44px;
+  border: 1px solid #d6e0d7;
+  border-radius: 9px;
+  background: #fbfcf8;
+  color: var(--dn-ink);
+  padding: 0 12px;
+  font: inherit;
+}
+
+.dealer-notebook .dn-control:focus {
+  outline: 3px solid rgba(198, 155, 85, .34);
+  border-color: var(--dn-gold);
+}
+
+.dealer-notebook .dn-textarea {
+  min-height: 118px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #d6e0d7;
+  border-radius: 10px;
+  background: #fbfcf8;
+  padding: 13px 14px;
+  color: var(--dn-ink);
+  font: inherit;
+  line-height: 1.55;
+}
+
+.dealer-notebook .dn-textarea:focus {
+  outline: 3px solid rgba(198, 155, 85, .34);
+  border-color: var(--dn-gold);
+}
+
+.dealer-notebook .dn-insight {
+  border-left: 2px solid #d4dfd3;
+  padding: 2px 0 3px 15px;
+}
+
+.dealer-notebook .dn-action {
+  border: 1px solid #dce5dc;
+  border-radius: 12px;
+  background: #fffefa;
+  padding: 16px;
+}
+
+.dealer-notebook .dn-skeleton {
+  background: linear-gradient(90deg, #e8eee7 25%, #f1f4ed 50%, #e8eee7 75%);
+  background-size: 200% 100%;
+  animation: dn-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes dn-shimmer {
+  to { background-position-x: -200%; }
+}
+
+@media (max-width: 640px) {
+  .dealer-notebook .dn-month-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dealer-notebook .dn-skeleton { animation: none; }
+}

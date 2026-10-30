@@ -1,9 +1,9 @@
 import { db } from "./db";
 import {
-  clients, inventory, expenses, inventoryPriceHistory, settings, retentionAudit, transactionParties,
+  clients, inventory, expenses, inventoryPriceHistory, settings, retentionAudit, transactionParties, dealerNotebookEntries,
   type Client, type InsertClient, type UpdateClientRequest,
   type InventoryItem, type InsertInventory, type UpdateInventoryRequest, type InventoryPriceHistory,
-  type Expense, type InsertExpense,
+  type Expense, type InsertExpense, type DealerNotebookEntry,
   type DashboardStats, type Setting
 } from "@shared/schema";
 import { eq, desc, sql, and, isNull, isNotNull, inArray, or, ne } from "drizzle-orm";
@@ -12,6 +12,7 @@ import { getMatchingSerialFields, normalizeWatchSerial } from "@shared/serial-ma
 import { shouldRecordListedPrice } from "@shared/price-history";
 import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
+import type { NotebookAction, NotebookComparisonMode, NotebookPriceInput, NotebookReport, NotebookWatchInput } from "@shared/dealers-notebook";
 
 export class SaleBuyerSaveError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -89,9 +90,106 @@ export interface IStorage {
   getAllSettings(): Promise<Record<string, any>>;
   getSetting(key: string): Promise<any>;
   upsertSetting(key: string, value: any): Promise<Setting>;
+
+  // Dealer's Notebook
+  getNotebookInventoryData(): Promise<NotebookWatchInput[]>;
+  getNotebookPriceHistory(inventoryIds: number[]): Promise<NotebookPriceInput[]>;
+  getDealerNotebookEntry(monthKey: string): Promise<DealerNotebookEntry | undefined>;
+  saveDealerNotebookContext(monthKey: string, contextNote: string): Promise<DealerNotebookEntry>;
+  saveDealerNotebookActions(monthKey: string, actions: NotebookAction[]): Promise<DealerNotebookEntry>;
+  saveDealerNotebookReport(
+    monthKey: string,
+    comparisonMode: NotebookComparisonMode,
+    contextNote: string,
+    report: NotebookReport,
+    actions: NotebookAction[],
+  ): Promise<DealerNotebookEntry>;
 }
 
 export class DatabaseStorage implements IStorage {
+  async getNotebookInventoryData(): Promise<NotebookWatchInput[]> {
+    return db.select({
+      id: inventory.id,
+      brand: inventory.brand,
+      model: inventory.model,
+      condition: inventory.condition,
+      status: inventory.status,
+      archivedAt: inventory.archivedAt,
+      purchasePrice: inventory.purchasePrice,
+      importFee: inventory.importFee,
+      serviceFee: inventory.serviceFee,
+      polishFee: inventory.polishFee,
+      platformFees: inventory.platformFees,
+      shippingFee: inventory.shippingFee,
+      insuranceFee: inventory.insuranceFee,
+      watchRegister: inventory.watchRegister,
+      watchRegisterFeeSnapshot: inventory.watchRegisterFeeSnapshot,
+      salePrice: inventory.salePrice,
+      soldPrice: inventory.soldPrice,
+      soldDate: inventory.soldDate,
+      dateSold: inventory.dateSold,
+      dateListed: inventory.dateListed,
+      listPrice: inventory.listPrice,
+      box: inventory.box,
+      papers: inventory.papers,
+    }).from(inventory);
+  }
+
+  async getNotebookPriceHistory(inventoryIds: number[]): Promise<NotebookPriceInput[]> {
+    if (!inventoryIds.length) return [];
+    return db.select({
+      inventoryId: inventoryPriceHistory.inventoryId,
+      listPrice: inventoryPriceHistory.listPrice,
+      recordedAt: inventoryPriceHistory.recordedAt,
+    }).from(inventoryPriceHistory)
+      .where(inArray(inventoryPriceHistory.inventoryId, inventoryIds));
+  }
+
+  async getDealerNotebookEntry(monthKey: string): Promise<DealerNotebookEntry | undefined> {
+    const [entry] = await db.select().from(dealerNotebookEntries)
+      .where(eq(dealerNotebookEntries.monthKey, monthKey));
+    return entry;
+  }
+
+  async saveDealerNotebookContext(monthKey: string, contextNote: string): Promise<DealerNotebookEntry> {
+    const [entry] = await db.insert(dealerNotebookEntries)
+      .values({ monthKey, contextNote })
+      .onConflictDoUpdate({
+        target: dealerNotebookEntries.monthKey,
+        set: { contextNote, updatedAt: new Date() },
+      })
+      .returning();
+    return entry;
+  }
+
+  async saveDealerNotebookActions(monthKey: string, actions: NotebookAction[]): Promise<DealerNotebookEntry> {
+    const [entry] = await db.insert(dealerNotebookEntries)
+      .values({ monthKey, actions })
+      .onConflictDoUpdate({
+        target: dealerNotebookEntries.monthKey,
+        set: { actions, updatedAt: new Date() },
+      })
+      .returning();
+    return entry;
+  }
+
+  async saveDealerNotebookReport(
+    monthKey: string,
+    comparisonMode: NotebookComparisonMode,
+    contextNote: string,
+    report: NotebookReport,
+    actions: NotebookAction[],
+  ): Promise<DealerNotebookEntry> {
+    const [entry] = await db.insert(dealerNotebookEntries)
+      .values({ monthKey, comparisonMode, contextNote, report, actions, generatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: dealerNotebookEntries.monthKey,
+        set: { comparisonMode, contextNote, report, actions, generatedAt: new Date(), updatedAt: new Date() },
+      })
+      .returning();
+    return entry;
+  }
+
   // Clients
   async getClients(): Promise<Client[]> {
     return await db.select().from(clients).orderBy(desc(clients.createdAt));

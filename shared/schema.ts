@@ -3,6 +3,7 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { users } from "./models/auth";
+import type { NotebookAction, NotebookComparisonMode, NotebookReport } from "./dealers-notebook";
 
 export * from "./models/auth";
 
@@ -20,6 +21,19 @@ export const settings = pgTable("settings", {
 });
 
 export type Setting = typeof settings.$inferSelect;
+
+export const dealerNotebookEntries = pgTable("dealer_notebook_entries", {
+  monthKey: varchar("month_key", { length: 7 }).primaryKey(),
+  comparisonMode: text("comparison_mode", {
+    enum: ["previous-month", "same-month-last-year", "prior-three-months"],
+  }).$type<NotebookComparisonMode>().notNull().default("previous-month"),
+  contextNote: text("context_note").notNull().default(""),
+  report: jsonb("report").$type<NotebookReport | null>(),
+  actions: jsonb("actions").$type<NotebookAction[]>().notNull().default([]),
+  generatedAt: timestamp("generated_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type DealerNotebookEntry = typeof dealerNotebookEntries.$inferSelect;
 
 // Holds apply to a profile or a watch (including its financial/expense records).
 // recordId intentionally has no FK: a hold must never cascade away.

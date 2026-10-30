@@ -16,6 +16,7 @@ import Admin from "@/pages/admin";
 import Payments from "@/pages/payments";
 import WatchUniverse from "@/pages/watch-universe";
 import SalesPatterns from "@/pages/sales-patterns";
+import DealersNotebook from "@/pages/dealers-notebook";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -71,6 +72,9 @@ function Router() {
       </Route>
       <Route path="/sales-patterns">
         <ProtectedRoute component={SalesPatterns} />
+      </Route>
+      <Route path="/dealers-notebook">
+        <ProtectedRoute component={DealersNotebook} />
       </Route>
       <Route path="/watch-universe">
         <ProtectedRoute component={WatchUniverse} />
