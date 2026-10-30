@@ -15,6 +15,7 @@ import Analytics from "@/pages/analytics";
 import Admin from "@/pages/admin";
 import Payments from "@/pages/payments";
 import WatchUniverse from "@/pages/watch-universe";
+import SalesPatterns from "@/pages/sales-patterns";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -67,6 +68,9 @@ function Router() {
       </Route>
       <Route path="/analytics">
         <ProtectedRoute component={Analytics} />
+      </Route>
+      <Route path="/sales-patterns">
+        <ProtectedRoute component={SalesPatterns} />
       </Route>
       <Route path="/watch-universe">
         <ProtectedRoute component={WatchUniverse} />

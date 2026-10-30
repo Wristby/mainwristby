@@ -7,6 +7,7 @@ import {
   LogOut, 
   Menu,
   BarChart3,
+  CalendarDays,
   DollarSign,
   Settings,
   CreditCard,
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { icon: DollarSign, label: "Financials", href: "/financials" },
   { icon: CreditCard, label: "Payments", href: "/payments" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
+  { icon: CalendarDays, label: "Sales Patterns", href: "/sales-patterns" },
   { icon: Orbit, label: "Watch Universe", href: "/watch-universe" },
   { icon: Settings, label: "Admin", href: "/admin" },
 ];

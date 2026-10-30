@@ -29,6 +29,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useState, useMemo } from "react";
+import { SalesPatternsPreview } from "@/pages/sales-patterns";
 import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
@@ -670,6 +671,11 @@ export default function Analytics() {
           </div>
         )}
       </div>
+      <SalesPatternsPreview
+        inventory={filteredInventory.filter((item) => item.status === "sold")}
+        watchRegisterFeeCents={settings.watch_register_fee}
+        periodLabel={primaryDateRange.label}
+      />
       {/* Comparison View */}
       {compareMode && compareMetrics && (
         <Card className="bg-gradient-to-r from-slate-50 to-slate-100 border-slate-200" data-testid="card-comparison">
