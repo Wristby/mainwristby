@@ -32,8 +32,9 @@ import type {
   NotebookAction,
   NotebookComparisonMode,
   NotebookInsight,
-  NotebookRecommendation,
+  SavedNotebookRecommendation,
 } from "@shared/dealers-notebook";
+import { notebookMonthKey } from "@shared/dealers-notebook";
 import "./dealers-notebook.css";
 
 const COMPARISONS: { value: NotebookComparisonMode; label: string; detail: string }[] = [
@@ -50,8 +51,7 @@ const MONEY_FORMATTER = new Intl.NumberFormat("en-GB", {
 });
 
 function currentMonthKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return notebookMonthKey(new Date()) ?? "";
 }
 
 function monthLabel(monthKey: string) {
@@ -142,12 +142,12 @@ function InsightSection({
   );
 }
 
-function newAction(recommendation: NotebookRecommendation): NotebookAction {
+function newAction(recommendation: SavedNotebookRecommendation): NotebookAction {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
     title: recommendation.title,
-    rationale: `${recommendation.action} ${recommendation.rationale}`,
+    rationale: `${recommendation.action} ${recommendation.rationale}`.slice(0, 700),
     evidenceKeys: recommendation.evidenceKeys,
     relatedWatches: recommendation.relatedWatches,
     status: "open",
@@ -221,7 +221,7 @@ export default function DealersNotebook() {
     void persistActions(actions, status === "done" ? "Action marked done." : status === "dismissed" ? "Action dismissed." : "Action reopened.");
   }
 
-  function addRecommendation(recommendation: NotebookRecommendation) {
+  function addRecommendation(recommendation: SavedNotebookRecommendation) {
     const current = entry?.actions ?? [];
     const alreadyAdded = current.some((action) => action.title === recommendation.title && action.status !== "dismissed");
     if (alreadyAdded) {
@@ -258,6 +258,10 @@ export default function DealersNotebook() {
   const openActions = savedActions.filter((action) => action.status === "open");
   const resolvedActions = savedActions.filter((action) => action.status !== "open");
   const previousActions = notebook.data?.previousActions ?? [];
+  const comparisonDivisor = report ? Math.max(1, report.comparison.monthKeys.length) : 1;
+  const comparisonProfitForDelta = report ? Math.round(report.comparison.netProfitCents / comparisonDivisor) : 0;
+  const comparisonRevenueForDelta = report ? Math.round(report.comparison.revenueCents / comparisonDivisor) : 0;
+  const comparisonAverageLabel = comparisonDivisor > 1 ? "vs comparison monthly average" : "vs comparison";
 
   return (
     <div className="dealer-notebook space-y-7 pb-8">
@@ -270,7 +274,7 @@ export default function DealersNotebook() {
         <div className="dn-month-controls flex flex-wrap items-end gap-3">
           <label className="grid gap-1.5">
             <span className="dn-eyebrow">Review month</span>
-            <input aria-label="Review month" type="month" value={monthKey} onChange={(event) => { initializedMonth.current = null; setMonthKey(event.target.value); setFeedback(""); setPageError(""); }} className="dn-control w-[185px]" />
+            <input aria-label="Review month" type="month" max={currentMonthKey()} value={monthKey} onChange={(event) => { initializedMonth.current = null; setMonthKey(event.target.value); setFeedback(""); setPageError(""); }} className="dn-control w-[185px]" />
           </label>
           <label className="grid gap-1.5">
             <span className="dn-eyebrow">Compare against</span>
@@ -332,7 +336,7 @@ export default function DealersNotebook() {
             <div><p className="dn-eyebrow">Your margin notes</p><h2 className="mt-1 text-lg font-semibold text-[#244235]">Business context</h2></div>
             <span className="text-xs text-[#829087]">{contextNote.length}/2400</span>
           </div>
-          <p className="mb-3 mt-2 text-sm leading-6 text-[#738078]">Anything that shaped this month but won’t appear in a sale record: sourcing constraints, time away, market shifts, or a deliberate change in strategy.</p>
+           <p className="mb-3 mt-2 text-sm leading-6 text-[#738078]">Anything that shaped this month but won’t appear in a sale record: sourcing constraints, time away, market shifts, or a deliberate change in strategy. This note is sent to Gemini with the sales summary; do not include client or other personal details.</p>
           <textarea
             className="dn-textarea"
             aria-label="Business context note"
@@ -393,8 +397,8 @@ export default function DealersNotebook() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-[#e2e9e1] px-5 py-3 text-xs">
-                <Difference label="Profit vs comparison" value={delta(report.period.netProfitCents, report.comparison.netProfitCents)} />
-                <Difference label="Revenue vs comparison" value={delta(report.period.revenueCents, report.comparison.revenueCents)} />
+                <Difference label={`Profit ${comparisonAverageLabel}`} value={delta(report.period.netProfitCents, comparisonProfitForDelta)} />
+                <Difference label={`Revenue ${comparisonAverageLabel}`} value={delta(report.period.revenueCents, comparisonRevenueForDelta)} />
                 <span className="text-[#7b887f]">Price reductions recorded: {report.period.priceReductionCount} in period / {report.comparison.priceReductionCount} in comparison</span>
               </div>
             </div>
@@ -423,7 +427,7 @@ export default function DealersNotebook() {
                       <p className="mt-2 text-sm leading-6 text-[#68776e]">{recommendation.action}</p>
                       <p className="mt-2 text-xs leading-5 text-[#89938b]">{recommendation.rationale}</p>
                       <EvidenceList keys={recommendation.evidenceKeys} evidence={report.evidence} />
-                      {!!recommendation.relatedWatches.length && <p className="mt-2 text-xs text-[#728078]">Related: {recommendation.relatedWatches.map((watch) => watch.label).join(" · ")}</p>}
+                      {!!recommendation.relatedWatches.length && <p className="mt-2 flex flex-wrap gap-x-2 text-xs text-[#728078]">Related: {recommendation.relatedWatches.map((watch) => <a key={watch.id} href={`/inventory/${watch.id}`} className="underline decoration-[#a8b8aa] underline-offset-2 hover:text-[#315e46]">{watch.label}</a>)}</p>}
                     </article>
                   );
                 }) : <p className="rounded-lg bg-[#f3f5f0] px-4 py-3 text-sm text-[#78847c]">No recommendations were returned for this month.</p>}
@@ -550,7 +554,7 @@ function ActionItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2"><CircleDot aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 ${action.status === "done" ? "text-[#62866a]" : action.status === "dismissed" ? "text-[#9b8379]" : "text-[#b28c4f]"}`} /><h3 className="font-semibold leading-snug text-[#344b3d]">{action.title}</h3></div>
           <p className="mt-2 pl-6 text-sm leading-6 text-[#718078]">{action.rationale}</p>
-          {!!action.relatedWatches.length && <p className="mt-2 pl-6 text-xs text-[#839087]">Related watches: {action.relatedWatches.map((watch) => watch.label).join(" · ")}</p>}
+           {!!action.relatedWatches.length && <p className="mt-2 flex flex-wrap gap-x-2 pl-6 text-xs text-[#839087]">Related watches: {action.relatedWatches.map((watch) => <a key={watch.id} href={`/inventory/${watch.id}`} className="underline decoration-[#a8b8aa] underline-offset-2 hover:text-[#315e46]">{watch.label}</a>)}</p>}
           <div className="pl-6"><EvidenceList keys={action.evidenceKeys} evidence={evidence} /></div>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${action.status === "done" ? "bg-[#e7f0e9] text-[#456a4e]" : action.status === "dismissed" ? "bg-[#f1ece8] text-[#816d62]" : "bg-[#f4efdf] text-[#80652d]"}`}>{action.status === "done" ? "Done" : action.status === "dismissed" ? "Dismissed" : "Open"}</span>
@@ -573,8 +577,8 @@ function CurrentStock({ currentStock }: { currentStock: { activeListings: number
       {currentStock.candidates.length ? (
         <div className="mt-3 divide-y divide-[#edf0e9]">
           {currentStock.candidates.slice(0, 5).map((watch) => (
-            <div key={watch.id} className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0"><p className="truncate text-sm font-medium text-[#40594a]">{watch.label}</p><p className="mt-0.5 text-xs text-[#849087]">{watch.daysListed} days listed · cost {money(watch.costBasisCents)}</p></div>
+              <div key={watch.id} className="flex items-center justify-between gap-3 py-3">
+              <div className="min-w-0"><a href={`/inventory/${watch.id}`} className="block truncate text-sm font-medium text-[#40594a] underline decoration-transparent underline-offset-2 hover:decoration-[#a8b8aa]">{watch.label}</a><p className="mt-0.5 text-xs text-[#849087]">{watch.daysListed} days listed · cost {money(watch.costBasisCents)}</p></div>
               <span className="shrink-0 text-sm font-semibold tabular-nums text-[#455f4b]">{money(watch.listPriceCents)}</span>
             </div>
           ))}

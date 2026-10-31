@@ -505,7 +505,7 @@ export async function registerRoutes(
       const relevantIds = inventoryData
         .filter((watch) => watch.status === "sold" && allMonthKeys.has(notebookMonthKey(watch.soldDate ?? watch.dateSold) ?? ""))
         .map((watch) => watch.id);
-      const priceHistory = await storage.getNotebookPriceHistory([...new Set(relevantIds)]);
+      const priceHistory = await storage.getNotebookPriceHistory(Array.from(new Set(relevantIds)));
       const registerFee = Number.isFinite(Number(watchRegisterSetting)) && Number(watchRegisterSetting) >= 0
         ? Math.round(Number(watchRegisterSetting))
         : 600;
@@ -535,7 +535,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
         return res.status(502).json({ message: "Gemini returned an incomplete notebook report. Please try again." });
       }
       const availableEvidence = new Set(Object.keys(prepared.evidence));
-      const safeEvidenceKeys = (keys: string[]) => [...new Set(keys.filter((key) => availableEvidence.has(key)))].slice(0, 4);
+      const safeEvidenceKeys = (keys: string[]) => Array.from(new Set(keys.filter((key) => availableEvidence.has(key)))).slice(0, 4);
       const normalizeInsight = (insight: typeof aiResult.data.wins[number]) => ({
         ...insight,
         evidenceKeys: safeEvidenceKeys(insight.evidenceKeys),
@@ -544,7 +544,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
       const existingActions = saveNotebookActionsSchema.safeParse({ actions: existingEntry?.actions ?? [] });
       const actions: NotebookAction[] = existingActions.success ? [...existingActions.data.actions] : [];
       const recommendations = aiResult.data.recommendations.map((recommendation) => {
-        const relatedWatches = [...new Set(recommendation.relatedWatchCodes)]
+        const relatedWatches = Array.from(new Set(recommendation.relatedWatchCodes))
           .map((code) => prepared.watchLinks.get(code))
           .filter((watch): watch is { id: number; label: string } => Boolean(watch))
           .slice(0, 5);
@@ -563,7 +563,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
         const action: NotebookAction = {
           id: previous?.id ?? randomUUID(),
           title: recommendation.title,
-          rationale: `${recommendation.action} ${recommendation.rationale}`.trim(),
+          rationale: `${recommendation.action} ${recommendation.rationale}`.trim().slice(0, 700),
           evidenceKeys: recommendation.evidenceKeys,
           relatedWatches: recommendation.relatedWatches,
           status: previous?.status ?? "open",

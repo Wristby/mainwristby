@@ -270,7 +270,7 @@ function priceChangeStats(watchIds: Set<number>, histories: readonly NotebookPri
   let salesWithPriceHistory = 0;
   let salesWithPriceReductions = 0;
   let priceReductionCount = 0;
-  for (const entries of grouped.values()) {
+  for (const entries of Array.from(grouped.values())) {
     const ordered = [...entries].sort((a, b) => {
       const difference = new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime();
       return difference || a.listPrice - b.listPrice;
@@ -327,7 +327,7 @@ export function calculateNotebookPeriod(
     group.push(sale);
     brandGroups.set(brand, group);
   }
-  const brands = [...brandGroups.entries()].map(([brand, sales]) => {
+  const brands = Array.from(brandGroups.entries()).map(([brand, sales]) => {
     const brandRevenue = sales.reduce((sum, sale) => sum + sale.revenue, 0);
     const brandProfit = sales.reduce((sum, sale) => sum + sale.netProfit, 0);
     const brandDays = sales.flatMap((sale) => sale.days == null ? [] : [sale.days]);
