@@ -53,8 +53,17 @@ describe("Dealer's Notebook calculations and privacy projection", () => {
   });
 
   it("keeps private inventory identifiers out of the Gemini data projection", () => {
+    const privateInventoryRecord = {
+      ...watch({ id: 987654, brand: "Omega" }),
+      buyerName: "Fixture Buyer",
+      buyerEmail: "buyer@example.invalid",
+      buyerPhone: "+31 6 12345678",
+      serialNumber: "FIXTURE-SERIAL",
+      trackingNumber: "FIXTURE-TRACKING",
+      notes: "Fixture private note",
+    } as NotebookWatchInput;
     const result = prepareNotebookAnalysis(
-      [watch({ id: 987654, brand: "Omega" }), watch({
+      [privateInventoryRecord, watch({
         id: 987655,
         status: "in_stock",
         brand: "Cartier",
@@ -70,8 +79,18 @@ describe("Dealer's Notebook calculations and privacy projection", () => {
       new Date("2026-10-31T12:00:00Z"),
     );
     const promptData = JSON.stringify(result.promptData);
-    expect(promptData).not.toContain("987654");
-    expect(promptData).not.toContain("987655");
+    for (const privateValue of [
+      "987654",
+      "987655",
+      "Fixture Buyer",
+      "buyer@example.invalid",
+      "+31 6 12345678",
+      "FIXTURE-SERIAL",
+      "FIXTURE-TRACKING",
+      "Fixture private note",
+    ]) {
+      expect(promptData).not.toContain(privateValue);
+    }
     expect(promptData).toContain("Omega");
     expect(promptData).not.toContain("relatedWatches");
     expect(result.watchLinks.get("S01")?.id).toBe(987654);
