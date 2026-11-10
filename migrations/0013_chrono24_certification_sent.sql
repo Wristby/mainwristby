@@ -1,0 +1,2 @@
+ALTER TABLE inventory
+  ADD COLUMN IF NOT EXISTS chrono24_certification_sent BOOLEAN NOT NULL DEFAULT FALSE;

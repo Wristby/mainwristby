@@ -137,6 +137,7 @@ const editFormSchema = z.object({
   
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
+  chrono24CertificationSent: z.boolean().default(false),
   targetSellPrice: z.coerce.number().optional().default(0),
   listPrice: z.coerce.number().optional().nullable(),
   linkCount: z.coerce.number().int().optional().nullable(),
@@ -289,6 +290,7 @@ export default function InventoryDetail() {
       serviceNotes: "",
       shippingPartner: "",
       trackingNumber: "",
+      chrono24CertificationSent: false,
       targetSellPrice: 0,
       listPrice: null,
       notes: "",
@@ -363,7 +365,7 @@ export default function InventoryDetail() {
     if (item) {
       const hasSaleData = (item as any).salePrice > 0 || item.soldDate || (item as any).dateSold;
       const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).serviceStartDate || (item as any).dateReturnedFromService;
-      const hasShippingData = item.shippingPartner || item.trackingNumber;
+      const hasShippingData = item.shippingPartner || item.trackingNumber || item.chrono24CertificationSent;
       setShowSaleDetails(hasSaleData);
       setShowServiceDetails(hasServiceData);
       setShowShippingDetails(!!hasShippingData);
@@ -412,6 +414,7 @@ export default function InventoryDetail() {
         serviceNotes: (item as any).serviceNotes || "",
         shippingPartner: item.shippingPartner || "",
         trackingNumber: item.trackingNumber || "",
+        chrono24CertificationSent: item.chrono24CertificationSent ?? false,
         targetSellPrice: (item.targetSellPrice || 0) / 100,
         listPrice: item.listPrice ? item.listPrice / 100 : null,
         linkCount: (item as any).linkCount ?? null,
@@ -1419,6 +1422,24 @@ export default function InventoryDetail() {
                         <Label>Tracking Number</Label>
                         <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" placeholder="Enter tracking number" />
                       </div>
+                      <div className="md:col-span-2 flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                        <Controller
+                          control={form.control}
+                          name="chrono24CertificationSent"
+                          render={({ field }) => (
+                            <Checkbox
+                              id="edit-chrono24-certification-sent"
+                              checked={field.value}
+                              onCheckedChange={(checked) => field.onChange(checked === true)}
+                              className="mt-0.5"
+                            />
+                          )}
+                        />
+                        <div className="space-y-1">
+                          <Label htmlFor="edit-chrono24-certification-sent" className="cursor-pointer">Sent for Chrono24 Certification</Label>
+                          <p className="text-xs text-slate-500">Tracking only. No fee or other certification details are required.</p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1779,6 +1800,14 @@ export default function InventoryDetail() {
                           <span className="font-medium">N/A</span>
                         )}
                       </div>
+                      {item.chrono24CertificationSent && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-500">Chrono24 Certification</span>
+                          <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
+                            <Check className="h-3.5 w-3.5" aria-hidden="true" />Sent
+                          </span>
+                        </div>
+                      )}
                       <DeliveryStatus key={id} id={id} deliveredDate={item.deliveredDate} />
                     </div>
                   </div>
@@ -1786,7 +1815,7 @@ export default function InventoryDetail() {
               </div>
 
               {/* Shipping Details - shows when info exists and item is not sold (sold items show in Transaction pillar) */}
-              {item.status !== 'sold' && (item.shippingPartner || item.trackingNumber) && (
+              {item.status !== 'sold' && (item.shippingPartner || item.trackingNumber || item.chrono24CertificationSent) && (
                 <div className="pt-4 border-t border-slate-100">
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Shipping Details</h4>
                   <div className="grid grid-cols-2 gap-4">
@@ -1808,6 +1837,14 @@ export default function InventoryDetail() {
                         <span className="font-medium">N/A</span>
                       )}
                     </div>
+                    {item.chrono24CertificationSent && (
+                      <div className="col-span-2 flex justify-between text-sm">
+                        <span className="text-slate-500">Chrono24 Certification</span>
+                        <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
+                          <Check className="h-3.5 w-3.5" aria-hidden="true" />Sent
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

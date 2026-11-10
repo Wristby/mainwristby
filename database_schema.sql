@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS inventory (
     -- Shipping & Tracking
     shipping_partner TEXT,
     tracking_number TEXT,
+    chrono24_certification_sent BOOLEAN NOT NULL DEFAULT FALSE,
     sold_platform TEXT,
     
     -- Foreign Keys

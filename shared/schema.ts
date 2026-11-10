@@ -174,6 +174,7 @@ export const inventory = pgTable("inventory", {
   // Shipping & Tracking
   shippingPartner: text("shipping_partner"),
   trackingNumber: text("tracking_number"),
+  chrono24CertificationSent: boolean("chrono24_certification_sent").default(false).notNull(),
   dateShipped: timestamp("date_shipped"),
   // Customer delivery is a calendar date, not a timezone-dependent timestamp.
   deliveredDate: date("delivered_date", { mode: "string" }),

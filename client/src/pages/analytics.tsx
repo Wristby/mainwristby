@@ -18,7 +18,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   GitCompare,
-  Download
+  Download,
+  BadgeCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -33,6 +34,7 @@ import { SalesPatternsPreview } from "@/pages/sales-patterns";
 import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
+import { countChrono24CertificationSent } from "@/lib/chrono24-certification";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -470,6 +472,7 @@ export default function Analytics() {
   const avgWatchCost = (inventory?.length ?? 0) > 0
     ? (inventory || []).reduce((sum, item) => sum + item.purchasePrice, 0) / (inventory?.length ?? 1)
     : 0;
+  const chrono24CertificationSentCount = countChrono24CertificationSent(inventory);
 
   // All watches hold time
   const allWatchesWithHoldTime = (inventory || []).map((item) => {
@@ -979,6 +982,23 @@ export default function Analytics() {
                 </div>
                 <div className="p-2 bg-pink-50 rounded-full">
                   <Trophy className="h-5 w-5 text-pink-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-slate-200">
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Chrono24 Certification Sent</p>
+                  <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums" data-testid="metric-chrono24-certification-sent">
+                    {chrono24CertificationSentCount}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">All-time flagged watches</p>
+                </div>
+                <div className="p-2 bg-emerald-50 rounded-full">
+                  <BadgeCheck className="h-5 w-5 text-emerald-600" />
                 </div>
               </div>
             </CardContent>
