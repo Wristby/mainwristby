@@ -54,6 +54,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { normalizeWatchSerial } from "@shared/serial-match";
 import { SerialMatchNotice } from "@/components/watch-intake/serial-match-notice";
 import { PriceHistoryCard } from "@/components/price-history-card";
+import { normalizeWatchCondition, serializeWatchCondition, WATCH_DETAIL_CONDITIONS } from "@/lib/watch-condition";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -74,25 +75,6 @@ const formatCurrency = (val: number) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(val / 100);
-};
-
-const WATCH_DETAIL_CONDITIONS = ["Good", "Very Good", "Excellent", "Like New"] as const;
-
-const normalizeWatchCondition = (condition: string | null | undefined): typeof WATCH_DETAIL_CONDITIONS[number] => {
-  if ((WATCH_DETAIL_CONDITIONS as readonly string[]).includes(condition || "")) {
-    return condition as typeof WATCH_DETAIL_CONDITIONS[number];
-  }
-  if (condition === "New") return "Like New";
-  if (condition === "Mint") return "Excellent";
-  return "Good";
-};
-
-const serializeWatchCondition = (
-  condition: typeof WATCH_DETAIL_CONDITIONS[number] | undefined,
-): "New" | "Mint" | "Used" | "Damaged" => {
-  if (condition === "Like New") return "New";
-  if (condition === "Excellent") return "Mint";
-  return "Used";
 };
 
 const editFormSchema = z.object({
@@ -1514,7 +1496,7 @@ export default function InventoryDetail() {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Condition</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.condition}</p>
+                  <p className="text-slate-900 font-medium mt-1">{normalizeWatchCondition(item.condition)}</p>
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Link Count</p>
