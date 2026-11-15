@@ -133,6 +133,16 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updatePriceHistory: {
+      method: 'PATCH' as const,
+      path: '/api/inventory/:id/price-history/:historyId',
+      input: z.object({ listPrice: z.number().int().positive() }),
+      responses: {
+        200: z.custom<typeof inventoryPriceHistory.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
     archived: {
       method: 'GET' as const,
       path: '/api/inventory/archived',

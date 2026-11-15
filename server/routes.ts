@@ -262,6 +262,25 @@ export async function registerRoutes(
     res.json(history);
   });
 
+  app.patch(api.inventory.updatePriceHistory.path, isAuthenticated, async (req, res) => {
+    const inventoryId = Number(req.params.id);
+    const historyId = Number(req.params.historyId);
+    if (!Number.isInteger(inventoryId) || inventoryId < 1 || !Number.isInteger(historyId) || historyId < 1) {
+      return res.status(400).json({ message: "Invalid price history entry." });
+    }
+    try {
+      const { listPrice } = api.inventory.updatePriceHistory.input.parse(req.body);
+      const entry = await storage.updateInventoryPriceHistory(inventoryId, historyId, listPrice);
+      if (!entry) return res.status(404).json({ message: "Price history entry not found." });
+      res.json(entry);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Could not update this price history entry. Please try again." });
+    }
+  });
+
   app.post(api.inventory.create.path, isAuthenticated, async (req, res) => {
     try {
       // Coerce numeric fields from strings if necessary (though zod schema should handle types if frontend sends JSON)

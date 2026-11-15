@@ -71,6 +71,29 @@ export function useInventoryPriceHistory(id: number) {
   });
 }
 
+export function useUpdateInventoryPriceHistory(inventoryId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ historyId, listPrice }: { historyId: number; listPrice: number }) => {
+      const url = buildUrl(api.inventory.updatePriceHistory.path, { id: inventoryId, historyId });
+      const response = await fetch(url, {
+        method: api.inventory.updatePriceHistory.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listPrice }),
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.message || "Failed to correct the listed price");
+      }
+      return api.inventory.updatePriceHistory.responses[200].parse(await response.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.inventory.priceHistory.path, inventoryId] });
+    },
+  });
+}
+
 export function useCreateInventory() {
   const queryClient = useQueryClient();
   return useMutation({

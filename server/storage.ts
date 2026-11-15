@@ -68,6 +68,7 @@ export interface IStorage {
   getArchivedInventoryItems(): Promise<(InventoryItem & { seller?: Client })[]>;
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
   getInventoryPriceHistory(id: number): Promise<InventoryPriceHistory[]>;
+  updateInventoryPriceHistory(inventoryId: number, historyId: number, listPrice: number): Promise<InventoryPriceHistory | undefined>;
   createInventoryItem(item: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem>;
@@ -344,6 +345,17 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(inventoryPriceHistory)
       .where(eq(inventoryPriceHistory.inventoryId, id))
       .orderBy(desc(inventoryPriceHistory.recordedAt), desc(inventoryPriceHistory.id));
+  }
+
+  async updateInventoryPriceHistory(inventoryId: number, historyId: number, listPrice: number): Promise<InventoryPriceHistory | undefined> {
+    const [entry] = await db.update(inventoryPriceHistory)
+      .set({ listPrice })
+      .where(and(
+        eq(inventoryPriceHistory.id, historyId),
+        eq(inventoryPriceHistory.inventoryId, inventoryId),
+      ))
+      .returning();
+    return entry;
   }
 
   async createInventoryItem(insertItem: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {

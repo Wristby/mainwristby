@@ -15,11 +15,12 @@ const reduced: InventoryPriceHistory = {
   listPrice: 1_425_000,
   recordedAt: new Date("2026-02-01T12:00:00Z"),
 };
+const noOpPriceUpdate = async () => {};
 
 describe("pricing history card", () => {
   it("shows saved prices newest first with the reduction and current price marked", () => {
     const html = renderToStaticMarkup(
-      <PriceHistoryCard history={[baseline, reduced]} currentListPrice={reduced.listPrice}/>,
+      <PriceHistoryCard history={[baseline, reduced]} currentListPrice={reduced.listPrice} onUpdatePrice={noOpPriceUpdate}/>,
     );
     expect(html.indexOf("14.250,00")).toBeLessThan(html.indexOf("15.000,00"));
     expect(html).toContain("Current");
@@ -28,20 +29,21 @@ describe("pricing history card", () => {
     expect(html).toContain("5.0%");
     expect(html).toContain("Tracking baseline");
     expect(html).not.toContain("earlier price changes aren’t available");
+    expect(html).toContain('aria-label="Edit price recorded 1 Feb 2026"');
   });
 
   it("shows an increase when a saved asking price rises", () => {
     const higher = { ...reduced, id: 3, listPrice: 1_600_000, recordedAt: new Date("2026-03-01T12:00:00Z") };
     const html = renderToStaticMarkup(
-      <PriceHistoryCard history={[baseline, higher]} currentListPrice={higher.listPrice}/>,
+      <PriceHistoryCard history={[baseline, higher]} currentListPrice={higher.listPrice} onUpdatePrice={noOpPriceUpdate}/>,
     );
     expect(html).toContain("Higher by");
     expect(html).toContain("1.000,00");
   });
 
   it("explains the empty, loading, and error states", () => {
-    expect(renderToStaticMarkup(<PriceHistoryCard currentListPrice={null}/>)).toContain("No listed prices recorded yet");
-    expect(renderToStaticMarkup(<PriceHistoryCard currentListPrice={null} isLoading/>)).toContain("Loading price history");
-    expect(renderToStaticMarkup(<PriceHistoryCard currentListPrice={null} isError/>)).toContain("Your current price is unchanged");
+    expect(renderToStaticMarkup(<PriceHistoryCard currentListPrice={null} onUpdatePrice={noOpPriceUpdate}/>)).toContain("No listed prices recorded yet");
+    expect(renderToStaticMarkup(<PriceHistoryCard currentListPrice={null} isLoading onUpdatePrice={noOpPriceUpdate}/>)).toContain("Loading price history");
+    expect(renderToStaticMarkup(<PriceHistoryCard currentListPrice={null} isError onUpdatePrice={noOpPriceUpdate}/>)).toContain("Your current price is unchanged");
   });
 });

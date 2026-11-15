@@ -1,4 +1,4 @@
-import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory, useInventorySerialMatches, useInventoryPriceHistory } from "@/hooks/use-inventory";
+import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory, useInventorySerialMatches, useInventoryPriceHistory, useUpdateInventoryPriceHistory } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
@@ -149,6 +149,7 @@ export default function InventoryDetail() {
   const [buyerError, setBuyerError] = useState("");
   const linkedBuyer = clients?.find(client => client.id === item?.buyerId);
   const updateMutation = useUpdateInventory();
+  const updatePriceHistoryMutation = useUpdateInventoryPriceHistory(id);
   const deleteMutation = useDeleteInventory();
   const archiveMutation = useArchiveInventory();
   const quickAddClientMutation = useCreateClient();
@@ -2166,6 +2167,11 @@ export default function InventoryDetail() {
             currentListPrice={item.listPrice ?? null}
             isLoading={priceHistoryQuery.isLoading}
             isError={priceHistoryQuery.isError}
+            isUpdatingPrice={updatePriceHistoryMutation.isPending}
+            onUpdatePrice={async (historyId, listPrice) => {
+              await updatePriceHistoryMutation.mutateAsync({ historyId, listPrice });
+              toast({ title: "Price corrected", description: "The historical price entry was updated." });
+            }}
           />
 
           {(linkedBuyer || item.buyerId || item.soldTo) && (
