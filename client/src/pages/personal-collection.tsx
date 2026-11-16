@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { ArrowLeft, ArrowRight, Watch, Plus, Search, ShieldCheck, Trash2, Pencil, LockKeyhole, X, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, Watch, Plus, Search, ShieldCheck, Trash2, Pencil, LockKeyhole, X, Check, Printer } from "lucide-react";
 import { usePersonalCollection, usePersonalCollectionWatch, useCreatePersonalCollectionWatch, useUpdatePersonalCollectionWatch, useDeletePersonalCollectionWatch } from "@/hooks/use-personal-collection";
 import { parsePriceInput } from "@/lib/utils";
+import { buildPersonalInsuranceReportRows } from "@/lib/personal-insurance-report";
 import type { PersonalCollectionInput } from "@shared/personal-collection";
 import type { PersonalCollectionWatch } from "@shared/schema";
 import "./personal-collection.css";
@@ -16,7 +17,7 @@ export default function PersonalCollection() {
   const watches = useMemo(() => (data ?? []).filter(w => `${w.manufacturer} ${w.model ?? ""} ${w.referenceNumber}`.toLowerCase().includes(query.toLowerCase())), [data, query]);
   const totalValue = (data ?? []).reduce((sum, w) => sum + (w.estimatedValue ?? 0), 0);
   return <div className="pc-page">
-    <div className="pc-topline"><div><div className="pc-eyebrow">Away from the shop floor</div><h1>Personal collection</h1><p className="pc-intro">A private record of the watches you keep. Separate from stock, sales and every business workflow.</p></div><Link href="/personal-collection/new" className="pc-action"><Plus size={17}/> Add a watch</Link></div>
+    <div className="pc-topline"><div><div className="pc-eyebrow">Away from the shop floor</div><h1>Personal collection</h1><p className="pc-intro">A private record of the watches you keep. Separate from stock, sales and every business workflow.</p></div><div className="pc-topline-actions"><Link href="/personal-collection/insurance-report" className="pc-action secondary"><Printer size={16}/> Insurance report</Link><Link href="/personal-collection/new" className="pc-action"><Plus size={17}/> Add a watch</Link></div></div>
     <div className="pc-statline"><div className="pc-stat"><b>{data?.length ?? "—"}</b><span>PERSONAL WATCHES</span></div><div className="pc-stat"><b>{euro(totalValue)}</b><span>ESTIMATED COLLECTION</span></div><div className="pc-stat"><b><ShieldCheck size={17} style={{display:"inline",verticalAlign:"-3px"}}/> Private</b><span>ONLY VISIBLE TO YOU</span></div></div>
     {isLoading ? <div aria-label="Loading collection">{[0,1,2].map(i=><div className="pc-skeleton" key={i}/>)}</div> : isError ? <div className="pc-state"><h2>Your collection is taking a moment</h2><p>{(error as Error)?.message || "We couldn't load these records."}</p><button className="pc-action" onClick={()=>refetch()}>Try again</button></div> : data?.length === 0 ? <div className="pc-empty"><div className="pc-empty-icon"><Watch/></div><h2>Make room for your keepers</h2><p>Your personal collection has its own place here—never counted as store inventory and never sent to a sales channel.</p><Link href="/personal-collection/new" className="pc-action"><Plus size={17}/> Add your first watch</Link></div> : <>
       <div className="pc-tools"><label className="pc-search"><Search aria-hidden="true"/><input className="pc-input" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find a watch by name or reference" aria-label="Search personal collection"/></label></div>
@@ -26,6 +27,90 @@ export default function PersonalCollection() {
         <div className="pc-card-foot"><span>{w.dateBought ? `Bought ${dateText(w.dateBought)}` : "Acquisition date not recorded"}</span><span className="pc-card-value">{w.estimatedValue ? euro(w.estimatedValue) : "View record"} <ArrowRight size={14} style={{display:"inline",verticalAlign:"-2px"}}/></span></div>
       </Link>)}</div> : <div className="pc-empty"><div className="pc-empty-icon"><Search/></div><h2>No watches found</h2><p>Try another manufacturer, model or reference number.</p><button className="pc-action secondary" onClick={()=>setQuery("")}>Clear search</button></div>}
     </>}
+  </div>;
+}
+
+export function PersonalCollectionInsuranceReportPage() {
+  const { data, isLoading, isError, error, refetch } = usePersonalCollection();
+  const rows = useMemo(() => buildPersonalInsuranceReportRows(data ?? []), [data]);
+  const preparedDate = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" }).format(new Date());
+
+  useEffect(() => {
+    document.body.classList.add("pc-insurance-print");
+    return () => document.body.classList.remove("pc-insurance-print");
+  }, []);
+
+  const reportFields: Array<[keyof typeof rows[number], string]> = [
+    ["referenceNumber", "Reference number"],
+    ["serialNumber", "Serial number"],
+    ["condition", "Condition"],
+    ["acquisitionDate", "Date acquired"],
+    ["purchaseAmount", "Purchase amount"],
+    ["estimatedValue", "Estimated value"],
+    ["warrantyCardDate", "Warranty card date"],
+    ["warrantyExpiration", "Warranty expiration"],
+  ];
+
+  return <div className="pc-page pc-insurance-report">
+    <div className="pc-report-toolbar pc-no-print">
+      <Link href="/personal-collection" className="pc-back"><ArrowLeft size={16}/> Back to personal collection</Link>
+      <button
+        type="button"
+        className="pc-action"
+        onClick={() => window.print()}
+        disabled={isLoading || isError || rows.length === 0}
+      >
+        <Printer size={16}/> Print / Save as PDF
+      </button>
+    </div>
+    <header className="pc-report-header">
+      <div className="pc-eyebrow">Private document · Personal collection</div>
+      <h1>Insurance inventory report</h1>
+      <p className="pc-intro">
+        Prepared {preparedDate} from your Personal Collection records only. Missing details are marked “Not recorded”.
+        Values are owner-entered estimates, not a professional appraisal.
+      </p>
+      <p className="pc-report-count">{data?.length ?? 0} {data?.length === 1 ? "watch" : "watches"} included</p>
+    </header>
+
+    {isLoading ? (
+      <div aria-label="Loading personal collection report"><div className="pc-skeleton"/><div className="pc-skeleton"/></div>
+    ) : isError ? (
+      <div className="pc-state" role="alert">
+        <h2>Your report could not be loaded</h2>
+        <p>{(error as Error)?.message || "We couldn't load your personal collection records."}</p>
+        <button type="button" className="pc-action" onClick={() => refetch()}>Try again</button>
+      </div>
+    ) : rows.length === 0 ? (
+      <div className="pc-empty">
+        <div className="pc-empty-icon"><Watch/></div>
+        <h2>No personal watches to include</h2>
+        <p>Add a watch to your private collection before preparing an insurance report.</p>
+        <Link href="/personal-collection/new" className="pc-action pc-no-print"><Plus size={16}/> Add a watch</Link>
+      </div>
+    ) : (
+      <div className="pc-report-list">
+        {rows.map((row, index) => (
+          <article className="pc-report-card" key={row.id}>
+            <div className="pc-report-card-head">
+              <div>
+                <div className="pc-eyebrow">Watch {String(index + 1).padStart(2, "0")}</div>
+                <h2>{row.identity}</h2>
+              </div>
+              <ShieldCheck className="pc-report-shield" aria-label="Personal collection record"/>
+            </div>
+            <dl className="pc-report-fields">
+              {reportFields.map(([key, label]) => (
+                <div key={key}>
+                  <dt>{label}</dt>
+                  <dd>{row[key]}</dd>
+                </div>
+              ))}
+            </dl>
+          </article>
+        ))}
+      </div>
+    )}
   </div>;
 }
 

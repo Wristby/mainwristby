@@ -6,6 +6,7 @@
 }
 .pc-page * { box-sizing: border-box; }
 .pc-topline { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:30px; }
+.pc-topline-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .pc-eyebrow { color:var(--pc-green); font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
 .pc-page h1 { margin:7px 0 8px; color:#203b31; font-size:clamp(29px,4vw,42px); line-height:1.05; letter-spacing:-.055em; }
 .pc-intro { margin:0; max-width:620px; color:var(--pc-muted); line-height:1.55; font-size:14px; }
@@ -89,5 +90,34 @@
 .pc-modal-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:20px; }
 .pc-skeleton { height:128px; margin-bottom:12px; border-radius:12px; background:linear-gradient(90deg,#e6ece4 25%,#f2f5ed 45%,#e6ece4 65%); background-size:200% 100%; animation:pc-shimmer 1.4s ease infinite; }
 @keyframes pc-shimmer { to { background-position:-200% 0; } }
-@media(max-width:760px){.pc-grid,.pc-detail-grid{grid-template-columns:1fr}.pc-form-head{align-items:flex-start;flex-direction:column}.pc-fields{grid-template-columns:1fr}.pc-field.full{grid-column:auto}.pc-topline{align-items:flex-start}.pc-topline>.pc-action{white-space:nowrap;padding-inline:12px}.pc-fee-row{grid-template-columns:1fr 110px auto}.pc-detail-actions{flex-wrap:wrap}.pc-form-footer{align-items:stretch;flex-direction:column-reverse}.pc-form-footer>div{justify-content:flex-end}.pc-statline{display:grid;grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.pc-grid,.pc-detail-grid{grid-template-columns:1fr}.pc-form-head{align-items:flex-start;flex-direction:column}.pc-fields{grid-template-columns:1fr}.pc-field.full{grid-column:auto}.pc-topline{align-items:flex-start;flex-direction:column}.pc-topline-actions{width:100%}.pc-topline-actions>.pc-action{white-space:nowrap;padding-inline:12px}.pc-fee-row{grid-template-columns:1fr 110px auto}.pc-detail-actions{flex-wrap:wrap}.pc-form-footer{align-items:stretch;flex-direction:column-reverse}.pc-form-footer>div{justify-content:flex-end}.pc-statline{display:grid;grid-template-columns:repeat(2,1fr)}}
+.pc-report-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:22px; }
+.pc-report-header { padding:26px 0 20px; margin-bottom:18px; border-bottom:1px solid var(--pc-line); }
+.pc-report-header h1 { font-size:clamp(28px,4vw,38px); }
+.pc-report-count { margin:15px 0 0; color:var(--pc-green); font-size:13px; font-weight:800; }
+.pc-report-list { display:grid; gap:14px; }
+.pc-report-card { padding:20px; border:1px solid var(--pc-line); border-radius:12px; background:var(--pc-card); box-shadow:0 2px 8px rgba(31,59,42,.035); }
+.pc-report-card-head { display:flex; justify-content:space-between; align-items:center; gap:16px; padding-bottom:14px; margin-bottom:16px; border-bottom:1px solid #e6ece4; }
+.pc-report-card-head h2 { margin:6px 0 0; font:700 20px/1.2 "Manrope",sans-serif; letter-spacing:-.03em; overflow-wrap:anywhere; }
+.pc-report-shield { flex:none; width:21px; color:#356a53; }
+.pc-report-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 22px; margin:0; }
+.pc-report-fields div { min-width:0; }
+.pc-report-fields dt { color:#78867d; font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.pc-report-fields dd { margin:5px 0 0; color:#30493a; font-size:14px; font-weight:600; overflow-wrap:anywhere; }
+@media(max-width:760px){.pc-topline-actions{justify-content:flex-start}.pc-report-toolbar{align-items:flex-start;flex-direction:column}.pc-report-fields{grid-template-columns:1fr}}
+@media print {
+  @page { margin: 14mm; }
+  body.pc-insurance-print, body.pc-insurance-print #root { background:#fff!important; }
+  body.pc-insurance-print .wm-shell { display:block!important; height:auto!important; min-height:0!important; overflow:visible!important; }
+  body.pc-insurance-print .wm-desktop-rail,
+  body.pc-insurance-print .wm-mobile-header,
+  body.pc-insurance-print .pc-no-print { display:none!important; }
+  body.pc-insurance-print .wm-main-column,
+  body.pc-insurance-print .wm-main-scroll { display:block!important; height:auto!important; min-height:0!important; overflow:visible!important; }
+  body.pc-insurance-print .wm-page-content { width:100%!important; max-width:none!important; margin:0!important; padding:0!important; }
+  .pc-insurance-report { color:#17241d!important; }
+  .pc-insurance-report .pc-report-header { padding-top:0; }
+  .pc-insurance-report .pc-report-card { break-inside:avoid; page-break-inside:avoid; border-color:#b9c4ba; background:#fff!important; box-shadow:none!important; }
+  .pc-insurance-report .pc-report-fields dd { color:#17241d; }
+}
 @media(prefers-reduced-motion:reduce){.pc-skeleton{animation:none}.pc-watch-card,.pc-action{transition:none}}

@@ -17,7 +17,7 @@ import Payments from "@/pages/payments";
 import WatchUniverse from "@/pages/watch-universe";
 import SalesPatterns from "@/pages/sales-patterns";
 import DealersNotebook from "@/pages/dealers-notebook";
-import PersonalCollection, { PersonalCollectionDetailPage, PersonalCollectionFormPage } from "@/pages/personal-collection";
+import PersonalCollection, { PersonalCollectionDetailPage, PersonalCollectionFormPage, PersonalCollectionInsuranceReportPage } from "@/pages/personal-collection";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -82,6 +82,9 @@ function Router() {
       </Route>
       <Route path="/personal-collection/new">
         <ProtectedRoute component={() => <PersonalCollectionFormPage />} />
+      </Route>
+      <Route path="/personal-collection/insurance-report">
+        <ProtectedRoute component={PersonalCollectionInsuranceReportPage} />
       </Route>
       <Route path="/personal-collection/:id/edit">
         <ProtectedRoute component={() => <PersonalCollectionFormPage edit />} />
