@@ -15,23 +15,16 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { AlertTriangle, Archive, Check, Clock3, Loader2, LockKeyhole, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { apiFetch, ApiError } from "@/lib/queryClient";
 
 type Hold = { id: number; scope: "client" | "inventory"; recordId: number; reason: string };
-type ApiError = Error & { status?: number };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     ...init,
-    credentials: "include",
-    headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = new Error(payload?.message || `Request failed (${response.status})`) as ApiError;
-    error.status = response.status;
-    throw error;
-  }
-  return payload as T;
+    headers: { ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}), ...init?.headers },
+  }, "Could not complete this privacy request.");
+  return response.json() as Promise<T>;
 }
 
 const categoryInfo = [

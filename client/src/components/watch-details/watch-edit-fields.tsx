@@ -2,7 +2,7 @@ import type { ReactNode, Ref } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import type { Client } from "@shared/schema";
 import type { SaleBuyerDraft } from "@shared/sale-buyer";
-import type { WatchEditFormValues } from "@/lib/watch-form-contract";
+import type { WatchEditFormInput, WatchEditFormValues } from "@/lib/watch-form-contract";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +19,7 @@ import { Calendar as CalendarIcon, ExternalLink, Plus } from "lucide-react";
 import { Controller } from "react-hook-form";
 import { format } from "date-fns";
 
-type WatchEditForm = UseFormReturn<WatchEditFormValues>;
+type WatchEditForm = UseFormReturn<WatchEditFormInput, unknown, WatchEditFormValues>;
 type DatePopoverProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;

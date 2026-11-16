@@ -214,7 +214,7 @@ export async function registerRoutes(
       res.status(201).json(client);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       throw err;
     }
@@ -227,7 +227,7 @@ export async function registerRoutes(
       res.json(client);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       res.status(404).json({ message: "Client not found" });
     }
@@ -301,7 +301,7 @@ export async function registerRoutes(
       res.json(entry);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       res.status(500).json({ message: "Could not update this price history entry. Please try again." });
     }
@@ -316,7 +316,7 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       res.status(500).json({ message: "Could not add watch. Please try again." });
     }
@@ -330,7 +330,7 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       if (err instanceof Error && err.message === "Item not found") return res.status(404).json({ message: "Item not found" });
       res.status(500).json({ message: "Could not save watch. Please try again." });
@@ -399,7 +399,7 @@ export async function registerRoutes(
       const item = await storage.updateCreditInfo(Number(req.params.id), input);
       res.json(item);
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.issues[0].message });
       res.status(404).json({ message: "Item not found" });
     }
   });
@@ -439,7 +439,7 @@ export async function registerRoutes(
       res.status(201).json(valuation);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message || "Check the valuation date and amount." });
+        return res.status(400).json({ message: err.issues[0]?.message || "Check the valuation date and amount." });
       }
       res.status(500).json({ message: "Could not add this valuation. Please try again." });
     }
@@ -463,7 +463,7 @@ export async function registerRoutes(
       res.json(valuation);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message || "Check the valuation date and amount." });
+        return res.status(400).json({ message: err.issues[0]?.message || "Check the valuation date and amount." });
       }
       res.status(500).json({ message: "Could not correct this valuation. Please try again." });
     }
@@ -476,7 +476,7 @@ export async function registerRoutes(
       res.status(201).json(watch);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message || "Check the collection watch details." });
+        return res.status(400).json({ message: err.issues[0]?.message || "Check the collection watch details." });
       }
       res.status(500).json({ message: "Could not add this collection watch. Please try again." });
     }
@@ -492,7 +492,7 @@ export async function registerRoutes(
       res.json(watch);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0]?.message || "Check the collection watch details." });
+        return res.status(400).json({ message: err.issues[0]?.message || "Check the collection watch details." });
       }
       res.status(500).json({ message: "Could not save this collection watch. Please try again." });
     }
@@ -519,7 +519,7 @@ export async function registerRoutes(
       res.status(201).json(expense);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       throw err;
     }
@@ -533,7 +533,7 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ message: err.issues[0].message });
       }
       res.status(404).json({ message: "Expense not found" });
     }

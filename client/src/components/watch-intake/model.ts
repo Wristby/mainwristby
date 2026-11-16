@@ -23,6 +23,7 @@ export const watchIntakeSchema = commonWatchFormSchema.extend({
 });
 
 export type WatchIntakeValues = z.infer<typeof watchIntakeSchema>;
+export type WatchIntakeInput = z.input<typeof watchIntakeSchema>;
 export const watchIntakeDefaults: WatchIntakeValues = {
   ...commonWatchFormDefaults,
   purchasedFrom: "",

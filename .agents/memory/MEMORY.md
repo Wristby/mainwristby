@@ -14,3 +14,4 @@
 - [Financial refactor boundaries](financial-refactor-boundaries.md) — preserve VAT estimate treatment, fee snapshots, and intentional reporting scopes when sharing arithmetic
 - [Sale-date consistency](sale-date-consistency.md) — keep soldDate canonical, dateSold as a legacy fallback, and synchronize explicit edits without inventing history
 - [Watch Details boundaries](watch-details-boundaries.md) — isolate identity, sourcing, financials, buyer/delivery/warranty, pricing history, and editor sections
+- [Query refresh policy](query-refresh-policy.md) — use finite query freshness and centralized invalidation so stale cached records refresh without a manual reload

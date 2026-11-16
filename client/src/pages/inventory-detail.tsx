@@ -3,6 +3,7 @@ import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema, type InventoryItem } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { invalidateClientCaches, invalidateWatchCaches } from "@/lib/query-cache";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,10 +94,11 @@ type EditFormValues = WatchEditFormValues;
 
 const expenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number().min(0.01, "Amount is required"),
-  date: z.coerce.date(),
+  date: z.date(),
 });
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
+type ExpenseFormInput = z.input<typeof expenseFormSchema>;
 
 export default function InventoryDetail() {
   const [match, params] = useRoute("/inventory/:id");
@@ -133,7 +135,7 @@ export default function InventoryDetail() {
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
 
-  const expenseForm = useForm<ExpenseFormValues>({
+  const expenseForm = useForm<ExpenseFormInput, unknown, ExpenseFormValues>({
     resolver: zodResolver(expenseFormSchema),
     defaultValues: {
       description: "",
@@ -156,8 +158,6 @@ export default function InventoryDetail() {
       onSuccess: () => {
         setIsAddExpenseOpen(false);
         expenseForm.reset({ description: "", amount: 0, category: "other", date: new Date(), isRecurring: false, inventoryId: id });
-        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         toast({ title: "Success", description: "Expense added to this watch" });
       },
       onError: (err) => {
@@ -170,8 +170,6 @@ export default function InventoryDetail() {
     if (!confirm("Delete this expense only? The watch and other financial records will remain. This cannot be undone.")) return;
     deleteExpenseMutation.mutate(expenseId, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         toast({ title: "Success", description: "Expense removed" });
       },
       onError: (err) => {
@@ -200,7 +198,7 @@ export default function InventoryDetail() {
     }
   });
 
-  const form = useForm<EditFormValues>({
+  const form = useForm<z.input<typeof editFormSchema>, unknown, EditFormValues>({
     resolver: zodResolver(editFormSchema),
     defaultValues: watchEditFormDefaults,
   });
@@ -390,7 +388,7 @@ export default function InventoryDetail() {
     setIsSavingDescription(true);
     try {
       await apiRequest("PUT", `/api/inventory/${id}`, { description: descriptionValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      await invalidateWatchCaches(queryClient, id);
       toast({ title: "Saved", description: "Listing description saved." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -403,7 +401,7 @@ export default function InventoryDetail() {
     setIsSavingListingTitle(true);
     try {
       await apiRequest("PUT", `/api/inventory/${id}`, { listingTitle: listingTitleValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      await invalidateWatchCaches(queryClient, id);
       toast({ title: "Saved", description: "Listing title saved." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -467,7 +465,7 @@ export default function InventoryDetail() {
     setIsSavingCaption(true);
     try {
       await apiRequest("PUT", `/api/inventory/${id}`, { instagramCaption: captionValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      await invalidateWatchCaches(queryClient, id);
       toast({ title: "Saved", description: "Instagram caption saved." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -492,7 +490,7 @@ export default function InventoryDetail() {
       const data = await result.json();
       if (data.specs) {
         setMovementSpecs(data.specs);
-        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+        await invalidateWatchCaches(queryClient, id);
       } else {
         toast({ title: "Error", description: data.message || "No specs returned.", variant: "destructive" });
       }
@@ -508,8 +506,7 @@ export default function InventoryDetail() {
     setIsSavingNotes(true);
     try {
       await apiRequest("PUT", `/api/inventory/${id}`, { notes: notesValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      await invalidateWatchCaches(queryClient, id);
       setIsEditingNotes(false);
       toast({ title: "Notes saved" });
     } catch (err: any) {
@@ -582,8 +579,7 @@ export default function InventoryDetail() {
         }
       }
       await apiRequest("PUT", `/api/inventory/${id}`, payload);
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      await invalidateWatchCaches(queryClient, id);
       resetStatusPopover();
       toast({ title: "Status updated", description: `Status changed to ${getStatusLabel(newStatus)}` });
     } catch (err: any) {
@@ -1664,12 +1660,12 @@ export default function InventoryDetail() {
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
           <form onSubmit={quickClientForm.handleSubmit((data) => {
             quickAddClientMutation.mutate(data, {
-              onSuccess: (newClient: any) => {
+              onSuccess: async (newClient: any) => {
                 form.setValue("clientId", newClient.id);
                 setIsQuickAddClientOpen(false);
                 quickClientForm.reset();
                 toast({ title: "Success", description: `${data.type === 'dealer' ? 'Dealer' : 'Client'} "${data.name}" added` });
-                queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+                await invalidateClientCaches(queryClient, newClient.id);
               },
               onError: (err: any) => {
                 toast({ title: "Error", description: err.message, variant: "destructive" });

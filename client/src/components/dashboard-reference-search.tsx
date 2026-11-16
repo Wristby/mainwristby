@@ -15,6 +15,7 @@ import {
   type NaturalInventoryGroupBy,
   type NaturalSearchEntity,
 } from "@shared/natural-inventory-search";
+import { apiFetch } from "@/lib/queryClient";
 
 export function DashboardReferenceSearch({ watches, unavailable = false }: { watches: InventoryItem[]; unavailable?: boolean }) {
   const [query, setQuery] = useState("");
@@ -141,14 +142,12 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     setActiveIndex(-1);
     setDismissed(false);
     try {
-      const response = await fetch("/api/ai/inventory-search", {
+      const response = await apiFetch("/api/ai/inventory-search", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: trimmedQuery }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.message || "AI search failed.");
+      }, "AI search failed. Please try again.");
+      const payload = await response.json();
       setNaturalEntity("watches");
       setNaturalFilters(payload.filters);
       setNaturalAggregate(payload.aggregate === "count" || payload.aggregate === "asking_price_total" ? payload.aggregate : null);

@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { useForm } from "react-hook-form";
 import type { InventoryItem } from "@shared/schema";
-import { watchEditFormDefaults, type WatchEditFormValues } from "@/lib/watch-form-contract";
+import { watchEditFormDefaults, type WatchEditFormInput, type WatchEditFormValues } from "@/lib/watch-form-contract";
 import { DealOverviewCard } from "./deal-overview-card";
 import { PurchaseInformationCard } from "./purchase-information-card";
 import { WatchIdentityCard } from "./identity-card";
@@ -82,7 +82,7 @@ describe("Watch Details sections", () => {
 
   it("keeps the edit identity fields and original Drive-folder shortcut together", () => {
     function IdentityFieldsHarness() {
-      const form = useForm<WatchEditFormValues>({ defaultValues: watchEditFormDefaults });
+      const form = useForm<WatchEditFormInput, unknown, WatchEditFormValues>({ defaultValues: watchEditFormDefaults });
       return <WatchIdentityFields form={form} watchBrands={["Rolex"]} serialLookupIsCurrent={false} />;
     }
 

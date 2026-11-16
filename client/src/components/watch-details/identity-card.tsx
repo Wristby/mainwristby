@@ -3,6 +3,7 @@ import { normalizeWatchCondition } from "@/lib/watch-condition";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExternalLink } from "lucide-react";
+import { safeExternalUrl } from "@/lib/safe-external-url";
 
 type WatchIdentityCardProps = {
   item: InventoryItem;
@@ -12,6 +13,7 @@ type WatchIdentityCardProps = {
 };
 
 export function WatchIdentityCard({ item, holdTime, daysInService, daysListed }: WatchIdentityCardProps) {
+  const photoUrl = safeExternalUrl(item.gdriveLink);
   return (
     <Card className="border-slate-200 bg-white shadow-sm">
       <CardHeader className="pb-4">
@@ -54,14 +56,14 @@ export function WatchIdentityCard({ item, holdTime, daysInService, daysListed }:
           {item.gdriveLink && (
             <div className="col-span-2">
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Google Drive Link</p>
-              <a
-                href={item.gdriveLink}
+              {photoUrl ? <a
+                href={photoUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-emerald-600 hover:text-emerald-700 font-medium mt-1 inline-flex items-center gap-1 hover:underline"
               >
                 View Photos <ExternalLink className="w-3 h-3" />
-              </a>
+              </a> : <p className="mt-1 text-sm text-slate-500">Enter a valid HTTP or HTTPS link to open photos.</p>}
             </div>
           )}
           <div>

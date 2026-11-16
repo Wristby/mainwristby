@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type CreateExpenseRequest } from "@shared/routes";
+import { apiFetch } from "@/lib/queryClient";
+import { invalidateExpenseCaches, queryKeys } from "@/lib/query-cache";
 
 export function useExpenses() {
   return useQuery({
-    queryKey: [api.expenses.list.path],
+    queryKey: queryKeys.expenses.list,
     queryFn: async () => {
-      const res = await fetch(api.expenses.list.path, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch expenses");
+      const res = await apiFetch(api.expenses.list.path, {}, "Could not load expenses.");
       return api.expenses.list.responses[200].parse(await res.json());
     },
   });
@@ -16,21 +17,14 @@ export function useCreateExpense() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateExpenseRequest) => {
-      const res = await fetch(api.expenses.create.path, {
+      const res = await apiFetch(api.expenses.create.path, {
         method: api.expenses.create.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to create expense");
-      }
+      }, "Could not add this expense.");
       return api.expenses.create.responses[201].parse(await res.json());
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
-    },
+    onSuccess: () => invalidateExpenseCaches(queryClient),
   });
 }
 
@@ -39,21 +33,14 @@ export function useUpdateExpense() {
   return useMutation({
     mutationFn: async ({ id, ...data }: Partial<CreateExpenseRequest> & { id: number }) => {
       const url = buildUrl(api.expenses.update.path, { id });
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: api.expenses.update.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(payload?.message || "Failed to update expense");
-      }
+      }, "Could not update this expense.");
       return api.expenses.update.responses[200].parse(await res.json());
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
-    },
+    onSuccess: () => invalidateExpenseCaches(queryClient),
   });
 }
 
@@ -62,14 +49,8 @@ export function useDeleteExpense() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.expenses.delete.path, { id });
-      const res = await fetch(url, { method: api.expenses.delete.method, credentials: "include" });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(payload?.message || "Failed to delete expense");
-      }
+      await apiFetch(url, { method: api.expenses.delete.method }, "Could not delete this expense.");
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
-    },
+    onSuccess: () => invalidateExpenseCaches(queryClient),
   });
 }

@@ -1,27 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
+import { apiFetch, fetchApiResponse, throwIfResNotOk } from "@/lib/queryClient";
 
 async function fetchUser(): Promise<User | null> {
-  const response = await fetch("/api/auth/user", {
-    credentials: "include",
-  });
+  const response = await fetchApiResponse("/api/auth/user");
 
   if (response.status === 401) {
     return null;
   }
 
-  if (!response.ok) {
-    throw new Error(`${response.status}: ${response.statusText}`);
-  }
+  await throwIfResNotOk(response, "Could not check your sign-in status.");
 
   return response.json();
 }
 
 async function logoutFn(): Promise<void> {
-  await fetch("/api/logout", {
+  await apiFetch("/api/logout", {
     method: "POST",
-    credentials: "include",
-  });
+  }, "Could not sign out. Please try again.");
 }
 
 interface LoginCredentials {
@@ -30,33 +26,21 @@ interface LoginCredentials {
 }
 
 async function loginFn(credentials: LoginCredentials): Promise<User> {
-  const response = await fetch("/api/login", {
+  const response = await apiFetch("/api/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credentials),
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Login failed");
-  }
+  }, "Could not sign in. Check your details and try again.");
 
   return response.json();
 }
 
 async function registerFn(credentials: LoginCredentials): Promise<User> {
-  const response = await fetch("/api/register", {
+  const response = await apiFetch("/api/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credentials),
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Registration failed");
-  }
+  }, "Could not create your account. Please try again.");
 
   return response.json();
 }

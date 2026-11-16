@@ -14,7 +14,7 @@
     "test": "npm run test:migrations && vitest run --reporter=verbose"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.10.0",
+    "@hookform/resolvers": "^5.9.2",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",
@@ -54,7 +54,7 @@
     "date-fns": "^3.6.0",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.4",
-    "drizzle-zod": "^0.7.1",
+    "drizzle-zod": "^0.8.3",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.3.0",
     "express-session": "^1.19.0",
@@ -81,8 +81,7 @@
     "vaul": "^1.1.2",
     "wouter": "^3.3.5",
     "ws": "^8.22.0",
-    "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.6.1",
@@ -108,11 +107,13 @@
     "tsx": "^4.20.5",
     "typescript": "5.6.3",
     "vite": "^7.3.7",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "@babel/core": "^7.29.6",
+    "body-parser": "^2.4.0",
     "postcss-selector-parser": "^7.1.6",
+    "qs": "^6.16.1",
     "yaml@2": "^2.8.3",
     "brace-expansion@2": "^2.1.7",
     "lodash": "^4.18.1",
@@ -123,6 +124,14 @@
     "rollup@4": "^4.64.5",
     "drizzle-kit": {
       "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
+    }
+  },
+  "pnpm": {
+    "overrides": {
+      "body-parser": "^2.4.0",
+      "drizzle-kit>@esbuild-kit/esm-loader": "npm:tsx@^4.20.4",
+      "postcss-selector-parser": "^7.1.6",
+      "qs": "^6.16.1"
     }
   },
   "optionalDependencies": {

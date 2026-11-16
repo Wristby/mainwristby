@@ -40,7 +40,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../_source/ui/popover";
 import { Calendar } from "../_source/runtime";
 import { cn, parsePriceInput } from "../_source/utils";
 import { QuickEstimate } from "../_source/quick-estimate";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertExpenseSchema, insertClientSchema } from "../_source/runtime";
 import { z } from "zod";
@@ -53,7 +53,7 @@ import { RecentlySold } from "./recently-sold";
 
 const createExpenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
-  date: z.coerce.date(),
+  date: z.date(),
 });
 
 type CreateExpenseFormValues = z.infer<typeof createExpenseFormSchema>;
@@ -100,7 +100,7 @@ export default function Dashboard() {
   const createExpenseMutation = useCreateExpense();
   const createClientMutation = useCreateClient();
 
-  const expenseForm = useForm<CreateExpenseFormValues>({
+  const expenseForm = useForm<z.input<typeof createExpenseFormSchema>, unknown, CreateExpenseFormValues>({
     resolver: zodResolver(createExpenseFormSchema),
     defaultValues: {
       description: "",

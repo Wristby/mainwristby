@@ -27,6 +27,12 @@ vi.mock("bcryptjs", () => ({
   default: { compare: async (password: string) => password === "correct-test-password" },
 }));
 vi.mock("../../../server/storage", () => ({
+  SaleBuyerSaveError: class SaleBuyerSaveError extends Error {
+    status = 400;
+  },
+  NotebookSnapshotError: class NotebookSnapshotError extends Error {
+    status = 409;
+  },
   storage: {
     getSetting: async () => undefined,
     getClients: async () => [{ id: 1 }],
@@ -162,6 +168,41 @@ describe("AI secret isolation", () => {
     const [providerUrl, options] = providerFetch.mock.calls[0];
     expect(String(providerUrl)).not.toMatch(/key=|isolated-dummy-ai-key/);
     expect(options?.headers).toMatchObject({ "x-goog-api-key": "isolated-dummy-ai-key" });
+  });
+});
+
+describe("Zod API validation responses", () => {
+  it("returns 400 field-validation responses for malformed create requests", async () => {
+    const app = express();
+    app.use(express.json());
+    await registerRoutes(createServer(app), app);
+    const url = await serve(app);
+    const login = await fetch(`${url}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "test-account", password: "correct-test-password" }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const invalidCreates = [
+      ["/api/clients", {}],
+      ["/api/inventory", {}],
+      ["/api/expenses", {}],
+      ["/api/personal-collection", {}],
+    ] as const;
+
+    for (const [path, payload] of invalidCreates) {
+      const response = await fetch(`${url}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify(payload),
+      });
+      const responseText = await response.text();
+      expect(response.status, `${path}: ${responseText}`).toBe(400);
+      const body = JSON.parse(responseText);
+      expect(body.message, path).toEqual(expect.any(String));
+      expect(body.message, path).not.toBe("Internal server error.");
+    }
   });
 });
 

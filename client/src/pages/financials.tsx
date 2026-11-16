@@ -78,6 +78,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { aggregateVat } from "@/lib/vat-calculations";
+import { csvCell } from "@/lib/csv";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -97,10 +98,11 @@ const MONTHS = [
 
 const createFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
-  date: z.coerce.date(),
+  date: z.date(),
 });
 
 type CreateFormValues = z.infer<typeof createFormSchema>;
+type CreateFormInput = z.input<typeof createFormSchema>;
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
@@ -137,7 +139,7 @@ export default function Financials() {
   const updateMutation = useUpdateExpense();
   const deleteMutation = useDeleteExpense();
 
-  const form = useForm<CreateFormValues>({
+  const form = useForm<CreateFormInput, unknown, CreateFormValues>({
     resolver: zodResolver(createFormSchema),
     defaultValues: {
       description: "",
@@ -285,19 +287,19 @@ export default function Financials() {
         ? `${expense.inventory.brand} ${expense.inventory.model} - Ref#${expense.inventory.referenceNumber}`
         : "";
       const allValues = [
-        `"${expense.description.replace(/"/g, '""')}"`,
-        (expense.amount / 100).toString(),
+        expense.description,
+        expense.amount / 100,
         getCategoryLabel(expense.category),
         format(new Date(expense.date), "yyyy-MM-dd"),
         expense.isRecurring ? "Yes" : "No",
-        `"${watchRef}"`
+        watchRef
       ];
       return colIndices.map(c => allValues[c.index]);
     });
     
     const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.join(","))
+      headers.map(csvCell).join(","),
+      ...rows.map(row => row.map(csvCell).join(","))
     ].join("\n");
     
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
