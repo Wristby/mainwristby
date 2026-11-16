@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-import { ArrowLeft, ArrowRight, Watch, Plus, Search, ShieldCheck, Trash2, Pencil, LockKeyhole, X, Check, Printer } from "lucide-react";
-import { usePersonalCollection, usePersonalCollectionWatch, useCreatePersonalCollectionWatch, useUpdatePersonalCollectionWatch, useDeletePersonalCollectionWatch } from "@/hooks/use-personal-collection";
+import { ArrowLeft, ArrowRight, Watch, Plus, Search, ShieldCheck, Trash2, Pencil, LockKeyhole, X, Check, Printer, TrendingUp } from "lucide-react";
+import { usePersonalCollection, usePersonalCollectionWatch, useCreatePersonalCollectionWatch, useUpdatePersonalCollectionWatch, useDeletePersonalCollectionWatch, usePersonalCollectionValuations, useCreatePersonalCollectionValuation, useUpdatePersonalCollectionValuation } from "@/hooks/use-personal-collection";
 import { parsePriceInput } from "@/lib/utils";
 import { buildPersonalInsuranceReportRows } from "@/lib/personal-insurance-report";
 import type { PersonalCollectionInput } from "@shared/personal-collection";
@@ -10,6 +10,10 @@ import "./personal-collection.css";
 
 const euro = (cents?: number | null) => cents == null ? "—" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
 const dateText = (value?: string | null) => value ? new Intl.DateTimeFormat("en-GB", { day:"numeric", month:"short", year:"numeric" }).format(new Date(`${value}T00:00:00`)) : "—";
+const localDateInputValue = () => {
+ const now=new Date();
+ return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+};
 
 export default function PersonalCollection() {
   const [query, setQuery] = useState("");
@@ -149,6 +153,8 @@ function Field({label,children,full=false,hint,required=false}:{label:string;chi
 export function PersonalCollectionFormPage({edit=false}:{edit?:boolean}) {
  const params=useParams<{id:string}>(); const id=Number(params.id);
  const detail=usePersonalCollectionWatch(id); const create=useCreatePersonalCollectionWatch(); const update=useUpdatePersonalCollectionWatch(id);
+ const valuationHistory=usePersonalCollectionValuations(edit?id:0);
+ const hasDatedValuations=(valuationHistory.data?.length??0)>0;
  const [,setLocation]=useLocation(); const [values,setValues]=useState<FormValues>(freshForm); const [initId,setInitId]=useState<number|null>(null); const [validation,setValidation]=useState(""); const [expanded,setExpanded]=useState(false);
  useEffect(()=>{if(edit && detail.data && initId!==id){setValues(fromWatch(detail.data));setInitId(id);}},[edit,detail.data,id,initId]);
  const loading=edit&&detail.isLoading;
@@ -179,7 +185,7 @@ export function PersonalCollectionFormPage({edit=false}:{edit?:boolean}) {
     <Field label="Bought from"><input className="pc-input" value={values.boughtFrom} onChange={e=>set("boughtFrom",e.target.value)} placeholder="Dealer, auction house or private seller"/></Field>
     <div className="pc-field full"><label className="pc-check"><input type="checkbox" checked={values.tradeIn} onChange={e=>set("tradeIn",e.target.checked)}/> Acquired as a trade-in</label></div>
    </div></section>
-   <section className="pc-form-section"><h2>Personal valuation</h2><div className="pc-fields">{(["purchasePrice","estimatedValue","msrp"] as const).map((k,i)=><Field key={k} label={["What you paid","Estimated value","MSRP"][i]} hint="EUR"><input inputMode="decimal" className="pc-input" value={values[k]} onChange={e=>set(k,e.target.value)} placeholder="0,00"/></Field>)}</div>
+    <section className="pc-form-section"><h2>Personal valuation</h2><div className="pc-fields">{(["purchasePrice","estimatedValue","msrp"] as const).map((k,i)=><Field key={k} label={["What you paid","Estimated value","MSRP"][i]} hint={k==="estimatedValue"&&hasDatedValuations?"Use the dated valuation timeline on the watch page to add or correct the current estimate.":"EUR"}><input inputMode="decimal" className="pc-input" value={values[k]} onChange={e=>set(k,e.target.value)} placeholder="0,00" readOnly={k==="estimatedValue"&&hasDatedValuations} aria-readonly={k==="estimatedValue"&&hasDatedValuations}/></Field>)}</div>
     <div style={{marginTop:20}}><b style={{fontSize:13}}>Intake fees</b>{values.fees.map((fee,i)=><div className="pc-fee-row" key={i}><input aria-label="Fee label" className="pc-input" value={fee.label} placeholder="Fee label" onChange={e=>set("fees",values.fees.map((f,j)=>j===i?{...f,label:e.target.value}:f))}/><input aria-label="Fee amount in euros" inputMode="decimal" className="pc-input" value={fee.amount} placeholder="0,00" onChange={e=>set("fees",values.fees.map((f,j)=>j===i?{...f,amount:e.target.value}:f))}/><button type="button" aria-label="Remove fee" onClick={()=>set("fees",values.fees.filter((_,j)=>j!==i))}><X size={16}/></button></div>)}<button type="button" className="pc-add-fee" onClick={()=>set("fees",[...values.fees,{label:"",amount:""}])}><Plus size={14} style={{verticalAlign:"-3px"}}/> Add a fee</button></div>
    </section>
    <section className="pc-form-section"><h2>Private notes</h2><div className="pc-private-note" style={{marginBottom:10}}><LockKeyhole/> Private — visible only to you</div><textarea className="pc-textarea" rows={4} value={values.notes} onChange={e=>set("notes",e.target.value)} placeholder="Sourcing details, inspection notes or personal context."/></section>
@@ -195,10 +201,34 @@ export function PersonalCollectionDetailPage() {
  const params=useParams<{id:string}>(); const id=Number(params.id);
  const {data:watch,isLoading,isError,error,refetch}=usePersonalCollectionWatch(id);
  const remove=useDeletePersonalCollectionWatch(); const [confirm,setConfirm]=useState(false);const [,setLocation]=useLocation(); const [deleteError,setDeleteError]=useState("");
+ const valuations=usePersonalCollectionValuations(id);
+ const addValuation=useCreatePersonalCollectionValuation(id);
+ const correctValuation=useUpdatePersonalCollectionValuation(id);
+ const [valuationDate,setValuationDate]=useState(localDateInputValue);
+ const [valuationAmount,setValuationAmount]=useState("");
+ const [editingValuationId,setEditingValuationId]=useState<number|null>(null);
+ const [valuationError,setValuationError]=useState("");
+ const valuationSaving=addValuation.isPending||correctValuation.isPending;
  if(isLoading)return <div className="pc-page">{[0,1].map(i=><div className="pc-skeleton" key={i}/>)}</div>;
  if(isError)return <div className="pc-page pc-state"><h2>Could not open this watch</h2><p>{(error as Error)?.message}</p><button className="pc-action" onClick={()=>refetch()}>Try again</button></div>;
  if(!watch)return <div className="pc-page pc-state"><h2>Watch not found</h2><p>This personal record may have been removed.</p><Link className="pc-action" href="/personal-collection">Back to collection</Link></div>;
  const specs=watch.technicalDetails||{};
+ const currentEstimate=valuations.data?.[0]?.estimatedValue??watch.estimatedValue;
+ const saveValuation=async(e:React.FormEvent)=>{
+   e.preventDefault();setValuationError("");
+   try{
+     const amount=euroInputToCents(valuationAmount);
+     if(amount===null)throw new Error("Enter an estimated value.");
+     const payload={valuationDate,estimatedValue:amount};
+     if(editingValuationId!==null)await correctValuation.mutateAsync({valuationId:editingValuationId,data:payload});
+     else await addValuation.mutateAsync(payload);
+     setEditingValuationId(null);setValuationAmount("");setValuationDate(localDateInputValue());
+   }catch(e){setValuationError(e instanceof Error?e.message:"Could not save this valuation.");}
+ };
+ const startValuationEdit=(entry:NonNullable<typeof valuations.data>[number])=>{
+   setEditingValuationId(entry.id);setValuationDate(entry.valuationDate);setValuationAmount((entry.estimatedValue/100).toFixed(2));setValuationError("");
+ };
+ const cancelValuationEdit=()=>{setEditingValuationId(null);setValuationAmount("");setValuationDate(localDateInputValue());setValuationError("");};
  const confirmDelete=async()=>{setDeleteError("");try{await remove.mutateAsync(id);setLocation("/personal-collection");}catch(e){setDeleteError(e instanceof Error?e.message:"Could not delete this watch.");}};
  return <div className="pc-page">
   <Link href="/personal-collection" className="pc-back"><ArrowLeft size={16}/> Your collection</Link>
@@ -206,7 +236,25 @@ export function PersonalCollectionDetailPage() {
    <div className="pc-detail-grid"><section className="pc-detail-section"><h2>Details</h2><div className="pc-kv">{[
    ["Reference",watch.referenceNumber],["Serial number",watch.serialNumber],["Bracelet",watch.bracelet],["Link count",watch.linkCount],["Bezel",watch.bezel],["Dial",watch.dial],["Box",watch.box?"Included":watch.boxForWholesale?"Wholesale box only":"No"],["Box for wholesale",watch.boxForWholesale?"Yes":"No"],["Papers",watch.papers?"Included":"No"],["Warranty card",dateText(watch.warrantyCardDate)],["Warranty expires",dateText(watch.warrantyExpiration)],["Condition notes",watch.conditionNotes],["Contents",watch.contentsNotes],
   ].filter(([,value])=>value&&value!=="—").map(([key,value])=><div key={key as string}><span>{key}</span><strong>{String(value)}</strong></div>)}</div></section>
-   <section className="pc-detail-section"><h2>Personal valuation</h2><div className="pc-kv">{[["Purchase price",euro(watch.purchasePrice)],["Estimated value",euro(watch.estimatedValue)],["MSRP",euro(watch.msrp)],["Acquired from",watch.boughtFrom||"—"],["Platform",watch.acquisitionPlatform||"—"],["Trade-in",watch.tradeIn?"Yes":"No"]].map(([k,v])=><div key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>{watch.intakeFees?.length>0&&<div style={{marginTop:20}}><span className="pc-eyebrow">Intake fees</span>{watch.intakeFees.map((f,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #e6ece4",fontSize:13}}><span>{f.label}</span><strong>{euro(f.amount)}</strong></div>)}</div>}</section></div>
+    <section className="pc-detail-section"><h2>Personal valuation</h2><div className="pc-kv">{[["Purchase price",euro(watch.purchasePrice)],["Current estimate",euro(currentEstimate)],["MSRP",euro(watch.msrp)],["Acquired from",watch.boughtFrom||"—"],["Platform",watch.acquisitionPlatform||"—"],["Trade-in",watch.tradeIn?"Yes":"No"]].map(([k,v])=><div key={k}><span>{k}</span><strong>{v}</strong></div>)}</div>{watch.intakeFees?.length>0&&<div style={{marginTop:20}}><span className="pc-eyebrow">Intake fees</span>{watch.intakeFees.map((f,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #e6ece4",fontSize:13}}><span>{f.label}</span><strong>{euro(f.amount)}</strong></div>)}</div>}</section></div>
+    <section className="pc-detail-section pc-valuation-history" style={{marginTop:14}}>
+     <div className="pc-valuation-heading"><div><h2><TrendingUp size={17} style={{display:"inline",verticalAlign:"-3px",marginRight:7}}/>Value history</h2><p className="pc-intro">Dated estimates for your personal collection. The newest entry sets the current estimate.</p></div><span className="pc-valuation-current">{euro(currentEstimate)}</span></div>
+     {valuations.isLoading?<div className="pc-skeleton"/>:valuations.isError?<div className="pc-error" role="alert">Valuation history could not be loaded. <button type="button" className="pc-inline-link" onClick={()=>valuations.refetch()}>Try again</button></div>:valuations.data?.length?(
+      <div className="pc-valuation-list">{valuations.data.map(entry=><div className="pc-valuation-row" key={entry.id}>
+       <span><strong>{dateText(entry.valuationDate)}</strong><small>{editingValuationId===entry.id?"Editing this entry":entry.id===valuations.data?.[0]?.id?"Latest estimate":""}</small></span>
+       <strong>{euro(entry.estimatedValue)}</strong>
+       <button type="button" className="pc-inline-link" onClick={()=>startValuationEdit(entry)} aria-label={`Edit valuation from ${dateText(entry.valuationDate)}`}><Pencil size={14}/> Edit</button>
+      </div>)}</div>
+     ):<p className="pc-valuation-empty">{watch.estimatedValue!=null?`Your existing estimate (${euro(watch.estimatedValue)}) has no recorded date yet.`:"No dated valuations yet."} Add an entry to start tracking changes.</p>}
+     <form className="pc-valuation-form" onSubmit={saveValuation}>
+      <div className="pc-valuation-form-fields">
+       <label>Date<input className="pc-input" type="date" required value={valuationDate} onChange={e=>setValuationDate(e.target.value)}/></label>
+       <label>Estimated value<input className="pc-input" type="text" inputMode="decimal" required value={valuationAmount} onChange={e=>setValuationAmount(e.target.value)} placeholder="0,00 €"/></label>
+       <div className="pc-valuation-actions"><button className="pc-action" type="submit" disabled={valuationSaving}>{valuationSaving?"Saving…":editingValuationId!==null?"Save correction":"Add value"}</button>{editingValuationId!==null&&<button className="pc-action secondary" type="button" disabled={valuationSaving} onClick={cancelValuationEdit}>Cancel</button>}</div>
+      </div>
+      {valuationError&&<div className="pc-error" role="alert">{valuationError}</div>}
+     </form>
+    </section>
    {Object.keys(specs).length>0&&<section className="pc-detail-section" style={{marginTop:14}}><h2>Technical details</h2><div className="pc-kv">{Object.entries(specs).map(([k,v])=><div key={k}><span>{k}</span><strong>{v}</strong></div>)}</div></section>}
    {watch.notes&&<section className="pc-detail-section" style={{marginTop:14}}><h2><LockKeyhole size={15} style={{display:"inline",verticalAlign:"-2px"}}/> Private notes</h2><div className="pc-private-box">{watch.notes}</div></section>}
   {confirm&&<div className="pc-modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!remove.isPending)setConfirm(false)}}><section className="pc-modal" role="dialog" aria-modal="true" aria-labelledby="pc-delete-title"><h2 id="pc-delete-title">Remove this personal watch?</h2><p><strong>{watch.manufacturer} {watch.model||""}</strong> will be deleted from your private collection. This does not affect business inventory.</p>{deleteError&&<div role="alert" className="pc-error">{deleteError}</div>}<div className="pc-modal-actions"><button className="pc-action secondary" onClick={()=>setConfirm(false)} disabled={remove.isPending}>Keep watch</button><button className="pc-action danger" onClick={confirmDelete} disabled={remove.isPending}>{remove.isPending?"Deleting…":"Delete watch"}</button></div></section></div>}

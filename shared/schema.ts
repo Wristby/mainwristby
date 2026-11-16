@@ -262,11 +262,25 @@ export const personalCollectionWatches = pgTable("personal_collection_watches", 
   index("personal_collection_owner_bought_idx").on(table.ownerId, table.dateBought),
 ]);
 
+export const personalCollectionValuations = pgTable("personal_collection_valuations", {
+  id: serial("id").primaryKey(),
+  watchId: integer("watch_id").notNull().references(() => personalCollectionWatches.id, { onDelete: "cascade" }),
+  valuationDate: date("valuation_date", { mode: "string" }).notNull(),
+  estimatedValue: integer("estimated_value").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("personal_collection_valuation_watch_date_idx")
+    .on(table.watchId, table.valuationDate.desc(), table.createdAt.desc()),
+]);
+
 export const insertPersonalCollectionWatchSchema = createInsertSchema(personalCollectionWatches).omit({
   id: true, ownerId: true, createdAt: true, updatedAt: true,
 });
 export type PersonalCollectionWatch = typeof personalCollectionWatches.$inferSelect;
 export type InsertPersonalCollectionWatch = z.infer<typeof insertPersonalCollectionWatchSchema>;
+export type PersonalCollectionValuation = typeof personalCollectionValuations.$inferSelect;
+export type InsertPersonalCollectionValuation = typeof personalCollectionValuations.$inferInsert;
 
 export const insertInventorySchema = createInsertSchema(inventory).omit({
   id: true,

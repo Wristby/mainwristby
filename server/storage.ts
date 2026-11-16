@@ -1,10 +1,11 @@
 import { db } from "./db";
 import {
-  clients, inventory, expenses, inventoryPriceHistory, personalCollectionWatches, settings, retentionAudit, transactionParties, dealerNotebookEntries,
+  clients, inventory, expenses, inventoryPriceHistory, personalCollectionWatches, personalCollectionValuations, settings, retentionAudit, transactionParties, dealerNotebookEntries,
   type Client, type InsertClient, type UpdateClientRequest,
   type InventoryItem, type InsertInventory, type UpdateInventoryRequest, type InventoryPriceHistory,
   type Expense, type InsertExpense, type DealerNotebookEntry,
   type PersonalCollectionWatch, type InsertPersonalCollectionWatch,
+  type PersonalCollectionValuation, type InsertPersonalCollectionValuation,
   type DashboardStats, type Setting
 } from "@shared/schema";
 import { eq, desc, sql, and, isNull, isNotNull, inArray, or, ne } from "drizzle-orm";
@@ -95,6 +96,9 @@ export interface IStorage {
   // Private personal collection, always scoped to its authenticated owner
   getPersonalCollectionWatches(ownerId: string): Promise<PersonalCollectionWatch[]>;
   getPersonalCollectionWatch(ownerId: string, id: number): Promise<PersonalCollectionWatch | undefined>;
+  getPersonalCollectionValuations(ownerId: string, watchId: number): Promise<PersonalCollectionValuation[] | undefined>;
+  createPersonalCollectionValuation(ownerId: string, watchId: number, valuation: Pick<InsertPersonalCollectionValuation, "valuationDate" | "estimatedValue">): Promise<PersonalCollectionValuation | undefined>;
+  updatePersonalCollectionValuation(ownerId: string, watchId: number, valuationId: number, valuation: Pick<InsertPersonalCollectionValuation, "valuationDate" | "estimatedValue">): Promise<PersonalCollectionValuation | undefined>;
   createPersonalCollectionWatch(ownerId: string, item: InsertPersonalCollectionWatch): Promise<PersonalCollectionWatch>;
   updatePersonalCollectionWatch(ownerId: string, id: number, updates: Partial<InsertPersonalCollectionWatch>): Promise<PersonalCollectionWatch | undefined>;
   deletePersonalCollectionWatch(ownerId: string, id: number): Promise<boolean>;
@@ -565,6 +569,97 @@ export class DatabaseStorage implements IStorage {
     return watch;
   }
 
+  async getPersonalCollectionValuations(ownerId: string, watchId: number): Promise<PersonalCollectionValuation[] | undefined> {
+    const watch = await this.getPersonalCollectionWatch(ownerId, watchId);
+    if (!watch) return undefined;
+    return db.select().from(personalCollectionValuations)
+      .where(eq(personalCollectionValuations.watchId, watchId))
+      .orderBy(
+        desc(personalCollectionValuations.valuationDate),
+        desc(personalCollectionValuations.createdAt),
+        desc(personalCollectionValuations.id),
+      );
+  }
+
+  private async getLatestPersonalCollectionEstimate(
+    connection: Pick<typeof db, "select">,
+    watchId: number,
+  ): Promise<{ hasEntry: boolean; estimatedValue: number | null }> {
+    const [latest] = await connection.select({ estimatedValue: personalCollectionValuations.estimatedValue })
+      .from(personalCollectionValuations)
+      .where(eq(personalCollectionValuations.watchId, watchId))
+      .orderBy(
+        desc(personalCollectionValuations.valuationDate),
+        desc(personalCollectionValuations.createdAt),
+        desc(personalCollectionValuations.id),
+      )
+      .limit(1);
+    return { hasEntry: Boolean(latest), estimatedValue: latest?.estimatedValue ?? null };
+  }
+
+  private async syncPersonalCollectionLatestEstimate(
+    connection: Pick<typeof db, "select" | "update">,
+    watchId: number,
+  ): Promise<number | null> {
+    const { estimatedValue } = await this.getLatestPersonalCollectionEstimate(connection, watchId);
+    await connection.update(personalCollectionWatches)
+      .set({ estimatedValue, updatedAt: new Date() })
+      .where(eq(personalCollectionWatches.id, watchId));
+    return estimatedValue;
+  }
+
+  async createPersonalCollectionValuation(
+    ownerId: string,
+    watchId: number,
+    valuation: Pick<InsertPersonalCollectionValuation, "valuationDate" | "estimatedValue">,
+  ): Promise<PersonalCollectionValuation | undefined> {
+    return db.transaction(async (tx) => {
+      const [watch] = await tx.select({ id: personalCollectionWatches.id })
+        .from(personalCollectionWatches)
+        .where(and(
+          eq(personalCollectionWatches.ownerId, ownerId),
+          eq(personalCollectionWatches.id, watchId),
+        ))
+        .for("update");
+      if (!watch) return undefined;
+
+      const [created] = await tx.insert(personalCollectionValuations)
+        .values({ ...valuation, watchId })
+        .returning();
+      await this.syncPersonalCollectionLatestEstimate(tx, watchId);
+      return created;
+    });
+  }
+
+  async updatePersonalCollectionValuation(
+    ownerId: string,
+    watchId: number,
+    valuationId: number,
+    valuation: Pick<InsertPersonalCollectionValuation, "valuationDate" | "estimatedValue">,
+  ): Promise<PersonalCollectionValuation | undefined> {
+    return db.transaction(async (tx) => {
+      const [watch] = await tx.select({ id: personalCollectionWatches.id })
+        .from(personalCollectionWatches)
+        .where(and(
+          eq(personalCollectionWatches.ownerId, ownerId),
+          eq(personalCollectionWatches.id, watchId),
+        ))
+        .for("update");
+      if (!watch) return undefined;
+
+      const [updated] = await tx.update(personalCollectionValuations)
+        .set({ ...valuation, updatedAt: new Date() })
+        .where(and(
+          eq(personalCollectionValuations.watchId, watchId),
+          eq(personalCollectionValuations.id, valuationId),
+        ))
+        .returning();
+      if (!updated) return undefined;
+      await this.syncPersonalCollectionLatestEstimate(tx, watchId);
+      return updated;
+    });
+  }
+
   async createPersonalCollectionWatch(ownerId: string, item: InsertPersonalCollectionWatch): Promise<PersonalCollectionWatch> {
     const [watch] = await db.insert(personalCollectionWatches).values({ ...item, ownerId }).returning();
     return watch;
@@ -575,14 +670,29 @@ export class DatabaseStorage implements IStorage {
     id: number,
     updates: Partial<InsertPersonalCollectionWatch>,
   ): Promise<PersonalCollectionWatch | undefined> {
-    const [watch] = await db.update(personalCollectionWatches)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(and(
-        eq(personalCollectionWatches.ownerId, ownerId),
-        eq(personalCollectionWatches.id, id),
-      ))
-      .returning();
-    return watch;
+    return db.transaction(async (tx) => {
+      const [current] = await tx.select({ id: personalCollectionWatches.id })
+        .from(personalCollectionWatches)
+        .where(and(
+          eq(personalCollectionWatches.ownerId, ownerId),
+          eq(personalCollectionWatches.id, id),
+        ))
+        .for("update");
+      if (!current) return undefined;
+
+      const latestEstimate = await this.getLatestPersonalCollectionEstimate(tx, id);
+      const updatesWithCurrentEstimate = latestEstimate.hasEntry
+        ? { ...updates, estimatedValue: latestEstimate.estimatedValue }
+        : updates;
+      const [watch] = await tx.update(personalCollectionWatches)
+        .set({ ...updatesWithCurrentEstimate, updatedAt: new Date() })
+        .where(and(
+          eq(personalCollectionWatches.ownerId, ownerId),
+          eq(personalCollectionWatches.id, id),
+        ))
+        .returning();
+      return watch;
+    });
   }
 
   async deletePersonalCollectionWatch(ownerId: string, id: number): Promise<boolean> {

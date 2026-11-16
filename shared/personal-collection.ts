@@ -19,6 +19,11 @@ export const personalCollectionFeeSchema = z.object({
   amount: z.number().int().min(0).max(2_000_000_000),
 });
 
+export const personalCollectionValuationInputSchema = z.object({
+  valuationDate: calendarDate,
+  estimatedValue: z.number().int().min(0).max(2_000_000_000),
+});
+
 export const personalCollectionInputSchema = insertPersonalCollectionWatchSchema.extend({
   dateBought: optionalDate,
   referenceNumber: z.string().trim().min(1, "Reference number is required.").max(100),
@@ -49,3 +54,4 @@ export const personalCollectionInputSchema = insertPersonalCollectionWatchSchema
 });
 
 export type PersonalCollectionInput = z.input<typeof personalCollectionInputSchema>;
+export type PersonalCollectionValuationInput = z.infer<typeof personalCollectionValuationInputSchema>;

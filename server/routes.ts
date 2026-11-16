@@ -26,6 +26,7 @@ import {
   type NotebookAction,
 } from "@shared/dealers-notebook";
 import { prepareNotebookAnalysis } from "./dealers-notebook";
+import { personalCollectionValuationInputSchema } from "@shared/personal-collection";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -412,6 +413,58 @@ export async function registerRoutes(
     const watch = await storage.getPersonalCollectionWatch(req.session.userId!, id);
     if (!watch) return res.status(404).json({ message: "Collection watch not found." });
     res.json(watch);
+  });
+
+  app.get(api.personalCollection.valuations.path, isAuthenticated, async (req, res) => {
+    const watchId = Number(req.params.id);
+    if (!Number.isInteger(watchId) || watchId < 1) {
+      return res.status(400).json({ message: "Invalid collection watch ID." });
+    }
+    const valuations = await storage.getPersonalCollectionValuations(req.session.userId!, watchId);
+    if (!valuations) return res.status(404).json({ message: "Collection watch not found." });
+    res.json(valuations);
+  });
+
+  app.post(api.personalCollection.createValuation.path, isAuthenticated, async (req, res) => {
+    const watchId = Number(req.params.id);
+    if (!Number.isInteger(watchId) || watchId < 1) {
+      return res.status(400).json({ message: "Invalid collection watch ID." });
+    }
+    try {
+      const input = personalCollectionValuationInputSchema.parse(req.body);
+      const valuation = await storage.createPersonalCollectionValuation(req.session.userId!, watchId, input);
+      if (!valuation) return res.status(404).json({ message: "Collection watch not found." });
+      res.status(201).json(valuation);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the valuation date and amount." });
+      }
+      res.status(500).json({ message: "Could not add this valuation. Please try again." });
+    }
+  });
+
+  app.patch(api.personalCollection.updateValuation.path, isAuthenticated, async (req, res) => {
+    const watchId = Number(req.params.id);
+    const valuationId = Number(req.params.valuationId);
+    if (!Number.isInteger(watchId) || watchId < 1 || !Number.isInteger(valuationId) || valuationId < 1) {
+      return res.status(400).json({ message: "Invalid collection valuation ID." });
+    }
+    try {
+      const input = personalCollectionValuationInputSchema.parse(req.body);
+      const valuation = await storage.updatePersonalCollectionValuation(
+        req.session.userId!,
+        watchId,
+        valuationId,
+        input,
+      );
+      if (!valuation) return res.status(404).json({ message: "Collection valuation not found." });
+      res.json(valuation);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the valuation date and amount." });
+      }
+      res.status(500).json({ message: "Could not correct this valuation. Please try again." });
+    }
   });
 
   app.post(api.personalCollection.create.path, isAuthenticated, async (req, res) => {

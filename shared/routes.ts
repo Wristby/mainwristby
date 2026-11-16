@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses, inventoryPriceHistory, type InventoryItem } from './schema';
 import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
-import { personalCollectionInputSchema } from './personal-collection';
-import { personalCollectionWatches, type PersonalCollectionWatch } from './schema';
+import { personalCollectionInputSchema, personalCollectionValuationInputSchema } from './personal-collection';
+import { personalCollectionValuations, personalCollectionWatches, type PersonalCollectionWatch } from './schema';
 
 // Helper to transform date strings to Date objects or null
 const dateStringToDate = z.union([
@@ -209,6 +209,35 @@ export const api = {
       path: '/api/personal-collection/:id',
       responses: {
         200: z.custom<PersonalCollectionWatch>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    valuations: {
+      method: 'GET' as const,
+      path: '/api/personal-collection/:id/valuations',
+      responses: {
+        200: z.array(z.custom<typeof personalCollectionValuations.$inferSelect>()),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    createValuation: {
+      method: 'POST' as const,
+      path: '/api/personal-collection/:id/valuations',
+      input: personalCollectionValuationInputSchema,
+      responses: {
+        201: z.custom<typeof personalCollectionValuations.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    updateValuation: {
+      method: 'PATCH' as const,
+      path: '/api/personal-collection/:id/valuations/:valuationId',
+      input: personalCollectionValuationInputSchema,
+      responses: {
+        200: z.custom<typeof personalCollectionValuations.$inferSelect>(),
+        400: errorSchemas.validation,
         404: errorSchemas.notFound,
       },
     },

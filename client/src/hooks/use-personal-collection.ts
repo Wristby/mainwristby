@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import type { PersonalCollectionInput } from "@shared/personal-collection";
+import type { PersonalCollectionInput, PersonalCollectionValuationInput } from "@shared/personal-collection";
 
 export const personalCollectionQueryKeys = {
   list: [api.personalCollection.list.path] as const,
   detail: (id: number) => [api.personalCollection.get.path, id] as const,
+  valuations: (id: number) => [api.personalCollection.valuations.path, id] as const,
 };
 
 async function readError(response: Response, fallback: string): Promise<Error> {
@@ -33,6 +34,58 @@ export function usePersonalCollectionWatch(id: number) {
       return api.personalCollection.get.responses[200].parse(await response.json());
     },
     enabled: Number.isInteger(id) && id > 0,
+  });
+}
+
+export function usePersonalCollectionValuations(id: number) {
+  return useQuery({
+    queryKey: personalCollectionQueryKeys.valuations(id),
+    queryFn: async () => {
+      const response = await fetch(buildUrl(api.personalCollection.valuations.path, { id }), { credentials: "include" });
+      if (!response.ok) throw await readError(response, "Could not load valuation history.");
+      return api.personalCollection.valuations.responses[200].parse(await response.json());
+    },
+    enabled: Number.isInteger(id) && id > 0,
+  });
+}
+
+function invalidatePersonalValuationQueries(queryClient: ReturnType<typeof useQueryClient>, id: number) {
+  queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.valuations(id) });
+  queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.detail(id) });
+  queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.list });
+}
+
+export function useCreatePersonalCollectionValuation(watchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: PersonalCollectionValuationInput) => {
+      const response = await fetch(buildUrl(api.personalCollection.createValuation.path, { id: watchId }), {
+        method: api.personalCollection.createValuation.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!response.ok) throw await readError(response, "Could not add this valuation.");
+      return api.personalCollection.createValuation.responses[201].parse(await response.json());
+    },
+    onSuccess: () => invalidatePersonalValuationQueries(queryClient, watchId),
+  });
+}
+
+export function useUpdatePersonalCollectionValuation(watchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ valuationId, data }: { valuationId: number; data: PersonalCollectionValuationInput }) => {
+      const response = await fetch(buildUrl(api.personalCollection.updateValuation.path, { id: watchId, valuationId }), {
+        method: api.personalCollection.updateValuation.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!response.ok) throw await readError(response, "Could not correct this valuation.");
+      return api.personalCollection.updateValuation.responses[200].parse(await response.json());
+    },
+    onSuccess: () => invalidatePersonalValuationQueries(queryClient, watchId),
   });
 }
 
