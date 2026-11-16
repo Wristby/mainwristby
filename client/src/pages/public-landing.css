@@ -141,6 +141,7 @@
 .noct-price-heading h2 em { color: var(--n-gold); }
 .noct-price-heading > p { max-width: 330px; color: #aeb4ac; font-size: 12px; line-height: 1.8; margin: 0 0 5px; }
 .noct-plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.noct-plan-grid-trial { grid-template-columns: minmax(0, 650px); justify-content: center; }
 .noct-plan { min-height: 370px; padding: 26px 30px 28px; border: 1px solid rgba(228,228,214,.2); position: relative; }
 .noct-plan-pro { border-color: rgba(196,161,106,.7); background: linear-gradient(135deg, rgba(196,161,106,.11), transparent 55%); }
 .noct-plan-overline { display: flex; justify-content: space-between; align-items: center; font: 8px "DM Mono", monospace; color: #9aa29a; letter-spacing: .11em; }

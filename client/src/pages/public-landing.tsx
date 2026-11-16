@@ -188,24 +188,16 @@ export default function PublicLanding() {
       <section className="noct-pricing" id="noct-pricing">
         <div className="noct-price-heading noct-reveal">
           <div><span className="noct-eyebrow">03 — ACCESS</span><h2>Begin in your<br /><em>own time.</em></h2></div>
-          <p>The fundamentals are here when you’re starting out. Pro opens the full workspace as your business grows.</p>
+          <p>Try the complete workspace for seven days. Then decide whether you want to continue.</p>
         </div>
-        <div className="noct-plan-grid">
-          <article className="noct-plan noct-reveal">
-            <div className="noct-plan-overline"><span>01 / THE ESSENTIALS</span><i>FREE</i></div>
-            <h3>Free</h3>
-            <div className="noct-price">€0 <small>/ month</small></div>
-            <p>Keep the essentials in order, at your own pace.</p>
-            <ul><li>Up to 10 active watches</li><li>Up to 25 clients</li><li>AI features unavailable</li></ul>
-            <Link className="noct-button noct-button-outline" href="/signup?plan=free">Start on Free <Arrow /></Link>
-          </article>
+        <div className="noct-plan-grid noct-plan-grid-trial">
           <article className="noct-plan noct-plan-pro noct-reveal">
-            <div className="noct-plan-overline"><span>02 / THE FULL PICTURE</span><i>PRO</i></div>
-            <h3>Pro</h3>
-            <div className="noct-price">€39.99 <small>/ month</small></div>
-            <p>Every record and every AI feature, together.</p>
-            <ul><li>Unlimited records</li><li>Every AI feature</li><li>All workspace capabilities</li></ul>
-            <Link className="noct-button noct-button-gold" href="/signup?plan=pro">Choose Pro <Arrow /></Link>
+            <div className="noct-plan-overline"><span>ONE PLAN / FULL ACCESS</span><i>7-DAY TRIAL</i></div>
+            <h3>See the whole picture.</h3>
+            <div className="noct-price">€0 <small>for 7 days</small></div>
+            <p>Every workspace feature and AI tool, with no payment details required upfront.</p>
+            <ul><li>Full access to your workspace and records</li><li>Every AI feature included</li><li>No card required and no automatic charge</li><li>Continue manually for €39.99 / month</li></ul>
+            <Link className="noct-button noct-button-gold" href="/signup">Start your 7-day trial <Arrow /></Link>
           </article>
         </div>
         <p className="noct-plan-note noct-reveal">Public account creation is currently closed while hosting and privacy setup are finalized.</p>

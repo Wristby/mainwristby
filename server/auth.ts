@@ -10,6 +10,7 @@ import { users } from "@shared/models/auth";
 import { initializeLoginProtection, loginAttemptLimit, sameOriginWrites } from "./security";
 import { runWithOwner } from "./tenant";
 import { isMailConfigured, sendPasswordResetEmail, sendVerificationEmail } from "./mailer";
+import { resolvePlanAccess } from "@shared/plan-access";
 
 declare module "express-session" {
   interface SessionData {
@@ -51,7 +52,6 @@ const signupSchema = z.object({
   lastName: z.string().trim().max(80).optional().default(""),
   password: z.string().min(12).max(128),
   termsAccepted: z.literal(true),
-  plan: z.enum(["free", "pro"]).default("free"),
 }).strict();
 
 const POLICY_VERSION = "draft-2026-11-16";
@@ -173,6 +173,7 @@ export async function setupAuth(
         password: await bcrypt.hash(input.password, 12),
         firstName: input.firstName || null,
         lastName: input.lastName || null,
+        subscriptionStatus: "trial_pending",
         emailVerificationTokenHash: hashToken(token),
         emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         termsAcceptedAt: new Date(),
@@ -180,7 +181,7 @@ export async function setupAuth(
         privacyNoticeVersion: POLICY_VERSION,
       }).returning();
       await options.onAccountCreated?.(user.id);
-      await sendVerificationEmail(user.email!, user.firstName, token, input.plan);
+      await sendVerificationEmail(user.email!, user.firstName, token);
       return res.status(202).json({ message: "If the details can be used, a verification email will arrive shortly." });
     } catch {
       console.error("Account registration could not be completed.");
@@ -192,17 +193,19 @@ export async function setupAuth(
     const parsed = tokenSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Verification link is invalid or expired." });
     try {
+      const verifiedAt = new Date();
       const [user] = await db.update(users).set({
-        emailVerifiedAt: new Date(),
+        emailVerifiedAt: verifiedAt,
+        subscriptionStatus: "trial",
         emailVerificationTokenHash: null,
         emailVerificationExpiresAt: null,
-        updatedAt: new Date(),
+        updatedAt: verifiedAt,
       }).where(and(
         eq(users.emailVerificationTokenHash, hashToken(parsed.data.token)),
         gt(users.emailVerificationExpiresAt, new Date()),
       )).returning({ id: users.id });
       if (!user) return res.status(400).json({ message: "Verification link is invalid or expired." });
-      return res.json({ message: "Email verified. You can now sign in." });
+      return res.json({ message: "Email verified. Your 7-day trial starts now. You can sign in." });
     } catch {
       return res.status(503).json({ message: "Email verification is temporarily unavailable." });
     }
@@ -350,11 +353,25 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       id: users.id,
       emailVerifiedAt: users.emailVerifiedAt,
       accountRole: users.accountRole,
+      subscriptionStatus: users.subscriptionStatus,
     }).from(users)
       .where(eq(users.id, req.session.userId)).limit(1);
     if (!user || (!user.emailVerifiedAt && user.accountRole !== "owner")) {
       req.session.destroy(() => {});
       res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    const planAccess = resolvePlanAccess(user);
+    const canUseAccountTools =
+      req.path.startsWith("/api/billing/") ||
+      req.path.startsWith("/api/retention/");
+    if (!planAccess.canAccessWorkspace && !canUseAccountTools) {
+      res.status(402).json({
+        code: planAccess.isTrialExpired ? "TRIAL_EXPIRED" : "SUBSCRIPTION_REQUIRED",
+        message: planAccess.isTrialExpired
+          ? "Your 7-day trial has ended. Subscribe to Pro to continue using your workspace."
+          : "An active subscription is required to use this workspace.",
+      });
       return;
     }
     runWithOwner(user.id, next);
@@ -372,13 +389,14 @@ export const requirePro: RequestHandler = async (req, res, next) => {
     const [user] = await db.select({
       accountRole: users.accountRole,
       subscriptionStatus: users.subscriptionStatus,
+      emailVerifiedAt: users.emailVerifiedAt,
     }).from(users).where(eq(users.id, req.session.userId)).limit(1);
     if (!user) {
       res.status(401).json({ message: "Unauthorized" });
       return;
     }
-    if (user.accountRole !== "owner" && !["active", "trialing"].includes(user.subscriptionStatus)) {
-      res.status(402).json({ message: "AI features are included with WRISTBY Pro. Upgrade from Account & plan." });
+    if (!resolvePlanAccess(user).isPro) {
+      res.status(402).json({ message: "AI features are available during the 7-day trial and with WRISTBY Pro." });
       return;
     }
     next();

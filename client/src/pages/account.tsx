@@ -6,12 +6,27 @@ import { apiFetch, fetchApiResponse, throwIfResNotOk } from "@/lib/queryClient";
 import "./public-auth.css";
 
 interface WorkspaceAccess {
-  plan: "free" | "pro";
+  plan: "trial" | "pro" | "legacy" | "expired";
   isPro: boolean;
   aiEnabled: boolean;
+  isOwner: boolean;
+  hasPaidSubscription: boolean;
+  canAccessWorkspace: boolean;
+  isTrialActive: boolean;
+  isTrialExpired: boolean;
+  trialEndsAt: string | null;
+  trialDaysRemaining: number;
   activeWatchCount: number;
   clientCount: number;
   limits: { activeWatches: number; clients: number } | null;
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(date)
+    : "—";
 }
 
 export default function AccountPage() {
@@ -60,7 +75,7 @@ export default function AccountPage() {
   }
 
   useEffect(() => {
-    if (upgradeRequested && data && !data.isPro && !startedUpgrade.current) {
+    if (upgradeRequested && data && ["expired", "legacy"].includes(data.plan) && !startedUpgrade.current) {
       startedUpgrade.current = true;
       void startCheckout();
     }
@@ -74,32 +89,62 @@ export default function AccountPage() {
       <Link href="/" className="wb-auth-brand"><img src="/images/wristby-logo.png" alt="" /> WRISTBY</Link>
       <section className="wb-auth-panel" aria-labelledby="account-heading">
         <div className="wb-auth-overline">Workspace / account</div>
-        <h1 id="account-heading">{data.isPro ? "Your full picture." : "Choose your room to grow."}</h1>
+        <h1 id="account-heading">{data.plan === "expired" ? (data.isTrialExpired ? "Your trial has ended." : "Access paused.") : data.plan === "legacy" ? "Your existing access." : "Your full picture."}</h1>
         {billingStatus === "success" && <p className="wb-auth-success" role="status">Checkout completed. Your plan will update as soon as Stripe confirms the subscription.</p>}
-        {billingStatus === "cancel" && <p className="wb-auth-footnote">Checkout was cancelled. Your current plan is unchanged.</p>}
-        {data.isPro ? (
+        {billingStatus === "cancel" && <p className="wb-auth-footnote">Checkout was cancelled. No payment was taken, and your current access is unchanged.</p>}
+        {data.plan === "pro" ? (
           <>
-            <p className="wb-auth-subtitle">WRISTBY Pro is active for this workspace.</p>
+            <p className="wb-auth-subtitle">{data.hasPaidSubscription ? "WRISTBY Pro is active for this workspace." : "Full owner access is active for this workspace."}</p>
             <div className="wb-plan-summary">
-              <p><span>Plan</span><strong>Pro · €39.99 / month</strong></p>
+              <p><span>Plan</span><strong>{data.hasPaidSubscription ? "Pro · €39.99 / month" : "Owner access"}</strong></p>
               <p><span>Active watches</span><strong>{data.activeWatchCount}</strong></p>
               <p><span>Clients</span><strong>{data.clientCount}</strong></p>
               <p><span>AI features</span><strong>Included</strong></p>
             </div>
-            <Button className="wb-auth-submit" onClick={openBillingPortal} disabled={busy}>Manage billing</Button>
+            {data.hasPaidSubscription && <Button className="wb-auth-submit" onClick={openBillingPortal} disabled={busy}>Manage billing</Button>}
+          </>
+        ) : data.plan === "trial" ? (
+          <>
+            <p className="wb-auth-subtitle">Your 7-day trial includes the full WRISTBY experience and all AI features.</p>
+            <div className="wb-plan-summary">
+              <p><span>Trial ends</span><strong>{formatDate(data.trialEndsAt)}</strong></p>
+              <p><span>Days remaining</span><strong>{data.trialDaysRemaining}</strong></p>
+              <p><span>Active watches</span><strong>{data.activeWatchCount}</strong></p>
+              <p><span>Clients</span><strong>{data.clientCount}</strong></p>
+            </div>
+            <p className="wb-auth-footnote">No payment details are required during the trial. It will not convert or charge automatically. Subscribe manually for €39.99/month to keep access after it ends.</p>
+            <div className="wb-pro-card">
+              <div><small>CONTINUE WITH WRISTBY PRO</small><strong>€39.99 <span>/ month</span></strong></div>
+              <p>You can subscribe from this page once the trial ends. Nothing will be charged before then.</p>
+            </div>
+          </>
+        ) : data.plan === "expired" ? (
+          <>
+            <p className="wb-auth-subtitle">{data.isTrialExpired ? "Your 7-day trial has ended." : "There is no active subscription for this workspace."} Your access is paused until you choose to subscribe.</p>
+            <div className="wb-plan-summary">
+              {data.trialEndsAt && <p><span>Trial ended</span><strong>{formatDate(data.trialEndsAt)}</strong></p>}
+              <p><span>Active watches</span><strong>{data.activeWatchCount}</strong></p>
+              <p><span>Clients</span><strong>{data.clientCount}</strong></p>
+            </div>
+            <p className="wb-auth-footnote">No charge is made automatically, and your records are not deleted. Subscribe manually to restore full access.</p>
+            <div className="wb-pro-card">
+              <div><small>WRISTBY PRO</small><strong>€39.99 <span>/ month</span></strong></div>
+              <p>Full workspace access and every AI feature.</p>
+              <Button className="wb-auth-submit" onClick={startCheckout} disabled={busy}>Subscribe to Pro</Button>
+            </div>
           </>
         ) : (
           <>
-            <p className="wb-auth-subtitle">Your Free workspace includes the essentials. Upgrade whenever you need more capacity or AI.</p>
+            <p className="wb-auth-subtitle">This account predates the trial offer, so its existing access and limits are unchanged.</p>
             <div className="wb-plan-summary">
-              <p><span>Active watches</span><strong>{data.activeWatchCount} / 10</strong></p>
-              <p><span>Clients</span><strong>{data.clientCount} / 25</strong></p>
+              <p><span>Active watches</span><strong>{data.activeWatchCount} / {data.limits?.activeWatches ?? 10}</strong></p>
+              <p><span>Clients</span><strong>{data.clientCount} / {data.limits?.clients ?? 25}</strong></p>
               <p><span>AI features</span><strong>Not included</strong></p>
             </div>
             <div className="wb-pro-card">
               <div><small>WRISTBY PRO</small><strong>€39.99 <span>/ month</span></strong></div>
               <p>Unlimited records and every AI feature.</p>
-              <Button className="wb-auth-submit" onClick={startCheckout} disabled={busy}>Upgrade to Pro</Button>
+              <Button className="wb-auth-submit" onClick={startCheckout} disabled={busy}>Subscribe to Pro</Button>
             </div>
           </>
         )}
@@ -109,7 +154,9 @@ export default function AccountPage() {
           <p><a className="wb-auth-inline-link" href="mailto:contact@wristby.com?subject=WRISTBY%20privacy%20request">Contact the privacy email</a> · <Link className="wb-auth-inline-link" href="/privacy">Read the Privacy Notice</Link></p>
         </div>
         {error && <p className="wb-auth-error" role="alert">{error}</p>}
-        <Link className="wb-auth-back" href="/">← Back to your workspace</Link>
+        <Link className="wb-auth-back" href={data.canAccessWorkspace ? "/" : "/account"}>
+          {data.canAccessWorkspace ? "← Back to your workspace" : "← Account overview"}
+        </Link>
       </section>
     </main>
   );

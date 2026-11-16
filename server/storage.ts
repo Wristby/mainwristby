@@ -20,6 +20,7 @@ import { RetentionError } from "./retention";
 import { requireOwnerId } from "./tenant";
 import { retentionKey } from "@shared/retention";
 import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
+import { resolvePlanAccess } from "@shared/plan-access";
 import {
   canCaptureNotebookInventory,
   calculateNotebookInventorySnapshot,
@@ -63,7 +64,7 @@ async function resolveSaleBuyer(connection: BuyerExecutor, buyer: SaleBuyerInput
   if (contacts.some(client => matchingBuyerContact(client, buyer))) {
     throw new SaleBuyerSaveError("A client with this email or phone already exists. Choose them using Existing client.", 409);
   }
-  await assertFreePlanClientCapacity(connection, ownerId);
+  await assertLegacyClientCapacity(connection, ownerId);
   const [client] = await connection.insert(clients).values({
     ownerId,
     name: buyer.name, email: buyer.email || null, phone: buyer.phone || null,
@@ -72,36 +73,38 @@ async function resolveSaleBuyer(connection: BuyerExecutor, buyer: SaleBuyerInput
   return { buyerId: client.id, soldTo: client.name };
 }
 
-async function assertFreePlanClientCapacity(connection: AccountExecutor, ownerId: string): Promise<void> {
+async function assertLegacyClientCapacity(connection: AccountExecutor, ownerId: string): Promise<void> {
   await connection.execute(sql`select pg_advisory_xact_lock(hashtext(${ownerId}), 73284089)`);
   const [account] = await connection.select({
     accountRole: users.accountRole,
     subscriptionStatus: users.subscriptionStatus,
+    emailVerifiedAt: users.emailVerifiedAt,
   }).from(users).where(eq(users.id, ownerId));
   if (!account) throw new SaleBuyerSaveError("Workspace not found.", 404);
-  if (account.accountRole === "owner" || ["active", "trialing"].includes(account.subscriptionStatus)) return;
+  if (resolvePlanAccess(account).isPro) return;
   const existingClients = await connection.select({ id: clients.id }).from(clients)
     .where(eq(clients.ownerId, ownerId)).limit(25);
   if (existingClients.length >= 25) {
-    throw new SaleBuyerSaveError("The Free plan includes up to 25 clients. Upgrade to add another client.", 402);
+    throw new SaleBuyerSaveError("Existing access includes up to 25 clients. Subscribe to Pro to add another client.", 402);
   }
 }
 
-async function assertFreePlanInventoryCapacity(connection: AccountExecutor, ownerId: string): Promise<void> {
+async function assertLegacyInventoryCapacity(connection: AccountExecutor, ownerId: string): Promise<void> {
   await connection.execute(sql`select pg_advisory_xact_lock(hashtext(${ownerId}), 73284090)`);
   const [account] = await connection.select({
     accountRole: users.accountRole,
     subscriptionStatus: users.subscriptionStatus,
+    emailVerifiedAt: users.emailVerifiedAt,
   }).from(users).where(eq(users.id, ownerId));
   if (!account) throw new SaleBuyerSaveError("Workspace not found.", 404);
-  if (account.accountRole === "owner" || ["active", "trialing"].includes(account.subscriptionStatus)) return;
+  if (resolvePlanAccess(account).isPro) return;
   const activeWatches = await connection.select({ id: inventory.id }).from(inventory).where(and(
     eq(inventory.ownerId, ownerId),
     isNull(inventory.archivedAt),
     ne(inventory.status, "sold"),
   )).limit(10);
   if (activeWatches.length >= 10) {
-    throw new SaleBuyerSaveError("The Free plan includes up to 10 active watches. Upgrade to add another watch.", 402);
+    throw new SaleBuyerSaveError("Existing access includes up to 10 active watches. Subscribe to Pro to add another watch.", 402);
   }
 }
 
@@ -218,6 +221,7 @@ export class DatabaseStorage implements IStorage {
     const [account] = await db.select({
       accountRole: users.accountRole,
       subscriptionStatus: users.subscriptionStatus,
+      emailVerifiedAt: users.emailVerifiedAt,
     }).from(users).where(eq(users.id, ownerId));
     if (!account) throw new Error("Workspace not found.");
     const activeWatches = await db.select({ id: inventory.id }).from(inventory).where(and(
@@ -226,15 +230,11 @@ export class DatabaseStorage implements IStorage {
       ne(inventory.status, "sold"),
     ));
     const clientsList = await db.select({ id: clients.id }).from(clients).where(eq(clients.ownerId, ownerId));
-    const isPro = account.accountRole === "owner" ||
-      ["active", "trialing"].includes(account.subscriptionStatus);
+    const planAccess = resolvePlanAccess(account);
     return {
-      isPro,
-      plan: isPro ? "pro" as const : "free" as const,
+      ...planAccess,
       activeWatchCount: activeWatches.length,
       clientCount: clientsList.length,
-      limits: isPro ? null : { activeWatches: 10, clients: 25 },
-      aiEnabled: isPro,
     };
   }
 
@@ -401,7 +401,7 @@ export class DatabaseStorage implements IStorage {
     const ownerId = requireOwnerId();
     return db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
-      await assertFreePlanClientCapacity(tx, ownerId);
+      await assertLegacyClientCapacity(tx, ownerId);
       const [client] = await tx.insert(clients).values({ ...insertClient, ownerId }).returning();
       return client;
     });
@@ -515,7 +515,7 @@ export class DatabaseStorage implements IStorage {
       const currentlyArchived = current.archivedAt != null;
       if (currentlyArchived === archived) return current;
       if (!archived && current.status !== "sold") {
-        await assertFreePlanInventoryCapacity(tx, ownerId);
+        await assertLegacyInventoryCapacity(tx, ownerId);
       }
 
       const [updated] = await tx.update(inventory)
@@ -595,7 +595,7 @@ export class DatabaseStorage implements IStorage {
     };
     return db.transaction(async tx => {
       if (itemWithSnapshot.status !== "sold") {
-        await assertFreePlanInventoryCapacity(tx, ownerId);
+        await assertLegacyInventoryCapacity(tx, ownerId);
       }
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer) : {};
       const itemInput = { ...itemWithSnapshot, ...buyer, ownerId };
@@ -631,7 +631,7 @@ export class DatabaseStorage implements IStorage {
       if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
       if (!current.archivedAt && current.status === "sold" &&
           normalizedUpdates.status != null && normalizedUpdates.status !== "sold") {
-        await assertFreePlanInventoryCapacity(tx, ownerId);
+        await assertLegacyInventoryCapacity(tx, ownerId);
       }
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer, current.buyerId) : {};
       const resolvedBuyerId = "buyerId" in buyer

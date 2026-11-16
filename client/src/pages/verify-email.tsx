@@ -9,14 +9,10 @@ import "./public-auth.css";
 export default function VerifyEmailPage() {
   const token = new URLSearchParams(window.location.search).get("token");
   const resendEmail = new URLSearchParams(window.location.search).get("resend") ?? "";
-  const planIntent = new URLSearchParams(window.location.search).get("plan");
   const [email, setEmail] = useState(resendEmail);
   const [status, setStatus] = useState(token ? "Verifying your email…" : "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(Boolean(token));
-  if (planIntent === "pro") sessionStorage.setItem("wristby-pending-plan", "pro");
-  const plan = planIntent === "pro" ? "pro" : sessionStorage.getItem("wristby-pending-plan");
-  const loginHref = plan === "pro" ? "/login?plan=pro" : "/login";
 
   useEffect(() => {
     if (!token) return;
@@ -66,6 +62,7 @@ export default function VerifyEmailPage() {
         <div className="wb-auth-overline">Account security</div>
         <h1 id="verify-heading">Verify your email.</h1>
         {status && <p className="wb-auth-success" role="status">{status}</p>}
+        {status.includes("trial starts now") && <p className="wb-auth-subtitle">Your trial runs for 7 days from this verification time. No card is required, and it will not convert to a paid subscription automatically.</p>}
         {error && <p className="wb-auth-error" role="alert">{error}</p>}
         {!token && (
           <form className="wb-auth-form" onSubmit={resend}>
@@ -75,7 +72,7 @@ export default function VerifyEmailPage() {
           </form>
         )}
         {token && busy && <p className="wb-auth-subtitle" role="status">Please wait while we check your link.</p>}
-        <p className="wb-auth-switch"><Link href={loginHref}>Continue to sign in</Link></p>
+        <p className="wb-auth-switch"><Link href="/login">Continue to sign in</Link></p>
         <Link className="wb-auth-back" href="/landing">← Back to WRISTBY</Link>
       </section>
     </main>

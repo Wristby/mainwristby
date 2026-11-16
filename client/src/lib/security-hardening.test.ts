@@ -6,6 +6,9 @@ import { createServer, type Server } from "node:http";
 const fixture = vi.hoisted(() => ({
   query: vi.fn(),
   userExists: true,
+  accountRole: "owner",
+  subscriptionStatus: "free",
+  emailVerifiedAt: new Date("2026-11-16T00:00:00Z"),
 }));
 vi.mock("../../../server/db", () => ({
   pool: { query: fixture.query },
@@ -15,7 +18,9 @@ vi.mock("../../../server/db", () => ({
         where: () => ({
           limit: async () => fixture.userExists ? [{
             id: "test-user", username: "test-account", password: "test-hash",
-            accountRole: "owner", emailVerifiedAt: new Date("2026-11-16T00:00:00Z"),
+            accountRole: fixture.accountRole,
+            subscriptionStatus: fixture.subscriptionStatus,
+            emailVerifiedAt: fixture.emailVerifiedAt,
           }] : [],
         }),
       }),
@@ -63,6 +68,9 @@ beforeEach(() => {
   vi.stubEnv("SESSION_SECRET", "isolated-test-secret-not-a-real-credential");
   vi.stubEnv("NODE_ENV", "test");
   fixture.userExists = true;
+  fixture.accountRole = "owner";
+  fixture.subscriptionStatus = "free";
+  fixture.emailVerifiedAt = new Date("2026-11-16T00:00:00Z");
   fixture.query.mockReset();
   fixture.query.mockResolvedValue({ rows: [] });
 });
@@ -86,6 +94,8 @@ describe("private app access", () => {
       res.json({ ok: true });
     });
     app.get("/api/private", isAuthenticated, (_req, res) => res.json({ ok: true }));
+    app.get("/api/billing/status", isAuthenticated, (_req, res) => res.json({ ok: true }));
+    app.get("/api/retention/schedule", isAuthenticated, (_req, res) => res.json({ ok: true }));
     app.use(safeErrorHandler);
     return serve(app);
   }
@@ -116,7 +126,6 @@ describe("private app access", () => {
         email: "new-account@example.invalid",
         password: "valid-test-password-123",
         termsAccepted: true,
-        plan: "free",
       }),
     });
     expect(response.status).toBe(503);
@@ -151,6 +160,26 @@ describe("private app access", () => {
       headers: { Cookie: cookie.split(";")[0] },
     });
     expect(revoked.status).toBe(401);
+  });
+
+  it("pauses expired trial workspace APIs but leaves billing and retention controls available", async () => {
+    fixture.accountRole = "customer";
+    fixture.subscriptionStatus = "trial";
+    fixture.emailVerifiedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    const url = await authApp();
+    const login = await fetch(`${url}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "test-account", password: "correct-test-password" }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+
+    const workspace = await fetch(`${url}/api/private`, { headers: { Cookie: cookie } });
+    expect(workspace.status).toBe(402);
+    expect(await workspace.json()).toMatchObject({ code: "TRIAL_EXPIRED" });
+    expect((await fetch(`${url}/api/billing/status`, { headers: { Cookie: cookie } })).status).toBe(200);
+    expect((await fetch(`${url}/api/retention/schedule`, { headers: { Cookie: cookie } })).status).toBe(200);
   });
 
   it("rejects malformed login credentials and unauthenticated private requests", async () => {

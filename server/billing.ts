@@ -101,8 +101,12 @@ export function registerBillingRoutes(app: Express) {
       if (req.path === "/api/billing/checkout") {
         const priceId = process.env.STRIPE_PRICE_ID;
         if (!priceId) throw new Error("STRIPE_PRICE_ID is not configured.");
-        if (account.isPro) {
+        if (account.plan === "pro") {
           res.status(409).json({ message: "This workspace already has Pro access." });
+          return;
+        }
+        if (account.plan === "trial") {
+          res.status(409).json({ message: "You can subscribe after your 7-day trial ends. No payment will be taken during the trial." });
           return;
         }
         const baseUrl = appBaseUrl();

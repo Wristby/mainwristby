@@ -32,7 +32,7 @@ export async function syncHistoricalBuyers(): Promise<BuyerSyncReport> {
     const { ready, pending } = planLegacyBuyers(watches, contacts);
     const access = await storage.getWorkspaceAccess();
     if (!access.isPro && access.clientCount + ready.length > 25) {
-      throw new BuyerBackfillError("The Free plan includes up to 25 clients. Upgrade before creating these historical client records.", 402);
+      throw new BuyerBackfillError("Existing access includes up to 25 clients. Subscribe to Pro before creating these historical client records.", 402);
     }
     for (const { watch, name } of ready) {
       const [client] = await tx.insert(clients).values({ ownerId, name, type: "client" }).returning();
@@ -69,7 +69,7 @@ export async function resolveHistoricalBuyer(input: BuyerReviewInput) {
     } else {
       const access = await storage.getWorkspaceAccess();
       if (!access.isPro && access.clientCount >= 25) {
-        throw new BuyerBackfillError("The Free plan includes up to 25 clients. Upgrade before creating another client.", 402);
+        throw new BuyerBackfillError("Existing access includes up to 25 clients. Subscribe to Pro before creating another client.", 402);
       }
       const [client] = await tx.insert(clients).values({ ownerId, name: input.expectedName, type: "client" }).returning();
       clientId = client.id;

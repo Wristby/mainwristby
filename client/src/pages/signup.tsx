@@ -17,7 +17,6 @@ export default function SignUpPage() {
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
-  const wantsPro = new URLSearchParams(window.location.search).get("plan") === "pro";
 
   useEffect(() => {
     let cancelled = false;
@@ -46,11 +45,9 @@ export default function SignUpPage() {
         lastName: lastName.trim(),
         password,
         termsAccepted: true,
-        plan: wantsPro ? "pro" : "free",
       });
       setSubmitted(true);
       setError("");
-      if (wantsPro) sessionStorage.setItem("wristby-pending-plan", "pro");
       void result;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create your account. Please try again.");
@@ -66,12 +63,15 @@ export default function SignUpPage() {
         <p className="wb-auth-subtitle">Your inventory, clients, and business records stay in a separate workspace.</p>
         {submitted ? (
           <div className="wb-auth-success" role="status">
-            Check your inbox for a verification link. Once verified, sign in to start your workspace
-            {wantsPro ? " and choose Pro from your account page." : "."}
-            <div><Link className="wb-auth-inline-link" href={wantsPro ? "/login?plan=pro" : "/login"}>Continue to sign in</Link></div>
+            Check your inbox for a verification link. Your 7-day trial begins when you verify your email. No payment details are required, and no charge is made automatically.
+            <div><Link className="wb-auth-inline-link" href="/login">Continue to sign in</Link></div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="wb-auth-form">
+            <div className="wb-plan-summary">
+              <p><strong>7 days of full access</strong></p>
+              <p>No card required. After the trial, subscribe manually for €39.99/month to keep using WRISTBY. Your trial will not convert or charge automatically.</p>
+            </div>
             {registrationOpen === false && (
               <div className="wb-registration-closed" role="status">
                 Account creation is currently closed while privacy, hosting, and billing setup is being finalized. Your details will not be submitted.
@@ -104,7 +104,7 @@ export default function SignUpPage() {
             </Button>
           </form>
         )}
-        <p className="wb-auth-switch">Already have an account? <Link href={wantsPro ? "/login?plan=pro" : "/login"}>Sign in</Link></p>
+        <p className="wb-auth-switch">Already have an account? <Link href="/login">Sign in</Link></p>
         <Link className="wb-auth-back" href="/landing">← Back to WRISTBY</Link>
       </section>
       <footer className="wb-auth-footer"><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link></footer>

@@ -75,7 +75,7 @@ function TermsOfService() {
       <p>The service is provided by Wristby. Privacy requests may be sent to <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>. The postal address, governing jurisdiction, minimum account age, and final support contact must be confirmed before publication. WRISTBY is intended for watch dealers and business users.</p>
 
       <h2>2. The service and plans</h2>
-      <p>WRISTBY provides private tools for watch inventory, clients, costs, sales, delivery, warranty, and business analysis. The proposed Free plan allows up to 10 active watches and 25 clients and excludes AI. Pro is proposed at €39.99 per month with unlimited records and AI features. Public registration and paid billing are not live until hosting, email, Stripe, and legal setup are complete.</p>
+      <p>WRISTBY provides private tools for watch inventory, clients, costs, sales, delivery, warranty, and business analysis. The intended offer is a 7-day trial with full workspace and AI access. The trial starts when the account email is verified; no payment details are required to begin. At the end of the trial, access pauses unless the account holder manually subscribes. There is no automatic conversion or charge. The optional Pro subscription is intended to cost €39.99 per month. Public registration and paid billing are not live until hosting, email, Stripe, and legal setup are complete.</p>
 
       <h2>3. Accounts and acceptable use</h2>
       <p>Keep account details accurate, protect your password, and notify Wristby if you suspect unauthorized access. Do not access another workspace, misuse the service, upload unlawful material, or use WRISTBY to violate another person’s rights. The account holder is responsible for records entered by its users.</p>
@@ -87,7 +87,7 @@ function TermsOfService() {
       <p>AI features may send the prompt and selected watch or business data to Google Gemini to return a requested result. Review AI output before relying on it. It may be incomplete or inaccurate and is not legal, tax, accounting, valuation, investment, warranty, or shipping advice. WRISTBY does not make consequential decisions for you.</p>
 
       <h2>6. Billing and cancellation</h2>
-      <p>Pro is planned as a recurring monthly subscription of €39.99, processed through Stripe. Whether prices include VAT, when renewal is charged, how cancellation takes effect, and the refund and consumer-rights terms must be finalized before registration or checkout is enabled. WRISTBY does not store full payment-card details.</p>
+      <p>The intended paid offer is a recurring monthly Pro subscription of €39.99, processed through Stripe and started only when the account holder chooses to subscribe. No card is required for the 7-day trial, and the trial does not renew or charge automatically. Whether prices include VAT, when renewal is charged, how cancellation takes effect, and the refund and consumer-rights terms must be finalized before registration or checkout is enabled. WRISTBY does not store full payment-card details.</p>
 
       <h2>7. Service availability and intellectual property</h2>
       <p>WRISTBY is provided as a business-record tool and does not promise uninterrupted availability. WRISTBY branding, software, and design belong to Wristby or its licensors. Support levels, service availability commitments, and any applicable liability limits require final review.</p>

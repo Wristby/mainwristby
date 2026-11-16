@@ -13,11 +13,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [needsVerification, setNeedsVerification] = useState(false);
-  const isUpgrade = new URLSearchParams(window.location.search).get("plan") === "pro";
 
   useEffect(() => {
-    if (user) window.location.replace(isUpgrade ? "/account?upgrade=pro" : "/");
-  }, [user, isUpgrade, location]);
+    if (user) window.location.replace("/");
+  }, [user, location]);
 
   if (isLoading || user) return null;
 
@@ -27,7 +26,7 @@ export default function LoginPage() {
     setNeedsVerification(false);
     try {
       await login({ identifier: identifier.trim(), password });
-      window.location.replace(isUpgrade ? "/account?upgrade=pro" : "/");
+      window.location.replace("/");
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Could not sign in. Check your details and try again.";
       setError(message);

@@ -42,7 +42,6 @@ export interface SignupCredentials {
   lastName: string;
   password: string;
   termsAccepted: boolean;
-  plan: "free" | "pro";
 }
 
 interface AuthMessage {
