@@ -35,7 +35,8 @@ vi.mock("@/hooks/use-settings", () => ({
 }));
 vi.mock("wouter", () => ({ Link: "a" }));
 
-import SalesPatterns, { SalesPatternsPreview } from "./sales-patterns";
+import SalesPatterns from "./sales-patterns";
+import { SalesPatternsPreview } from "@/components/sales-patterns-preview";
 
 function makeWatch(overrides: Partial<SalesPatternSource> = {}): SalesPatternSource {
   return {

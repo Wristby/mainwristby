@@ -1,36 +1,71 @@
 import { Switch, Route, Redirect } from "wouter";
+import { lazy, Suspense, type ComponentType } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Landing from "@/pages/landing";
-import Dashboard from "@/pages/dashboard";
-import Inventory from "@/pages/inventory";
-import InventoryDetail from "@/pages/inventory-detail";
-import Clients from "@/pages/clients";
-import ClientDetail from "@/pages/client-detail";
-import Financials from "@/pages/financials";
-import Analytics from "@/pages/analytics";
-import Admin from "@/pages/admin";
-import Payments from "@/pages/payments";
-import WatchUniverse from "@/pages/watch-universe";
-import SalesPatterns from "@/pages/sales-patterns";
-import DealersNotebook from "@/pages/dealers-notebook";
-import PersonalCollection, { PersonalCollectionDetailPage, PersonalCollectionFormPage, PersonalCollectionInsuranceReportPage } from "@/pages/personal-collection";
-import Warranties from "@/pages/warranties";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Landing = lazy(() => import("@/pages/landing"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Inventory = lazy(() => import("@/pages/inventory"));
+const InventoryDetail = lazy(() => import("@/pages/inventory-detail"));
+const Clients = lazy(() => import("@/pages/clients"));
+const ClientDetail = lazy(() => import("@/pages/client-detail"));
+const Financials = lazy(() => import("@/pages/financials"));
+const Analytics = lazy(() => import("@/pages/analytics"));
+const Admin = lazy(() => import("@/pages/admin"));
+const Payments = lazy(() => import("@/pages/payments"));
+const WatchUniverse = lazy(() => import("@/pages/watch-universe"));
+const SalesPatterns = lazy(() => import("@/pages/sales-patterns"));
+const DealersNotebook = lazy(() => import("@/pages/dealers-notebook"));
+const PersonalCollection = lazy(() => import("@/pages/personal-collection"));
+const PersonalCollectionDetail = lazy(() =>
+  import("@/pages/personal-collection").then(({ PersonalCollectionDetailPage }) => ({
+    default: PersonalCollectionDetailPage,
+  })),
+);
+const PersonalCollectionInsuranceReport = lazy(() =>
+  import("@/pages/personal-collection").then(({ PersonalCollectionInsuranceReportPage }) => ({
+    default: PersonalCollectionInsuranceReportPage,
+  })),
+);
+const PersonalCollectionNew = lazy(() =>
+  import("@/pages/personal-collection").then(({ PersonalCollectionFormPage }) => ({
+    default: function PersonalCollectionNewPage() {
+      return <PersonalCollectionFormPage />;
+    },
+  })),
+);
+const PersonalCollectionEdit = lazy(() =>
+  import("@/pages/personal-collection").then(({ PersonalCollectionFormPage }) => ({
+    default: function PersonalCollectionEditPage() {
+      return <PersonalCollectionFormPage edit />;
+    },
+  })),
+);
+const Warranties = lazy(() => import("@/pages/warranties"));
+
+function RouteLoading({ fullScreen = false }: { fullScreen?: boolean }) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading page"
+      className={`flex items-center justify-center ${fullScreen ? "min-h-screen bg-slate-50" : "min-h-[40vh]"}`}
+    >
+      <div className="h-8 w-8 animate-spin rounded-full border-t-2 border-b-2 border-emerald-600" />
+      <span className="sr-only">Loading page…</span>
+    </div>
+  );
+}
+
+function ProtectedRoute({ component: Component }: { component: ComponentType }) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-600"></div>
-      </div>
-    );
+    return <RouteLoading fullScreen />;
   }
 
   if (!user) {
@@ -39,13 +74,16 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   return (
     <Layout>
-      <Component />
+      <Suspense fallback={<RouteLoading />}>
+        <Component />
+      </Suspense>
     </Layout>
   );
 }
 
 function Router() {
   return (
+    <Suspense fallback={<RouteLoading fullScreen />}>
     <Switch>
       <Route path="/landing" component={Landing} />
       <Route path="/">
@@ -82,16 +120,16 @@ function Router() {
         <ProtectedRoute component={PersonalCollection} />
       </Route>
       <Route path="/personal-collection/new">
-        <ProtectedRoute component={() => <PersonalCollectionFormPage />} />
+        <ProtectedRoute component={PersonalCollectionNew} />
       </Route>
       <Route path="/personal-collection/insurance-report">
-        <ProtectedRoute component={PersonalCollectionInsuranceReportPage} />
+        <ProtectedRoute component={PersonalCollectionInsuranceReport} />
       </Route>
       <Route path="/personal-collection/:id/edit">
-        <ProtectedRoute component={() => <PersonalCollectionFormPage edit />} />
+        <ProtectedRoute component={PersonalCollectionEdit} />
       </Route>
       <Route path="/personal-collection/:id">
-        <ProtectedRoute component={PersonalCollectionDetailPage} />
+        <ProtectedRoute component={PersonalCollectionDetail} />
       </Route>
       <Route path="/warranties">
         <ProtectedRoute component={Warranties} />
@@ -107,6 +145,7 @@ function Router() {
       </Route>
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 

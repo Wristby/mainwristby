@@ -1,6 +1,6 @@
 import { differenceInCalendarDays } from "date-fns";
 import type { InventoryItem } from "@shared/schema";
-import { getSaleAmount } from "@/lib/sale-amount";
+import { getPositiveSaleAmount, matchesCalendarPeriod } from "@shared/reporting";
 import { getSoldDate } from "@/lib/sold-date";
 import { calculateWatchFinancials } from "@shared/watch-financials";
 
@@ -96,10 +96,7 @@ function toRecord(item: SalesPatternSource, watchRegisterFeeCents: number): Sale
   const saleDate = getSoldDate(item);
   if (!saleDate) return null;
 
-  const saleAmount = getSaleAmount(item);
-  const salePriceCents = saleAmount != null && Number.isFinite(saleAmount) && saleAmount > 0
-    ? saleAmount
-    : null;
+  const salePriceCents = getPositiveSaleAmount(item);
   const hasMarginInputs = salePriceCents != null && item.purchasePrice > 0;
   const financials = calculateWatchFinancials(item, salePriceCents ?? 0, 0, watchRegisterFeeCents);
   const listedDate = validDate(item.dateListed);
@@ -132,7 +129,9 @@ export function buildSalesPatternData(
     return record ? [record] : [];
   });
   const years = Array.from(new Set(allRecords.map((record) => record.year))).sort((a, b) => b - a);
-  const records = year == null ? allRecords : allRecords.filter((record) => record.year === year);
+  const records = year == null
+    ? allRecords
+    : allRecords.filter((record) => matchesCalendarPeriod(record.saleDate, { year }));
   const byBrandAndMonth = new Map<string, SalesPatternRecord[]>();
   for (const record of records) {
     const key = `${record.brand}\u0000${record.month}`;

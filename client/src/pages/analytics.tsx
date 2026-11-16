@@ -1,6 +1,12 @@
 import { useSettings } from "@/hooks/use-settings";
 import { calculateWatchCostBreakdown, calculateWatchFinancials } from "@shared/watch-financials";
 import { getSoldDate } from "@shared/sold-date";
+import {
+  getInventoryReportingDate,
+  getSaleAmount,
+  matchesCalendarPeriod,
+  summarizeWatchSales,
+} from "@shared/reporting";
 import { useInventory } from "@/hooks/use-inventory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +47,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useState, useMemo } from "react";
-import { SalesPatternsPreview } from "@/pages/sales-patterns";
+import { SalesPatternsPreview } from "@/components/sales-patterns-preview";
 import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
@@ -132,12 +138,7 @@ function getPresetDateRange(preset: PeriodPreset, year: number, customMonth?: st
 
 function filterByDateRange(items: InventoryItem[], range: DateRange, customMonth?: string, customYear?: string, preset?: PeriodPreset): InventoryItem[] {
   return items.filter((item) => {
-    const saleDate = item.status === "sold" ? getSoldDate(item) : null;
-    const date = saleDate
-      ? saleDate
-      : item.purchaseDate
-        ? new Date(item.purchaseDate)
-        : null;
+    const date = getInventoryReportingDate(item);
 
     if (!date) return true;
 
@@ -146,9 +147,10 @@ function filterByDateRange(items: InventoryItem[], range: DateRange, customMonth
     }
 
     if (preset === "custom") {
-      const matchesMonth = !customMonth || customMonth === "all" || getMonth(date).toString() === customMonth;
-      const matchesYear = !customYear || customYear === "all" || getYear(date).toString() === customYear;
-      return matchesMonth && matchesYear;
+      return matchesCalendarPeriod(date, {
+        month: customMonth && customMonth !== "all" ? Number(customMonth) : null,
+        year: customYear && customYear !== "all" ? Number(customYear) : null,
+      });
     }
 
     return true;
@@ -187,7 +189,7 @@ export default function Analytics() {
   const years = useMemo(() => {
     if (!inventory) return [];
     const dates = inventory
-      .map(i => getSoldDate(i) ?? (i.purchaseDate ? new Date(i.purchaseDate) : null))
+      .map(getInventoryReportingDate)
       .filter((d): d is Date => d !== null);
     const uniqueYears = Array.from(new Set(dates.map(d => getYear(d))));
     return uniqueYears.sort((a, b) => b - a);
@@ -249,7 +251,7 @@ export default function Analytics() {
       "Margin %","ROI %","Sold Platform"
     ].join(",");
     const rows = items.map(item => {
-      const revenue = (item.salePrice || 0);
+      const revenue = getSaleAmount(item) ?? 0;
       const fees = getItemFees(item);
       const { profitCents: profit, marginPercent: margin, roiPercent: roi } =
         calculateWatchFinancials(item, revenue, 0, settings.watch_register_fee, true);
@@ -311,7 +313,7 @@ export default function Analytics() {
     const compareWatchSection = `--- Period: ${compareDateRange.label} ---\n${buildWatchRows(
       cM.soldItems.map(item => {
         const { profitCents: profit, roiPercent: roi } =
-          calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true);
+          calculateWatchFinancials(item, getSaleAmount(item) ?? 0, 0, settings.watch_register_fee, true);
         const soldDate = getSoldDate(item);
         return {
           ...item,
@@ -334,16 +336,17 @@ export default function Analytics() {
     const activeItems = filteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
-    const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
-    const totalCOGS = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const salesSummary = summarizeWatchSales(soldItems, settings.watch_register_fee);
+    const totalRevenue = salesSummary.revenueCents;
+    const totalCOGS = salesSummary.purchaseCostsCents;
     const totalGrossMargin = totalRevenue - totalCOGS;
-    const totalFees = soldItems.reduce((sum, item) => sum + getItemFees(item), 0);
-    const totalNetIncome = totalRevenue - totalCOGS - totalFees;
-    const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
+    const totalFees = salesSummary.watchCostsCents;
+    const totalNetIncome = salesSummary.netProfitCents;
+    const averageMargin = salesSummary.averageMarginPercent;
 
     const profits = soldItems.map((item) => {
       const { profitCents: profit, roiPercent: roi } =
-        calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true);
+          calculateWatchFinancials(item, getSaleAmount(item) ?? 0, 0, settings.watch_register_fee, true);
       const soldDate = getSoldDate(item);
       return {
         ...item,
@@ -374,11 +377,12 @@ export default function Analytics() {
     const activeItems = compareFilteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
-    const totalRevenue = soldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
-    const totalCOGS = soldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-    const totalFees = soldItems.reduce((sum, item) => sum + getItemFees(item), 0);
-    const totalNetIncome = totalRevenue - totalCOGS - totalFees;
-    const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
+    const salesSummary = summarizeWatchSales(soldItems, settings.watch_register_fee);
+    const totalRevenue = salesSummary.revenueCents;
+    const totalCOGS = salesSummary.purchaseCostsCents;
+    const totalFees = salesSummary.watchCostsCents;
+    const totalNetIncome = salesSummary.netProfitCents;
+    const averageMargin = salesSummary.averageMarginPercent;
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
     let daysInPeriod = compareDateRange.daysInPeriod;
@@ -504,7 +508,7 @@ export default function Analytics() {
     if (!brandStats[item.brand]) {
       brandStats[item.brand] = { sold: 0, revenue: 0, profit: 0 };
     }
-    const revenue = item.salePrice || 0;
+    const revenue = getSaleAmount(item) ?? 0;
     const fees = getItemFees(item);
     const profit = revenue - item.purchasePrice - fees;
     brandStats[item.brand].sold += 1;

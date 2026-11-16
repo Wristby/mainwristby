@@ -91,8 +91,10 @@ cleanup stays blocked. No actual backup expiry has been changed by this feature.
 
 ## Installation
 
-Schema additions are non-destructive. Apply `migrations/0008_client_retention.sql`
-to existing PostgreSQL installations, or use the project's usual `npm run db:push`
-schema workflow (also used by the post-merge script). No migration deletes data,
-creates approvals, or schedules cleanup. Existing profiles' update timestamp
-starts at migration time, conservatively delaying first eligibility.
+Schema additions are non-destructive. For the live cPanel database, follow
+`docs/cpanel-database-migrations.md` to verify the applied state and apply only
+the pending SQL migration. `npm run db:push` and the post-merge script are for
+the Replit development database; they do not update or verify cPanel. No
+migration deletes data, creates approvals, or schedules cleanup. Existing
+profiles' update timestamp starts at migration time, conservatively delaying
+first eligibility.

@@ -2,6 +2,12 @@ import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } fro
 import { useInventory } from "@/hooks/use-inventory";
 import { calculateWatchCostBreakdown } from "@shared/watch-financials";
 import { getSoldDate } from "@shared/sold-date";
+import {
+  getSaleAmount,
+  isSoldInCalendarPeriod,
+  matchesCalendarPeriod,
+  summarizeWatchSales,
+} from "@shared/reporting";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +59,7 @@ import {
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertExpenseSchema } from "@shared/schema";
+import { insertExpenseSchema, type InventoryItem } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { format, getMonth, getYear, getDaysInMonth, differenceInDays, startOfYear, endOfYear } from "date-fns";
@@ -212,42 +218,43 @@ export default function Financials() {
       const term = search.toLowerCase();
       const matchesSearch = expense.description.toLowerCase().includes(term);
       const matchesCategory = categoryFilter === "all" || expense.category === categoryFilter;
+      const matchesPeriod = matchesCalendarPeriod(expense.date, {
+        month: monthFilter === "all" ? null : parseInt(monthFilter, 10),
+        year: yearFilter === "all" ? null : parseInt(yearFilter, 10),
+      });
       
-      const expenseDate = new Date(expense.date);
-      const matchesMonth = monthFilter === "all" || getMonth(expenseDate).toString() === monthFilter;
-      const matchesYear = yearFilter === "all" || getYear(expenseDate).toString() === yearFilter;
-      
-      return matchesSearch && matchesCategory && matchesMonth && matchesYear;
+      return matchesSearch && matchesCategory && matchesPeriod;
     });
   }, [expenses, search, categoryFilter, monthFilter, yearFilter]);
 
   const monthlyData = useMemo(() => {
     if (!inventory || !expenses) return [];
     
-    const months: { [key: string]: { revenue: number; expenses: number; cogs: number } } = {};
+    const months: Record<string, { watches: InventoryItem[]; overheadCents: number }> = {};
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     monthNames.forEach(m => {
-      months[m] = { revenue: 0, expenses: 0, cogs: 0 };
+      months[m] = { watches: [], overheadCents: 0 };
     });
 
-    inventory.filter(i => i.status === 'sold' && getSoldDate(i)).forEach(item => {
-      const month = monthNames[getSoldDate(item)!.getMonth()];
-      months[month].revenue += item.salePrice || 0;
-      months[month].cogs += item.purchasePrice;
-      const itemExpenses = calculateWatchCostBreakdown(item, settings.watch_register_fee).otherWatchCostsCents;
-      months[month].expenses += itemExpenses;
+    inventory.forEach(item => {
+      const soldDate = item.status === "sold" ? getSoldDate(item) : null;
+      if (!soldDate) return;
+      months[monthNames[soldDate.getMonth()]].watches.push(item);
     });
 
     expenses.forEach(expense => {
       const month = monthNames[new Date(expense.date).getMonth()];
-      months[month].expenses += expense.amount;
+      months[month].overheadCents += expense.amount;
     });
 
-    return monthNames.map(month => ({
-      month,
-      profit: (months[month].revenue - months[month].cogs - months[month].expenses) / 100,
-    }));
+    return monthNames.map(month => {
+      const totals = summarizeWatchSales(months[month].watches, settings.watch_register_fee);
+      return {
+        month,
+        profit: (totals.netProfitCents - months[month].overheadCents) / 100,
+      };
+    });
   }, [inventory, expenses, settings.watch_register_fee]);
 
   const getCategoryLabel = (category: string) => {
@@ -316,30 +323,22 @@ export default function Financials() {
     // Filter sold items by the selected period.
     // When both filters are "all", include every sold item (even those without a recorded sale date).
     // Only require a date when at least one period filter is active.
-    const filteredSoldItems = inventory.filter(item => {
-      if (item.status !== 'sold') return false;
-      if (monthFilter === "all" && yearFilter === "all") return true;
-      const soldDate = getSoldDate(item);
-      if (!soldDate) return false;
-      const date = soldDate;
-      const matchesMonth = monthFilter === "all" || getMonth(date).toString() === monthFilter;
-      const matchesYear = yearFilter === "all" || getYear(date).toString() === yearFilter;
-      return matchesMonth && matchesYear;
-    });
+    const reportPeriod = {
+      month: monthFilter === "all" ? null : parseInt(monthFilter, 10),
+      year: yearFilter === "all" ? null : parseInt(yearFilter, 10),
+    };
+    const filteredSoldItems = inventory.filter(item => isSoldInCalendarPeriod(item, reportPeriod));
     
     // Filter expenses by the selected period
     const filteredExpensesForPeriod = expenses.filter(expense => {
-      const expenseDate = new Date(expense.date);
-      const matchesMonth = monthFilter === "all" || getMonth(expenseDate).toString() === monthFilter;
-      const matchesYear = yearFilter === "all" || getYear(expenseDate).toString() === yearFilter;
-      return matchesMonth && matchesYear;
+      return matchesCalendarPeriod(expense.date, reportPeriod);
     });
     
     // Calculate filtered net profit
-    const filteredRevenue = filteredSoldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
-    const filteredCogs = filteredSoldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-    const filteredWatchFees = filteredSoldItems.reduce((sum, item) =>
-      sum + calculateWatchCostBreakdown(item, settings.watch_register_fee).otherWatchCostsCents, 0);
+    const salesSummary = summarizeWatchSales(filteredSoldItems, settings.watch_register_fee);
+    const filteredRevenue = salesSummary.revenueCents;
+    const filteredCogs = salesSummary.purchaseCostsCents;
+    const filteredWatchFees = salesSummary.watchCostsCents;
     const filteredExpenseTotal = filteredExpensesForPeriod.reduce((sum, e) => sum + e.amount, 0);
     
     const filteredGrossProfit = filteredRevenue - filteredCogs - filteredWatchFees;
@@ -349,7 +348,7 @@ export default function Financials() {
     const filteredVatAgg = aggregateVat(
       filteredSoldItems.map((item) => {
         return {
-          salePrice: item.salePrice || 0,
+          salePrice: getSaleAmount(item) ?? 0,
           totalCosts: calculateWatchCostBreakdown(item, settings.watch_register_fee).totalCostsCents,
           vatRate: settings.vat_rate,
         };
@@ -383,10 +382,14 @@ export default function Financials() {
       // All time - calculate from earliest to latest sale date or use 365 if no data
       if (filteredSoldItems.length > 0) {
         const dates = filteredSoldItems
-          .map(i => getSoldDate(i)!.getTime())
+          .flatMap(i => {
+            const soldDate = getSoldDate(i);
+            return soldDate ? [soldDate.getTime()] : [];
+          })
           .sort((a, b) => a - b);
-        const earliest = new Date(dates[0]);
-        daysInPeriod = differenceInDays(today, earliest) + 1;
+        daysInPeriod = dates.length > 0
+          ? differenceInDays(today, new Date(dates[0])) + 1
+          : 365;
       } else {
         daysInPeriod = 365;
       }

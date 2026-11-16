@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { calculateWatchCostBreakdown, calculateSaleFinancials } from "./watch-financials";
 import { getSoldDate } from "./sold-date";
+import { getPositiveSaleAmount } from "./reporting";
 
 export const notebookComparisonModeSchema = z.enum([
   "previous-month",
@@ -343,13 +344,6 @@ function median(values: number[]): number | null {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function saleAmount(watch: NotebookWatchInput): number | null {
-  const modern = watch.salePrice ?? 0;
-  const legacy = watch.soldPrice ?? 0;
-  const amount = modern === 0 && legacy !== 0 ? legacy : modern || legacy;
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
-}
-
 function priceChangeStats(watchIds: Set<number>, histories: readonly NotebookPriceInput[]) {
   const grouped = new Map<number, NotebookPriceInput[]>();
   for (const entry of histories) {
@@ -393,7 +387,7 @@ export function calculateNotebookPeriod(
     return month && monthSet.has(month) ? [{ watch, soldAt }] : [];
   });
   const priced = matching.flatMap(({ watch, soldAt }) => {
-    const revenue = saleAmount(watch);
+    const revenue = getPositiveSaleAmount(watch);
     if (revenue == null) return [];
     const costs = calculateWatchCostBreakdown(watch, watchRegisterFeeCents).totalCostsCents;
     const { profitCents: netProfit } = calculateSaleFinancials({

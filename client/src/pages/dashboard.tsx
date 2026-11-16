@@ -2,6 +2,7 @@ import { WatchIntake } from "@/components/watch-intake/watch-intake";
 import { useMemo, useState, useEffect } from "react";
 import { calculateWatchFinancials } from "@shared/watch-financials";
 import { getSoldDate } from "@shared/sold-date";
+import { getSaleAmount } from "@shared/reporting";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -194,11 +195,11 @@ export default function Dashboard() {
   const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
 
   const calcProfit = (item: InventoryItem) => {
-    return calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true).profitCents;
+    return calculateWatchFinancials(item, getSaleAmount(item) ?? 0, 0, settings.watch_register_fee, true).profitCents;
   };
 
   const calcMargin = (item: InventoryItem) => {
-    return calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true).marginPercent;
+    return calculateWatchFinancials(item, getSaleAmount(item) ?? 0, 0, settings.watch_register_fee, true).marginPercent;
   };
 
   const { currentMonthProfit, ytdProfit, monthMargin, ytdMargin, monthSoldCount, ytdSoldCount } = useMemo(() => {

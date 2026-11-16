@@ -33,7 +33,10 @@ API routes are organized by resource (clients, inventory, expenses, dashboard) a
 ### Data Storage
 - **Database**: PostgreSQL (required via DATABASE_URL environment variable)
 - **Schema Location**: `shared/schema.ts` for business entities, `shared/models/auth.ts` for auth tables
-- **Migrations**: Managed via Drizzle Kit (`drizzle-kit push`)
+- **Replit development schema**: Synced via Drizzle Kit (`drizzle-kit push`).
+  This is not the live cPanel upgrade path. Apply reviewed incremental SQL
+  manually to cPanel following `docs/cpanel-database-migrations.md`; application
+  startup does not run migrations.
 
 Core entities:
 - **Clients**: Buyers and dealers with contact info, VIP status, notes

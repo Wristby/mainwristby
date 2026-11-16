@@ -5,11 +5,13 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "tsx script/build.ts",
+    "build": "npm run migrations:check && tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "test": "vitest run --reporter=verbose"
+    "migrations:check": "node scripts/check-cpanel-migrations.mjs",
+    "test:migrations": "node --test scripts/check-cpanel-migrations.test.mjs",
+    "test": "npm run test:migrations && vitest run --reporter=verbose"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

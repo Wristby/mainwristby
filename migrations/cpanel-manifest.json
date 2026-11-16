@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "files": [
+    "0000_naive_blizzard.sql",
+    "0001_faulty_cobalt_man.sql",
+    "0002_soft_scourge.sql",
+    "0003_same_red_ghost.sql",
+    "0004_watch_register_fee_snapshot.sql",
+    "0005_listing_title.sql",
+    "0006_chrono24_fee_rate.sql",
+    "0007_delivered_date.sql",
+    "0008_client_retention.sql",
+    "0009_detach_transaction_parties_on_watch_delete.sql",
+    "0010_archive_inventory.sql",
+    "0011_inventory_price_history.sql",
+    "0012_dealer_notebook.sql",
+    "0013_chrono24_certification_sent.sql",
+    "0013_dealer_notebook_inventory_snapshot.sql",
+    "0014_personal_collection.sql",
+    "0015_client_address_fields.sql",
+    "0016_chrono24_certification_sent_at.sql",
+    "0017_personal_collection_valuations.sql",
+    "0018_watch_warranties.sql"
+  ]
+}

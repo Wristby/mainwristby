@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { calculateWatchFinancials } from "@shared/watch-financials";
 import { getSoldDate, normalizeSoldDateFields } from "@shared/sold-date";
+import { getSaleAmount } from "@shared/reporting";
 import {
   clients, inventory, expenses, inventoryPriceHistory, personalCollectionWatches, personalCollectionValuations, settings, retentionAudit, transactionParties, dealerNotebookEntries,
   type Client, type InsertClient, type UpdateClientRequest,
@@ -342,42 +343,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getInventoryItems(status?: string, includeArchived = false): Promise<(InventoryItem & { seller?: Client })[]> {
-    let items: InventoryItem[];
-    if (status && includeArchived) {
-      items = await db.select().from(inventory).where(eq(inventory.status, status as any)).orderBy(desc(inventory.purchaseDate));
-    } else if (status) {
-      items = await db.select().from(inventory).where(and(
-        eq(inventory.status, status as any),
-        isNull(inventory.archivedAt),
-      )).orderBy(desc(inventory.purchaseDate));
-    } else if (!includeArchived) {
-      items = await db.select().from(inventory).where(isNull(inventory.archivedAt)).orderBy(desc(inventory.purchaseDate));
-    } else {
-      items = await db.select().from(inventory).orderBy(desc(inventory.purchaseDate));
-    }
+    const conditions = [];
+    if (status) conditions.push(eq(inventory.status, status as any));
+    if (!includeArchived) conditions.push(isNull(inventory.archivedAt));
 
-    // Fetch sellers for items that have clientId
-    const result: (InventoryItem & { seller?: Client })[] = [];
-    for (const item of items) {
-      let seller: Client | undefined;
-      if (item.clientId) {
-        seller = await this.getClient(item.clientId);
-      }
-      result.push({ ...item, seller });
-    }
-    return result;
+    const query = db.select({ item: inventory, seller: clients })
+      .from(inventory)
+      .leftJoin(clients, eq(inventory.clientId, clients.id));
+    const rows = await query
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(inventory.purchaseDate));
+
+    return rows.map(({ item, seller }) => ({ ...item, seller: seller ?? undefined }));
   }
 
   async getArchivedInventoryItems(): Promise<(InventoryItem & { seller?: Client })[]> {
-    const items = await db.select().from(inventory)
+    const rows = await db.select({ item: inventory, seller: clients })
+      .from(inventory)
+      .leftJoin(clients, eq(inventory.clientId, clients.id))
       .where(isNotNull(inventory.archivedAt))
       .orderBy(desc(inventory.archivedAt));
-    const result: (InventoryItem & { seller?: Client })[] = [];
-    for (const item of items) {
-      const seller = item.clientId ? await this.getClient(item.clientId) : undefined;
-      result.push({ ...item, seller });
-    }
-    return result;
+    return rows.map(({ item, seller }) => ({ ...item, seller: seller ?? undefined }));
   }
 
   private async setInventoryArchived(id: number, archived: boolean): Promise<InventoryItem> {
@@ -715,19 +701,14 @@ export class DatabaseStorage implements IStorage {
 
   // Expenses
   async getExpenses(): Promise<(Expense & { inventory?: InventoryItem })[]> {
-    const allExpenses = await db.select().from(expenses).orderBy(desc(expenses.date));
-    
-    // Fetch inventory for expenses that have inventoryId
-    const result: (Expense & { inventory?: InventoryItem })[] = [];
-    for (const expense of allExpenses) {
-      let linkedInventory: InventoryItem | undefined;
-      if (expense.inventoryId) {
-        const [item] = await db.select().from(inventory).where(eq(inventory.id, expense.inventoryId));
-        linkedInventory = item;
-      }
-      result.push({ ...expense, inventory: linkedInventory });
-    }
-    return result;
+    const rows = await db.select({ expense: expenses, inventory: inventory })
+      .from(expenses)
+      .leftJoin(inventory, eq(expenses.inventoryId, inventory.id))
+      .orderBy(desc(expenses.date));
+    return rows.map(({ expense, inventory: linkedInventory }) => ({
+      ...expense,
+      inventory: linkedInventory ?? undefined,
+    }));
   }
 
   async getExpense(id: number): Promise<Expense | undefined> {
@@ -761,20 +742,37 @@ export class DatabaseStorage implements IStorage {
   // Stats
   async getDashboardStats(): Promise<DashboardStats> {
     const currentWrFee = await this.getSetting("watch_register_fee") || 600;
-    const allInventory = await db.select().from(inventory);
+    const allInventory = await db.select({
+      status: inventory.status,
+      archivedAt: inventory.archivedAt,
+      purchaseDate: inventory.purchaseDate,
+      soldDate: inventory.soldDate,
+      dateSold: inventory.dateSold,
+      purchasePrice: inventory.purchasePrice,
+      importFee: inventory.importFee,
+      serviceFee: inventory.serviceFee,
+      polishFee: inventory.polishFee,
+      watchRegister: inventory.watchRegister,
+      watchRegisterFeeSnapshot: inventory.watchRegisterFeeSnapshot,
+      platformFees: inventory.platformFees,
+      shippingFee: inventory.shippingFee,
+      insuranceFee: inventory.insuranceFee,
+      salePrice: inventory.salePrice,
+      soldPrice: inventory.soldPrice,
+    }).from(inventory);
     
     const activeInventory = allInventory.filter(i => !i.archivedAt && i.status !== 'sold');
     const soldInventory = allInventory.filter(i => i.status === 'sold');
     
     const totalInventoryValue = activeInventory.reduce((sum, item) => {
       const basePrice = item.purchasePrice || 0;
-      const wrFee = (item as any).watchRegisterFeeSnapshot ?? currentWrFee;
+      const wrFee = item.watchRegisterFeeSnapshot ?? currentWrFee;
       const watchRegisterFee = item.watchRegister ? wrFee : 0;
       return sum + basePrice + watchRegisterFee;
     }, 0);
     
     const totalProfit = soldInventory.reduce((sum, item) => {
-      const sold = item.salePrice || 0;
+      const sold = getSaleAmount(item) ?? 0;
       if (sold === 0) return sum;
 
       return sum + calculateWatchFinancials(item, sold, 0, currentWrFee).profitCents;
