@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "node:crypto";
-import { setupAuth, isAuthenticated } from "./auth";
+import { setupAuth, isAuthenticated, requirePro } from "./auth";
 import { storage, SaleBuyerSaveError, NotebookSnapshotError } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -29,6 +29,7 @@ import { prepareNotebookAnalysis } from "./dealers-notebook";
 import { personalCollectionValuationInputSchema } from "@shared/personal-collection";
 import { DEFAULT_WARRANTY_MONTHS, WARRANTY_TERM_OPTIONS } from "@shared/warranty";
 import { getSoldDate } from "@shared/sold-date";
+import { runWithOwner } from "./tenant";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -189,7 +190,9 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // Setup Auth
-  await setupAuth(app);
+  await setupAuth(app, {
+    onAccountCreated: (userId) => runWithOwner(userId, seedSettings),
+  });
   registerRetentionRoutes(app);
 
   // === API ROUTES ===
@@ -1007,81 +1010,13 @@ Papers/Cards: {{papers}}`;
     }
   });
 
-  // Seed Data & Settings
-  await seedDatabase();
-  await seedSettings();
+  // Provision default preferences separately for every workspace. No demo
+  // watches or shared default business records are inserted.
+  for (const ownerId of await storage.getAccountIds()) {
+    await runWithOwner(ownerId, seedSettings);
+  }
 
   return httpServer;
-}
-
-async function seedDatabase() {
-  const existingClients = await storage.getClients();
-  if (existingClients.length === 0) {
-    const dealer = await storage.createClient({
-      name: "Luxury Watch Supply Co.",
-      email: "dealer@supply.co",
-      type: "dealer",
-      notes: "Trusted supplier for Rolex/Patek."
-    });
-    
-    const client = await storage.createClient({
-      name: "John Smith",
-      email: "john@example.com",
-      type: "client",
-      notes: "VIP Collector. Likes vintage Omega."
-    });
-
-    // Rolex Submariner (In Stock)
-    await storage.createInventoryItem({
-      brand: "Rolex",
-      model: "Submariner",
-      referenceNumber: "124060",
-      purchasePrice: 900000, // $9,000.00
-      targetSellPrice: 1150000, // $11,500.00
-      purchaseDate: new Date("2025-01-10"),
-      condition: "New",
-      status: "in_stock",
-      box: true,
-      papers: true,
-      clientId: dealer.id,
-      notes: "Full set, stickers on."
-    });
-
-    // Patek Nautilus (Sold)
-    await storage.createInventoryItem({
-      brand: "Patek Philippe",
-      model: "Nautilus",
-      referenceNumber: "5711/1A",
-      purchasePrice: 9000000, // $90,000.00
-      targetSellPrice: 11500000, 
-      soldPrice: 11000000, // $110,000.00
-      purchaseDate: new Date("2024-11-01"),
-      soldDate: new Date("2024-12-15"),
-      condition: "Mint",
-      status: "sold",
-      box: true,
-      papers: true,
-      clientId: dealer.id,
-      buyerId: client.id,
-      notes: "Quick flip."
-    });
-
-    // Omega Speedmaster (Servicing)
-    await storage.createInventoryItem({
-      brand: "Omega",
-      model: "Speedmaster Professional",
-      referenceNumber: "311.30.42.30.01.005",
-      purchasePrice: 400000, // $4,000.00
-      targetSellPrice: 550000, // $5,500.00
-      purchaseDate: new Date("2025-01-20"),
-      condition: "Used",
-      status: "servicing",
-      box: true,
-      papers: false,
-      clientId: client.id,
-      notes: "Needs movement service."
-    });
-  }
 }
 
 const DEFAULT_MOVEMENT_PROMPT = `You are a horological reference database. Research the movement for watch reference {{referenceNumber}} by {{brand}}.

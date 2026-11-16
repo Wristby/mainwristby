@@ -1,9 +1,10 @@
 import type { Express } from "express";
-import { asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { isAuthenticated } from "./auth";
 import { clients, inventory } from "@shared/schema";
+import { requireOwnerId } from "./tenant";
 import {
   buyerReviewPath, buyerReviewSchema, buyerSyncPath, planLegacyBuyers,
   type BuyerReviewInput, type BuyerSyncReport,
@@ -14,28 +15,39 @@ class BuyerBackfillError extends Error {
 }
 
 export async function syncHistoricalBuyers(): Promise<BuyerSyncReport> {
+  const ownerId = requireOwnerId();
   return db.transaction(async tx => {
     // Same ordering as a watch edit: lock watch rows before the shared contact lock.
     // Concurrent visits/retries cannot create two profiles for a single watch.
     const watches = await tx.select({
       id: inventory.id, brand: inventory.brand, model: inventory.model,
       referenceNumber: inventory.referenceNumber, soldTo: inventory.soldTo, buyerId: inventory.buyerId,
-    }).from(inventory).where(isNull(inventory.buyerId)).orderBy(asc(inventory.id)).for("update");
+    }).from(inventory).where(and(
+      eq(inventory.ownerId, ownerId),
+      isNull(inventory.buyerId),
+    )).orderBy(asc(inventory.id)).for("update");
     await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
-    const contacts = await tx.select().from(clients);
+    const contacts = await tx.select().from(clients).where(eq(clients.ownerId, ownerId));
     const { ready, pending } = planLegacyBuyers(watches, contacts);
     for (const { watch, name } of ready) {
-      const [client] = await tx.insert(clients).values({ name, type: "client" }).returning();
+      const [client] = await tx.insert(clients).values({ ownerId, name, type: "client" }).returning();
       // Keep the historical name snapshot, seller, fees, and all other watch data intact.
-      await tx.update(inventory).set({ buyerId: client.id }).where(eq(inventory.id, watch.id));
+      await tx.update(inventory).set({ buyerId: client.id }).where(and(
+        eq(inventory.ownerId, ownerId),
+        eq(inventory.id, watch.id),
+      ));
     }
     return { created: ready.length, pending };
   });
 }
 
 export async function resolveHistoricalBuyer(input: BuyerReviewInput) {
+  const ownerId = requireOwnerId();
   return db.transaction(async tx => {
-    const [watch] = await tx.select().from(inventory).where(eq(inventory.id, input.watchId)).for("update");
+    const [watch] = await tx.select().from(inventory).where(and(
+      eq(inventory.ownerId, ownerId),
+      eq(inventory.id, input.watchId),
+    )).for("update");
     if (!watch) throw new BuyerBackfillError("This watch no longer exists.", 404);
     if (watch.buyerId != null || watch.soldTo?.trim() !== input.expectedName) {
       throw new BuyerBackfillError("The watch buyer has changed. Refresh the review list before linking.", 409);
@@ -43,14 +55,20 @@ export async function resolveHistoricalBuyer(input: BuyerReviewInput) {
     await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
     let clientId: number;
     if (input.action === "link") {
-      const [client] = await tx.select().from(clients).where(eq(clients.id, input.clientId));
+      const [client] = await tx.select().from(clients).where(and(
+        eq(clients.ownerId, ownerId),
+        eq(clients.id, input.clientId),
+      ));
       if (!client) throw new BuyerBackfillError("This Client no longer exists. Choose another Client.", 409);
       clientId = client.id;
     } else {
-      const [client] = await tx.insert(clients).values({ name: input.expectedName, type: "client" }).returning();
+      const [client] = await tx.insert(clients).values({ ownerId, name: input.expectedName, type: "client" }).returning();
       clientId = client.id;
     }
-    await tx.update(inventory).set({ buyerId: clientId }).where(eq(inventory.id, watch.id));
+    await tx.update(inventory).set({ buyerId: clientId }).where(and(
+      eq(inventory.ownerId, ownerId),
+      eq(inventory.id, watch.id),
+    ));
     return { watchId: watch.id, clientId };
   });
 }

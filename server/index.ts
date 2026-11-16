@@ -6,6 +6,7 @@ import { createServer } from "http";
 import { requestMetadataLogger, safeErrorHandler, securityHeaders } from "./security";
 import { startNotebookSnapshotScheduler } from "./notebook-snapshot-scheduler";
 import { storage } from "./storage";
+import { runWithOwner } from "./tenant";
 
 const app = express();
 const httpServer = createServer(app);
@@ -44,7 +45,11 @@ app.use(requestMetadataLogger(log));
 (async () => {
   await registerRoutes(httpServer, app);
   const stopSnapshotScheduler = startNotebookSnapshotScheduler(
-    monthKey => storage.captureDealerNotebookInventorySnapshot(monthKey),
+    async monthKey => {
+      for (const ownerId of await storage.getAccountIds()) {
+        await runWithOwner(ownerId, () => storage.captureDealerNotebookInventorySnapshot(monthKey));
+      }
+    },
   );
   httpServer.once("close", stopSnapshotScheduler);
 

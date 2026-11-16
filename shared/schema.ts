@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb, index, uniqueIndex, primaryKey, foreignKey } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -21,14 +21,16 @@ export const loginAttempts = pgTable("login_attempts", {
 
 // === SETTINGS ===
 export const settings = pgTable("settings", {
-  key: text("key").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
   value: jsonb("value").notNull(),
-});
+}, (table) => [primaryKey({ columns: [table.ownerId, table.key] })]);
 
 export type Setting = typeof settings.$inferSelect;
 
 export const dealerNotebookEntries = pgTable("dealer_notebook_entries", {
-  monthKey: varchar("month_key", { length: 7 }).primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  monthKey: varchar("month_key", { length: 7 }).notNull(),
   comparisonMode: text("comparison_mode", {
     enum: ["previous-month", "same-month-last-year", "prior-three-months"],
   }).$type<NotebookComparisonMode>().notNull().default("previous-month"),
@@ -38,13 +40,14 @@ export const dealerNotebookEntries = pgTable("dealer_notebook_entries", {
   actions: jsonb("actions").$type<NotebookAction[]>().notNull().default([]),
   generatedAt: timestamp("generated_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [primaryKey({ columns: [table.ownerId, table.monthKey] })]);
 export type DealerNotebookEntry = typeof dealerNotebookEntries.$inferSelect;
 
 // Holds apply to a profile or a watch (including its financial/expense records).
 // recordId intentionally has no FK: a hold must never cascade away.
 export const retentionHolds = pgTable("retention_holds", {
   id: serial("id").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   scope: text("scope", { enum: ["client", "inventory"] }).notNull(),
   recordId: integer("record_id").notNull(),
   reason: text("reason").notNull(),
@@ -57,7 +60,8 @@ export const retentionHolds = pgTable("retention_holds", {
 // Populated on profile cleanup without copying contact details or CRM notes.
 export const transactionParties = pgTable("transaction_parties", {
   id: serial("id").primaryKey(),
-  inventoryId: integer("inventory_id").references(() => inventory.id),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  inventoryId: integer("inventory_id"),
   role: text("role", { enum: ["buyer", "seller"] }).notNull(),
   name: text("name").notNull(),
   retainedAt: timestamp("retained_at").defaultNow().notNull(),
@@ -66,6 +70,7 @@ export const transactionParties = pgTable("transaction_parties", {
 // No names, contacts, hold reasons or approval references in the audit trail.
 export const retentionAudit = pgTable("retention_audit", {
   id: serial("id").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   action: text("action").notNull(),
   recordId: integer("record_id"),
   revision: text("revision"),
@@ -74,14 +79,16 @@ export const retentionAudit = pgTable("retention_audit", {
 
 // Append-only evidence of the exact schedule in effect for each audit revision.
 export const retentionPolicies = pgTable("retention_policies", {
-  revision: text("revision").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  revision: text("revision").notNull(),
   schedule: jsonb("schedule").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [primaryKey({ columns: [table.ownerId, table.revision] })]);
 
 // === CLIENTS ===
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   email: text("email"),
   phone: text("phone"),
@@ -99,10 +106,13 @@ export const clients = pgTable("clients", {
   createdAt: timestamp("created_at").defaultNow(),
   profileUpdatedAt: timestamp("profile_updated_at").defaultNow().notNull(),
   profileClearedAt: timestamp("profile_cleared_at"),
-});
+}, (table) => [
+  index("clients_owner_created_idx").on(table.ownerId, table.createdAt),
+  uniqueIndex("clients_owner_id_idx").on(table.ownerId, table.id),
+]);
 
 export const insertClientSchema = createInsertSchema(clients).omit({
-  id: true, createdAt: true, profileUpdatedAt: true, profileClearedAt: true,
+  id: true, ownerId: true, createdAt: true, profileUpdatedAt: true, profileClearedAt: true,
 });
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
@@ -110,6 +120,7 @@ export type InsertClient = z.infer<typeof insertClientSchema>;
 // === INVENTORY (Watches) ===
 export const inventory = pgTable("inventory", {
   id: serial("id").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   brand: text("brand").notNull(),
   model: text("model").notNull(),
   referenceNumber: text("reference_number").notNull(),
@@ -209,17 +220,39 @@ export const inventory = pgTable("inventory", {
   creditNotes: text("credit_notes"),
 
   // Relations
-  clientId: integer("client_id").references(() => clients.id),
-  buyerId: integer("buyer_id").references(() => clients.id),
-});
+  clientId: integer("client_id"),
+  buyerId: integer("buyer_id"),
+}, (table) => [
+  index("inventory_owner_status_idx").on(table.ownerId, table.status, table.archivedAt),
+  index("inventory_owner_purchase_date_idx").on(table.ownerId, table.purchaseDate),
+  uniqueIndex("inventory_owner_id_idx").on(table.ownerId, table.id),
+  foreignKey({
+    columns: [table.ownerId, table.clientId],
+    foreignColumns: [clients.ownerId, clients.id],
+    name: "inventory_owner_seller_fk",
+  }),
+  foreignKey({
+    columns: [table.ownerId, table.buyerId],
+    foreignColumns: [clients.ownerId, clients.id],
+    name: "inventory_owner_buyer_fk",
+  }),
+]);
 
 export const inventoryPriceHistory = pgTable("inventory_price_history", {
   id: serial("id").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   // Kept nullable so removing a watch does not remove its saved price history.
-  inventoryId: integer("inventory_id").references(() => inventory.id),
+  inventoryId: integer("inventory_id"),
   listPrice: integer("list_price").notNull(),
   recordedAt: timestamp("recorded_at").defaultNow().notNull(),
-}, (table) => [index("inventory_price_history_watch_date_idx").on(table.inventoryId, table.recordedAt)]);
+}, (table) => [
+  index("inventory_price_history_watch_date_idx").on(table.ownerId, table.inventoryId, table.recordedAt),
+  foreignKey({
+    columns: [table.ownerId, table.inventoryId],
+    foreignColumns: [inventory.ownerId, inventory.id],
+    name: "inventory_price_history_owner_inventory_fk",
+  }),
+]);
 
 export type PersonalCollectionFee = {
   label: string;
@@ -267,18 +300,25 @@ export const personalCollectionWatches = pgTable("personal_collection_watches", 
 }, (table) => [
   index("personal_collection_owner_idx").on(table.ownerId),
   index("personal_collection_owner_bought_idx").on(table.ownerId, table.dateBought),
+  uniqueIndex("personal_collection_owner_id_idx").on(table.ownerId, table.id),
 ]);
 
 export const personalCollectionValuations = pgTable("personal_collection_valuations", {
   id: serial("id").primaryKey(),
-  watchId: integer("watch_id").notNull().references(() => personalCollectionWatches.id, { onDelete: "cascade" }),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  watchId: integer("watch_id").notNull(),
   valuationDate: date("valuation_date", { mode: "string" }).notNull(),
   estimatedValue: integer("estimated_value").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("personal_collection_valuation_watch_date_idx")
-    .on(table.watchId, table.valuationDate.desc(), table.createdAt.desc()),
+    .on(table.ownerId, table.watchId, table.valuationDate.desc(), table.createdAt.desc()),
+  foreignKey({
+    columns: [table.ownerId, table.watchId],
+    foreignColumns: [personalCollectionWatches.ownerId, personalCollectionWatches.id],
+    name: "personal_collection_valuation_owner_watch_fk",
+  }),
 ]);
 
 export const insertPersonalCollectionWatchSchema = createInsertSchema(personalCollectionWatches).omit({
@@ -291,6 +331,7 @@ export type InsertPersonalCollectionValuation = typeof personalCollectionValuati
 
 export const insertInventorySchema = createInsertSchema(inventory).omit({
   id: true,
+  ownerId: true,
   archivedAt: true,
   chrono24CertificationSentAt: true,
 });
@@ -301,15 +342,23 @@ export type InventoryPriceHistory = typeof inventoryPriceHistory.$inferSelect;
 // === EXPENSES ===
 export const expenses = pgTable("expenses", {
   id: serial("id").primaryKey(),
-  inventoryId: integer("inventory_id").references(() => inventory.id),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  inventoryId: integer("inventory_id"),
   description: text("description").notNull(),
   amount: integer("amount").notNull(), // cents
   date: timestamp("date").defaultNow().notNull(),
   category: text("category", { enum: ["marketing", "rent_storage", "subscriptions", "tools", "insurance", "service", "shipping", "parts", "platform_fees", "other"] }).default("other").notNull(),
   isRecurring: boolean("is_recurring").default(false).notNull(),
-});
+}, (table) => [
+  index("expenses_owner_date_idx").on(table.ownerId, table.date),
+  foreignKey({
+    columns: [table.ownerId, table.inventoryId],
+    foreignColumns: [inventory.ownerId, inventory.id],
+    name: "expenses_owner_inventory_fk",
+  }),
+]);
 
-export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true });
+export const insertExpenseSchema = createInsertSchema(expenses).omit({ id: true, ownerId: true });
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 
@@ -321,13 +370,13 @@ export const clientsRelations = relations(clients, ({ many }) => ({
 
 export const inventoryRelations = relations(inventory, ({ one, many }) => ({
   seller: one(clients, {
-    fields: [inventory.clientId],
-    references: [clients.id],
+    fields: [inventory.ownerId, inventory.clientId],
+    references: [clients.ownerId, clients.id],
     relationName: "seller",
   }),
   buyer: one(clients, {
-    fields: [inventory.buyerId],
-    references: [clients.id],
+    fields: [inventory.ownerId, inventory.buyerId],
+    references: [clients.ownerId, clients.id],
     relationName: "buyer",
   }),
   expenses: many(expenses),
@@ -336,15 +385,15 @@ export const inventoryRelations = relations(inventory, ({ one, many }) => ({
 
 export const inventoryPriceHistoryRelations = relations(inventoryPriceHistory, ({ one }) => ({
   inventory: one(inventory, {
-    fields: [inventoryPriceHistory.inventoryId],
-    references: [inventory.id],
+    fields: [inventoryPriceHistory.ownerId, inventoryPriceHistory.inventoryId],
+    references: [inventory.ownerId, inventory.id],
   }),
 }));
 
 export const expensesRelations = relations(expenses, ({ one }) => ({
   inventory: one(inventory, {
-    fields: [expenses.inventoryId],
-    references: [inventory.id],
+    fields: [expenses.ownerId, expenses.inventoryId],
+    references: [inventory.ownerId, inventory.id],
   }),
 }));
 

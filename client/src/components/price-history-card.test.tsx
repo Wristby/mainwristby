@@ -5,12 +5,14 @@ import type { InventoryPriceHistory } from "@shared/schema";
 
 const baseline: InventoryPriceHistory = {
   id: 1,
+  ownerId: "test-owner",
   inventoryId: 37,
   listPrice: 1_500_000,
   recordedAt: new Date("2026-01-01T12:00:00Z"),
 };
 const reduced: InventoryPriceHistory = {
   id: 2,
+  ownerId: "test-owner",
   inventoryId: 37,
   listPrice: 1_425_000,
   recordedAt: new Date("2026-02-01T12:00:00Z"),

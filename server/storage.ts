@@ -4,6 +4,7 @@ import { getSoldDate, normalizeSoldDateFields } from "@shared/sold-date";
 import { getSaleAmount } from "@shared/reporting";
 import {
   clients, inventory, expenses, inventoryPriceHistory, personalCollectionWatches, personalCollectionValuations, settings, retentionAudit, transactionParties, dealerNotebookEntries,
+  users,
   type Client, type InsertClient, type UpdateClientRequest,
   type InventoryItem, type InsertInventory, type UpdateInventoryRequest, type InventoryPriceHistory,
   type Expense, type InsertExpense, type DealerNotebookEntry,
@@ -16,6 +17,7 @@ import { matchingBuyerContact, sameBuyerContact, type SaleBuyerInput } from "@sh
 import { getMatchingSerialFields, normalizeWatchSerial } from "@shared/serial-match";
 import { shouldRecordListedPrice } from "@shared/price-history";
 import { RetentionError } from "./retention";
+import { requireOwnerId } from "./tenant";
 import { retentionKey } from "@shared/retention";
 import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
 import {
@@ -40,27 +42,91 @@ export class NotebookSnapshotError extends Error {
 
 type ExpenseExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 type BuyerExecutor = ExpenseExecutor & Pick<Parameters<Parameters<typeof db.transaction>[0]>[0], "execute">;
+type AccountExecutor = ExpenseExecutor & Pick<Parameters<Parameters<typeof db.transaction>[0]>[0], "execute">;
 
 async function resolveSaleBuyer(connection: BuyerExecutor, buyer: SaleBuyerInput, currentBuyerId?: number | null) {
+  const ownerId = requireOwnerId();
   if (buyer.mode === "none") return { buyerId: null, soldTo: null };
   if (buyer.mode === "existing") {
-    const [client] = await connection.select().from(clients).where(eq(clients.id, buyer.clientId));
+    const [client] = await connection.select().from(clients).where(and(
+      eq(clients.ownerId, ownerId),
+      eq(clients.id, buyer.clientId),
+    ));
     if (!client) throw new SaleBuyerSaveError("This client no longer exists. Choose another client.", 400);
     return { buyerId: client.id, soldTo: client.name };
   }
   // Share the lock across creation and edits; names alone are never a match.
   await connection.execute(sql`select pg_advisory_xact_lock(73284077)`);
-  const contacts = await connection.select().from(clients);
+  const contacts = await connection.select().from(clients).where(eq(clients.ownerId, ownerId));
   const current = contacts.find(client => client.id === currentBuyerId);
   if (current && sameBuyerContact(current, buyer)) return { buyerId: current.id, soldTo: current.name };
   if (contacts.some(client => matchingBuyerContact(client, buyer))) {
     throw new SaleBuyerSaveError("A client with this email or phone already exists. Choose them using Existing client.", 409);
   }
+  await assertFreePlanClientCapacity(connection, ownerId);
   const [client] = await connection.insert(clients).values({
+    ownerId,
     name: buyer.name, email: buyer.email || null, phone: buyer.phone || null,
     country: buyer.country || null, type: "client",
   }).returning();
   return { buyerId: client.id, soldTo: client.name };
+}
+
+async function assertFreePlanClientCapacity(connection: AccountExecutor, ownerId: string): Promise<void> {
+  await connection.execute(sql`select pg_advisory_xact_lock(hashtext(${ownerId}), 73284089)`);
+  const [account] = await connection.select({
+    accountRole: users.accountRole,
+    subscriptionStatus: users.subscriptionStatus,
+  }).from(users).where(eq(users.id, ownerId));
+  if (!account) throw new SaleBuyerSaveError("Workspace not found.", 404);
+  if (account.accountRole === "owner" || ["active", "trialing"].includes(account.subscriptionStatus)) return;
+  const existingClients = await connection.select({ id: clients.id }).from(clients)
+    .where(eq(clients.ownerId, ownerId)).limit(25);
+  if (existingClients.length >= 25) {
+    throw new SaleBuyerSaveError("The Free plan includes up to 25 clients. Upgrade to add another client.", 402);
+  }
+}
+
+async function assertFreePlanInventoryCapacity(connection: AccountExecutor, ownerId: string): Promise<void> {
+  await connection.execute(sql`select pg_advisory_xact_lock(hashtext(${ownerId}), 73284090)`);
+  const [account] = await connection.select({
+    accountRole: users.accountRole,
+    subscriptionStatus: users.subscriptionStatus,
+  }).from(users).where(eq(users.id, ownerId));
+  if (!account) throw new SaleBuyerSaveError("Workspace not found.", 404);
+  if (account.accountRole === "owner" || ["active", "trialing"].includes(account.subscriptionStatus)) return;
+  const activeWatches = await connection.select({ id: inventory.id }).from(inventory).where(and(
+    eq(inventory.ownerId, ownerId),
+    isNull(inventory.archivedAt),
+    ne(inventory.status, "sold"),
+  )).limit(10);
+  if (activeWatches.length >= 10) {
+    throw new SaleBuyerSaveError("The Free plan includes up to 10 active watches. Upgrade to add another watch.", 402);
+  }
+}
+
+async function assertOwnerClients(
+  connection: ExpenseExecutor,
+  ownerId: string,
+  clientIds: Array<number | null | undefined>,
+): Promise<void> {
+  const requested = Array.from(new Set(clientIds.filter((id): id is number => Number.isInteger(id))));
+  if (!requested.length) return;
+  const matches = await connection.select({ id: clients.id }).from(clients).where(and(
+    eq(clients.ownerId, ownerId),
+    inArray(clients.id, requested),
+  ));
+  if (matches.length !== requested.length) {
+    throw new SaleBuyerSaveError("Choose clients from your own workspace.", 400);
+  }
+}
+
+function assertCurrentOwner(ownerId: string): string {
+  const currentOwnerId = requireOwnerId();
+  if (currentOwnerId !== ownerId) {
+    throw new Error("Workspace data access requires the authenticated owner.");
+  }
+  return currentOwnerId;
 }
 
 // Fee types that should be synced to expenses
@@ -124,6 +190,7 @@ export interface IStorage {
 
   // Dealer's Notebook
   getNotebookInventoryData(): Promise<NotebookWatchInput[]>;
+  getAccountIds(): Promise<string[]>;
   getNotebookPriceHistory(inventoryIds: number[]): Promise<NotebookPriceInput[]>;
   getDealerNotebookEntry(monthKey: string): Promise<DealerNotebookEntry | undefined>;
   captureDealerNotebookInventorySnapshot(monthKey: string): Promise<NotebookInventorySnapshot>;
@@ -141,7 +208,38 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   constructor(private readonly snapshotNow: () => Date = () => new Date()) {}
 
+  async getAccountIds(): Promise<string[]> {
+    const rows = await db.select({ id: users.id }).from(users);
+    return rows.map((row) => row.id);
+  }
+
+  async getWorkspaceAccess() {
+    const ownerId = requireOwnerId();
+    const [account] = await db.select({
+      accountRole: users.accountRole,
+      subscriptionStatus: users.subscriptionStatus,
+    }).from(users).where(eq(users.id, ownerId));
+    if (!account) throw new Error("Workspace not found.");
+    const activeWatches = await db.select({ id: inventory.id }).from(inventory).where(and(
+      eq(inventory.ownerId, ownerId),
+      isNull(inventory.archivedAt),
+      ne(inventory.status, "sold"),
+    ));
+    const clientsList = await db.select({ id: clients.id }).from(clients).where(eq(clients.ownerId, ownerId));
+    const isPro = account.accountRole === "owner" ||
+      ["active", "trialing"].includes(account.subscriptionStatus);
+    return {
+      isPro,
+      plan: isPro ? "pro" as const : "free" as const,
+      activeWatchCount: activeWatches.length,
+      clientCount: clientsList.length,
+      limits: isPro ? null : { activeWatches: 10, clients: 25 },
+      aiEnabled: isPro,
+    };
+  }
+
   async getNotebookInventoryData(): Promise<NotebookWatchInput[]> {
+    const ownerId = requireOwnerId();
     return db.select({
       id: inventory.id,
       brand: inventory.brand,
@@ -166,31 +264,43 @@ export class DatabaseStorage implements IStorage {
       listPrice: inventory.listPrice,
       box: inventory.box,
       papers: inventory.papers,
-    }).from(inventory);
+    }).from(inventory).where(eq(inventory.ownerId, ownerId));
   }
 
   async getNotebookPriceHistory(inventoryIds: number[]): Promise<NotebookPriceInput[]> {
+    const ownerId = requireOwnerId();
     if (!inventoryIds.length) return [];
     return db.select({
       inventoryId: inventoryPriceHistory.inventoryId,
       listPrice: inventoryPriceHistory.listPrice,
       recordedAt: inventoryPriceHistory.recordedAt,
     }).from(inventoryPriceHistory)
-      .where(inArray(inventoryPriceHistory.inventoryId, inventoryIds));
+      .where(and(
+        eq(inventoryPriceHistory.ownerId, ownerId),
+        inArray(inventoryPriceHistory.inventoryId, inventoryIds),
+      ));
   }
 
   async getDealerNotebookEntry(monthKey: string): Promise<DealerNotebookEntry | undefined> {
+    const ownerId = requireOwnerId();
     const [entry] = await db.select().from(dealerNotebookEntries)
-      .where(eq(dealerNotebookEntries.monthKey, monthKey));
+      .where(and(
+        eq(dealerNotebookEntries.ownerId, ownerId),
+        eq(dealerNotebookEntries.monthKey, monthKey),
+      ));
     return entry;
   }
 
   async captureDealerNotebookInventorySnapshot(monthKey: string): Promise<NotebookInventorySnapshot> {
+    const ownerId = requireOwnerId();
     return db.transaction(async (tx) => {
       // A single shared lock serializes manual/automatic captures across instances.
       await tx.execute(sql`select pg_advisory_xact_lock(73284078)`);
       const [existing] = await tx.select().from(dealerNotebookEntries)
-        .where(eq(dealerNotebookEntries.monthKey, monthKey));
+        .where(and(
+          eq(dealerNotebookEntries.ownerId, ownerId),
+          eq(dealerNotebookEntries.monthKey, monthKey),
+        ));
       if (existing?.inventorySnapshot) {
         return notebookInventorySnapshotSchema.parse(existing.inventorySnapshot);
       }
@@ -207,9 +317,9 @@ export class DatabaseStorage implements IStorage {
       if (!canCaptureNotebookInventory(monthKey, now)) {
         throw new NotebookSnapshotError("Month-end capture was missed. No historical inventory was fabricated.", 409);
       }
-      const records = await tx.select().from(inventory);
+      const records = await tx.select().from(inventory).where(eq(inventory.ownerId, ownerId));
       const [feeSetting] = await tx.select().from(settings)
-        .where(eq(settings.key, "watch_register_fee"));
+        .where(and(eq(settings.ownerId, ownerId), eq(settings.key, "watch_register_fee")));
       const fee = Number(feeSetting?.value ?? 600);
       const snapshot = notebookInventorySnapshotSchema.parse(calculateNotebookInventorySnapshot(
         records,
@@ -218,23 +328,27 @@ export class DatabaseStorage implements IStorage {
         now,
       ));
       await tx.insert(dealerNotebookEntries)
-        .values({ monthKey, inventorySnapshot: snapshot })
+        .values({ ownerId, monthKey, inventorySnapshot: snapshot })
         .onConflictDoUpdate({
-          target: dealerNotebookEntries.monthKey,
+          target: [dealerNotebookEntries.ownerId, dealerNotebookEntries.monthKey],
           set: { inventorySnapshot: snapshot },
           setWhere: isNull(dealerNotebookEntries.inventorySnapshot),
         });
       const [saved] = await tx.select().from(dealerNotebookEntries)
-        .where(eq(dealerNotebookEntries.monthKey, monthKey));
+        .where(and(
+          eq(dealerNotebookEntries.ownerId, ownerId),
+          eq(dealerNotebookEntries.monthKey, monthKey),
+        ));
       return notebookInventorySnapshotSchema.parse(saved.inventorySnapshot);
     });
   }
 
   async saveDealerNotebookContext(monthKey: string, contextNote: string): Promise<DealerNotebookEntry> {
+    const ownerId = requireOwnerId();
     const [entry] = await db.insert(dealerNotebookEntries)
-      .values({ monthKey, contextNote })
+      .values({ ownerId, monthKey, contextNote })
       .onConflictDoUpdate({
-        target: dealerNotebookEntries.monthKey,
+        target: [dealerNotebookEntries.ownerId, dealerNotebookEntries.monthKey],
         set: { contextNote, updatedAt: new Date() },
       })
       .returning();
@@ -242,10 +356,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async saveDealerNotebookActions(monthKey: string, actions: NotebookAction[]): Promise<DealerNotebookEntry> {
+    const ownerId = requireOwnerId();
     const [entry] = await db.insert(dealerNotebookEntries)
-      .values({ monthKey, actions })
+      .values({ ownerId, monthKey, actions })
       .onConflictDoUpdate({
-        target: dealerNotebookEntries.monthKey,
+        target: [dealerNotebookEntries.ownerId, dealerNotebookEntries.monthKey],
         set: { actions, updatedAt: new Date() },
       })
       .returning();
@@ -259,10 +374,11 @@ export class DatabaseStorage implements IStorage {
     report: NotebookReport,
     actions: NotebookAction[],
   ): Promise<DealerNotebookEntry> {
+    const ownerId = requireOwnerId();
     const [entry] = await db.insert(dealerNotebookEntries)
-      .values({ monthKey, comparisonMode, contextNote, report, actions, generatedAt: new Date() })
+      .values({ ownerId, monthKey, comparisonMode, contextNote, report, actions, generatedAt: new Date() })
       .onConflictDoUpdate({
-        target: dealerNotebookEntries.monthKey,
+        target: [dealerNotebookEntries.ownerId, dealerNotebookEntries.monthKey],
         set: { comparisonMode, contextNote, report, actions, generatedAt: new Date(), updatedAt: new Date() },
       })
       .returning();
@@ -271,47 +387,58 @@ export class DatabaseStorage implements IStorage {
 
   // Clients
   async getClients(): Promise<Client[]> {
-    return await db.select().from(clients).orderBy(desc(clients.createdAt));
+    const ownerId = requireOwnerId();
+    return await db.select().from(clients).where(eq(clients.ownerId, ownerId)).orderBy(desc(clients.createdAt));
   }
 
   async getClient(id: number): Promise<Client | undefined> {
-    const [client] = await db.select().from(clients).where(eq(clients.id, id));
+    const ownerId = requireOwnerId();
+    const [client] = await db.select().from(clients).where(and(eq(clients.ownerId, ownerId), eq(clients.id, id)));
     return client;
   }
 
   async createClient(insertClient: InsertClient): Promise<Client> {
+    const ownerId = requireOwnerId();
     return db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
-      const [client] = await tx.insert(clients).values(insertClient).returning();
+      await assertFreePlanClientCapacity(tx, ownerId);
+      const [client] = await tx.insert(clients).values({ ...insertClient, ownerId }).returning();
       return client;
     });
   }
 
   async updateClient(id: number, updates: UpdateClientRequest): Promise<Client> {
+    const ownerId = requireOwnerId();
     return db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
       const [client] = await tx.update(clients).set({
         ...updates, profileUpdatedAt: new Date(), profileClearedAt: null,
-      }).where(eq(clients.id, id)).returning();
+      }).where(and(eq(clients.ownerId, ownerId), eq(clients.id, id))).returning();
+      if (!client) throw new RetentionError("Client not found.", 404);
       return client;
     });
   }
 
   async deleteClient(id: number): Promise<void> {
+    const ownerId = requireOwnerId();
     await db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
-      const [client] = await tx.select({ id: clients.id }).from(clients).where(eq(clients.id, id));
+      const [client] = await tx.select({ id: clients.id }).from(clients).where(and(
+        eq(clients.ownerId, ownerId),
+        eq(clients.id, id),
+      ));
       if (!client) throw new RetentionError("Client not found.", 404);
 
       // Preserve watches and transaction details; only clear their links to this profile.
-      await tx.update(inventory).set({ clientId: null }).where(eq(inventory.clientId, id));
-      await tx.update(inventory).set({ buyerId: null }).where(eq(inventory.buyerId, id));
-      await tx.delete(clients).where(eq(clients.id, id));
+      await tx.update(inventory).set({ clientId: null }).where(and(eq(inventory.ownerId, ownerId), eq(inventory.clientId, id)));
+      await tx.update(inventory).set({ buyerId: null }).where(and(eq(inventory.ownerId, ownerId), eq(inventory.buyerId, id)));
+      await tx.delete(clients).where(and(eq(clients.ownerId, ownerId), eq(clients.id, id)));
     });
   }
 
   // Inventory
   async findInventorySerialMatches(serials: unknown[], excludeId?: number) {
+    const ownerId = requireOwnerId();
     const normalizedSerials = Array.from(new Set(serials.map(normalizeWatchSerial).filter(Boolean)));
     if (!normalizedSerials.length) return [];
 
@@ -333,7 +460,9 @@ export class DatabaseStorage implements IStorage {
       soldDate: inventory.soldDate,
       archivedAt: inventory.archivedAt,
     }).from(inventory).where(
-      excludeId == null ? serialCondition : and(serialCondition, ne(inventory.id, excludeId)),
+      excludeId == null
+        ? and(eq(inventory.ownerId, ownerId), serialCondition)
+        : and(eq(inventory.ownerId, ownerId), serialCondition, ne(inventory.id, excludeId)),
     ).orderBy(desc(inventory.purchaseDate));
 
     return matches.map((watch) => ({
@@ -343,13 +472,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getInventoryItems(status?: string, includeArchived = false): Promise<(InventoryItem & { seller?: Client })[]> {
-    const conditions = [];
+    const ownerId = requireOwnerId();
+    const conditions = [eq(inventory.ownerId, ownerId)];
     if (status) conditions.push(eq(inventory.status, status as any));
     if (!includeArchived) conditions.push(isNull(inventory.archivedAt));
 
     const query = db.select({ item: inventory, seller: clients })
       .from(inventory)
-      .leftJoin(clients, eq(inventory.clientId, clients.id));
+      .leftJoin(clients, and(
+        eq(inventory.ownerId, clients.ownerId),
+        eq(inventory.clientId, clients.id),
+      ));
     const rows = await query
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(inventory.purchaseDate));
@@ -358,29 +491,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getArchivedInventoryItems(): Promise<(InventoryItem & { seller?: Client })[]> {
+    const ownerId = requireOwnerId();
     const rows = await db.select({ item: inventory, seller: clients })
       .from(inventory)
-      .leftJoin(clients, eq(inventory.clientId, clients.id))
-      .where(isNotNull(inventory.archivedAt))
+      .leftJoin(clients, and(
+        eq(inventory.ownerId, clients.ownerId),
+        eq(inventory.clientId, clients.id),
+      ))
+      .where(and(eq(inventory.ownerId, ownerId), isNotNull(inventory.archivedAt)))
       .orderBy(desc(inventory.archivedAt));
     return rows.map(({ item, seller }) => ({ ...item, seller: seller ?? undefined }));
   }
 
   private async setInventoryArchived(id: number, archived: boolean): Promise<InventoryItem> {
+    const ownerId = requireOwnerId();
     return db.transaction(async tx => {
-      const [current] = await tx.select().from(inventory).where(eq(inventory.id, id));
+      const [current] = await tx.select().from(inventory).where(and(
+        eq(inventory.ownerId, ownerId),
+        eq(inventory.id, id),
+      ));
       if (!current) throw new Error("Item not found");
 
       const currentlyArchived = current.archivedAt != null;
       if (currentlyArchived === archived) return current;
+      if (!archived && current.status !== "sold") {
+        await assertFreePlanInventoryCapacity(tx, ownerId);
+      }
 
       const [updated] = await tx.update(inventory)
         .set({ archivedAt: archived ? new Date() : null })
-        .where(eq(inventory.id, id))
+        .where(and(eq(inventory.ownerId, ownerId), eq(inventory.id, id)))
         .returning();
       if (!updated) throw new Error("Item not found");
 
       await tx.insert(retentionAudit).values({
+        ownerId,
         action: archived ? "watch_archived" : "watch_restored",
         recordId: id,
       });
@@ -397,23 +542,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined> {
-    const [item] = await db.select().from(inventory).where(eq(inventory.id, id));
+    const ownerId = requireOwnerId();
+    const [item] = await db.select().from(inventory).where(and(
+      eq(inventory.ownerId, ownerId),
+      eq(inventory.id, id),
+    ));
     if (!item) return undefined;
 
-    const itemExpenses = await db.select().from(expenses).where(eq(expenses.inventoryId, id));
+    const itemExpenses = await db.select().from(expenses).where(and(
+      eq(expenses.ownerId, ownerId),
+      eq(expenses.inventoryId, id),
+    ));
     return { ...item, expenses: itemExpenses };
   }
 
   async getInventoryPriceHistory(id: number): Promise<InventoryPriceHistory[]> {
+    const ownerId = requireOwnerId();
     return db.select().from(inventoryPriceHistory)
-      .where(eq(inventoryPriceHistory.inventoryId, id))
+      .where(and(
+        eq(inventoryPriceHistory.ownerId, ownerId),
+        eq(inventoryPriceHistory.inventoryId, id),
+      ))
       .orderBy(desc(inventoryPriceHistory.recordedAt), desc(inventoryPriceHistory.id));
   }
 
   async updateInventoryPriceHistory(inventoryId: number, historyId: number, listPrice: number): Promise<InventoryPriceHistory | undefined> {
+    const ownerId = requireOwnerId();
     const [entry] = await db.update(inventoryPriceHistory)
       .set({ listPrice })
       .where(and(
+        eq(inventoryPriceHistory.ownerId, ownerId),
         eq(inventoryPriceHistory.id, historyId),
         eq(inventoryPriceHistory.inventoryId, inventoryId),
       ))
@@ -422,6 +580,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createInventoryItem(insertItem: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
+    const ownerId = requireOwnerId();
     // Snapshot the current watch_register_fee so future admin-panel changes
     // don't retroactively affect this item's cost calculations.
     const currentFee = await this.getSetting("watch_register_fee") || 600;
@@ -435,10 +594,15 @@ export class DatabaseStorage implements IStorage {
       chrono24CertificationSentAt: insertItem.chrono24CertificationSent ? new Date() : null,
     };
     return db.transaction(async tx => {
+      if (itemWithSnapshot.status !== "sold") {
+        await assertFreePlanInventoryCapacity(tx, ownerId);
+      }
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer) : {};
-      const [item] = await tx.insert(inventory).values({ ...itemWithSnapshot, ...buyer }).returning();
+      const itemInput = { ...itemWithSnapshot, ...buyer, ownerId };
+      await assertOwnerClients(tx, ownerId, [itemInput.clientId, itemInput.buyerId]);
+      const [item] = await tx.insert(inventory).values(itemInput).returning();
       if (shouldRecordListedPrice(null, item.listPrice)) {
-        await tx.insert(inventoryPriceHistory).values({ inventoryId: item.id, listPrice: item.listPrice! });
+        await tx.insert(inventoryPriceHistory).values({ ownerId, inventoryId: item.id, listPrice: item.listPrice! });
       }
       await this.syncWatchFeesToExpenses(item, tx);
       return item;
@@ -446,19 +610,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
+    const ownerId = requireOwnerId();
     const normalizedUpdates = normalizeSoldDateFields(updates);
     // Delivery-only confirmation never rewrites or corrects financial records.
     if (!saleBuyer && Object.keys(updates).every(key => key === "deliveredDate")) {
-      const [item] = await db.update(inventory).set(normalizedUpdates).where(eq(inventory.id, id)).returning();
+      const [item] = await db.update(inventory).set(normalizedUpdates).where(and(
+        eq(inventory.ownerId, ownerId),
+        eq(inventory.id, id),
+      )).returning();
       if (!item) throw new Error("Item not found");
       return item;
     }
     return db.transaction(async tx => {
       // Serialize fee corrections as well as buyer changes. Watch and expense
       // totals commit together; retries cannot append duplicate corrections.
-      const [current] = await tx.select().from(inventory).where(eq(inventory.id, id)).for("update");
+      const [current] = await tx.select().from(inventory).where(and(
+        eq(inventory.ownerId, ownerId),
+        eq(inventory.id, id),
+      )).for("update");
       if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
+      if (!current.archivedAt && current.status === "sold" &&
+          normalizedUpdates.status != null && normalizedUpdates.status !== "sold") {
+        await assertFreePlanInventoryCapacity(tx, ownerId);
+      }
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer, current.buyerId) : {};
+      const resolvedBuyerId = "buyerId" in buyer
+        ? (buyer as { buyerId: number | null }).buyerId
+        : "buyerId" in updates ? updates.buyerId : current.buyerId;
+      await assertOwnerClients(tx, ownerId, [
+        "clientId" in updates ? updates.clientId : current.clientId,
+        resolvedBuyerId,
+      ]);
       const certificationDateUpdate = "chrono24CertificationSent" in normalizedUpdates
         ? {
             chrono24CertificationSentAt: normalizedUpdates.chrono24CertificationSent
@@ -467,9 +649,9 @@ export class DatabaseStorage implements IStorage {
           }
         : {};
       const [item] = await tx.update(inventory).set({ ...normalizedUpdates, ...certificationDateUpdate, ...buyer })
-        .where(eq(inventory.id, id)).returning();
+        .where(and(eq(inventory.ownerId, ownerId), eq(inventory.id, id))).returning();
       if (shouldRecordListedPrice(current.listPrice, updates.listPrice)) {
-        await tx.insert(inventoryPriceHistory).values({ inventoryId: id, listPrice: updates.listPrice! });
+        await tx.insert(inventoryPriceHistory).values({ ownerId, inventoryId: id, listPrice: updates.listPrice! });
       }
       await this.syncWatchFeesToExpenses(item, tx);
       return item;
@@ -477,27 +659,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateMovementSpecs(id: number, specs: Record<string, string>): Promise<InventoryItem> {
-    const [item] = await db.update(inventory).set({ movementSpecs: specs }).where(eq(inventory.id, id)).returning();
+    const ownerId = requireOwnerId();
+    const [item] = await db.update(inventory).set({ movementSpecs: specs })
+      .where(and(eq(inventory.ownerId, ownerId), eq(inventory.id, id))).returning();
+    if (!item) throw new Error("Item not found");
     return item;
   }
 
   async updateCreditInfo(id: number, updates: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null }): Promise<InventoryItem> {
+    const ownerId = requireOwnerId();
     const payload: Record<string, any> = {};
     if (updates.creditPaid !== undefined) payload.creditPaid = updates.creditPaid;
     if ("creditDueDate" in updates) payload.creditDueDate = updates.creditDueDate ? new Date(updates.creditDueDate) : null;
     if ("creditNotes" in updates) payload.creditNotes = updates.creditNotes ?? null;
-    const [item] = await db.update(inventory).set(payload).where(eq(inventory.id, id)).returning();
+    const [item] = await db.update(inventory).set(payload)
+      .where(and(eq(inventory.ownerId, ownerId), eq(inventory.id, id))).returning();
     if (!item) throw new Error("Item not found");
     return item;
   }
 
   // Sync watch fees to expense entries
   private async syncWatchFeesToExpenses(item: InventoryItem, connection: ExpenseExecutor = db): Promise<void> {
+    const ownerId = requireOwnerId();
     const watchRef = `${item.brand} ${item.model} - Ref#${item.referenceNumber}`;
     const feeDate = item.purchaseDate || new Date();
     // Use per-item snapshot if available, otherwise fall back to current setting
     const [feeSetting] = item.watchRegisterFeeSnapshot == null
-      ? await connection.select().from(settings).where(eq(settings.key, "watch_register_fee"))
+      ? await connection.select().from(settings).where(and(
+          eq(settings.ownerId, ownerId),
+          eq(settings.key, "watch_register_fee"),
+        ))
       : [];
     const watchRegisterFee = item.watchRegisterFeeSnapshot ?? (feeSetting?.value as number | undefined) ?? 600;
 
@@ -515,6 +706,7 @@ export class DatabaseStorage implements IStorage {
       // Find existing expense for this fee type and inventory item
       const existingExpenses = await connection.select().from(expenses)
         .where(and(
+          eq(expenses.ownerId, ownerId),
           eq(expenses.inventoryId, item.id),
           sql`${expenses.description} LIKE ${`${feeType.label}%`}`
         ));
@@ -525,6 +717,7 @@ export class DatabaseStorage implements IStorage {
       const correction = feeValue - recordedTotal;
       if (correction !== 0) {
         await connection.insert(expenses).values({
+          ownerId,
           inventoryId: item.id,
           description: existingExpenses.length ? `${description} (correction)` : description,
           amount: correction,
@@ -537,25 +730,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteInventoryItem(id: number): Promise<void> {
+    const ownerId = requireOwnerId();
     await db.transaction(async tx => {
-      const [watch] = await tx.select({ id: inventory.id }).from(inventory).where(eq(inventory.id, id));
+      const [watch] = await tx.select({ id: inventory.id }).from(inventory).where(and(
+        eq(inventory.ownerId, ownerId),
+        eq(inventory.id, id),
+      ));
       if (!watch) throw new RetentionError("Watch not found.", 404);
 
       // Keep linked records, but clear their pointer to the deleted watch.
-      await tx.update(expenses).set({ inventoryId: null }).where(eq(expenses.inventoryId, id));
-      await tx.update(transactionParties).set({ inventoryId: null }).where(eq(transactionParties.inventoryId, id));
-      await tx.update(inventoryPriceHistory).set({ inventoryId: null }).where(eq(inventoryPriceHistory.inventoryId, id));
-      await tx.delete(inventory).where(eq(inventory.id, id));
+      await tx.update(expenses).set({ inventoryId: null }).where(and(eq(expenses.ownerId, ownerId), eq(expenses.inventoryId, id)));
+      await tx.update(transactionParties).set({ inventoryId: null }).where(and(eq(transactionParties.ownerId, ownerId), eq(transactionParties.inventoryId, id)));
+      await tx.update(inventoryPriceHistory).set({ inventoryId: null }).where(and(eq(inventoryPriceHistory.ownerId, ownerId), eq(inventoryPriceHistory.inventoryId, id)));
+      await tx.delete(inventory).where(and(eq(inventory.ownerId, ownerId), eq(inventory.id, id)));
     });
   }
 
   async getPersonalCollectionWatches(ownerId: string): Promise<PersonalCollectionWatch[]> {
+    assertCurrentOwner(ownerId);
     return db.select().from(personalCollectionWatches)
       .where(eq(personalCollectionWatches.ownerId, ownerId))
       .orderBy(desc(personalCollectionWatches.dateBought), desc(personalCollectionWatches.createdAt));
   }
 
   async getPersonalCollectionWatch(ownerId: string, id: number): Promise<PersonalCollectionWatch | undefined> {
+    assertCurrentOwner(ownerId);
     const [watch] = await db.select().from(personalCollectionWatches).where(and(
       eq(personalCollectionWatches.ownerId, ownerId),
       eq(personalCollectionWatches.id, id),
@@ -564,10 +763,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPersonalCollectionValuations(ownerId: string, watchId: number): Promise<PersonalCollectionValuation[] | undefined> {
+    assertCurrentOwner(ownerId);
     const watch = await this.getPersonalCollectionWatch(ownerId, watchId);
     if (!watch) return undefined;
     return db.select().from(personalCollectionValuations)
-      .where(eq(personalCollectionValuations.watchId, watchId))
+      .where(and(
+        eq(personalCollectionValuations.ownerId, ownerId),
+        eq(personalCollectionValuations.watchId, watchId),
+      ))
       .orderBy(
         desc(personalCollectionValuations.valuationDate),
         desc(personalCollectionValuations.createdAt),
@@ -577,11 +780,15 @@ export class DatabaseStorage implements IStorage {
 
   private async getLatestPersonalCollectionEstimate(
     connection: Pick<typeof db, "select">,
+    ownerId: string,
     watchId: number,
   ): Promise<{ hasEntry: boolean; estimatedValue: number | null }> {
     const [latest] = await connection.select({ estimatedValue: personalCollectionValuations.estimatedValue })
       .from(personalCollectionValuations)
-      .where(eq(personalCollectionValuations.watchId, watchId))
+      .where(and(
+        eq(personalCollectionValuations.ownerId, ownerId),
+        eq(personalCollectionValuations.watchId, watchId),
+      ))
       .orderBy(
         desc(personalCollectionValuations.valuationDate),
         desc(personalCollectionValuations.createdAt),
@@ -593,12 +800,13 @@ export class DatabaseStorage implements IStorage {
 
   private async syncPersonalCollectionLatestEstimate(
     connection: Pick<typeof db, "select" | "update">,
+    ownerId: string,
     watchId: number,
   ): Promise<number | null> {
-    const { estimatedValue } = await this.getLatestPersonalCollectionEstimate(connection, watchId);
+    const { estimatedValue } = await this.getLatestPersonalCollectionEstimate(connection, ownerId, watchId);
     await connection.update(personalCollectionWatches)
       .set({ estimatedValue, updatedAt: new Date() })
-      .where(eq(personalCollectionWatches.id, watchId));
+      .where(and(eq(personalCollectionWatches.ownerId, ownerId), eq(personalCollectionWatches.id, watchId)));
     return estimatedValue;
   }
 
@@ -607,6 +815,7 @@ export class DatabaseStorage implements IStorage {
     watchId: number,
     valuation: Pick<InsertPersonalCollectionValuation, "valuationDate" | "estimatedValue">,
   ): Promise<PersonalCollectionValuation | undefined> {
+    assertCurrentOwner(ownerId);
     return db.transaction(async (tx) => {
       const [watch] = await tx.select({ id: personalCollectionWatches.id })
         .from(personalCollectionWatches)
@@ -618,9 +827,9 @@ export class DatabaseStorage implements IStorage {
       if (!watch) return undefined;
 
       const [created] = await tx.insert(personalCollectionValuations)
-        .values({ ...valuation, watchId })
+        .values({ ...valuation, ownerId, watchId })
         .returning();
-      await this.syncPersonalCollectionLatestEstimate(tx, watchId);
+      await this.syncPersonalCollectionLatestEstimate(tx, ownerId, watchId);
       return created;
     });
   }
@@ -631,6 +840,7 @@ export class DatabaseStorage implements IStorage {
     valuationId: number,
     valuation: Pick<InsertPersonalCollectionValuation, "valuationDate" | "estimatedValue">,
   ): Promise<PersonalCollectionValuation | undefined> {
+    assertCurrentOwner(ownerId);
     return db.transaction(async (tx) => {
       const [watch] = await tx.select({ id: personalCollectionWatches.id })
         .from(personalCollectionWatches)
@@ -644,17 +854,19 @@ export class DatabaseStorage implements IStorage {
       const [updated] = await tx.update(personalCollectionValuations)
         .set({ ...valuation, updatedAt: new Date() })
         .where(and(
+          eq(personalCollectionValuations.ownerId, ownerId),
           eq(personalCollectionValuations.watchId, watchId),
           eq(personalCollectionValuations.id, valuationId),
         ))
         .returning();
       if (!updated) return undefined;
-      await this.syncPersonalCollectionLatestEstimate(tx, watchId);
+      await this.syncPersonalCollectionLatestEstimate(tx, ownerId, watchId);
       return updated;
     });
   }
 
   async createPersonalCollectionWatch(ownerId: string, item: InsertPersonalCollectionWatch): Promise<PersonalCollectionWatch> {
+    assertCurrentOwner(ownerId);
     const [watch] = await db.insert(personalCollectionWatches).values({ ...item, ownerId }).returning();
     return watch;
   }
@@ -664,6 +876,7 @@ export class DatabaseStorage implements IStorage {
     id: number,
     updates: Partial<InsertPersonalCollectionWatch>,
   ): Promise<PersonalCollectionWatch | undefined> {
+    assertCurrentOwner(ownerId);
     return db.transaction(async (tx) => {
       const [current] = await tx.select({ id: personalCollectionWatches.id })
         .from(personalCollectionWatches)
@@ -674,7 +887,7 @@ export class DatabaseStorage implements IStorage {
         .for("update");
       if (!current) return undefined;
 
-      const latestEstimate = await this.getLatestPersonalCollectionEstimate(tx, id);
+      const latestEstimate = await this.getLatestPersonalCollectionEstimate(tx, ownerId, id);
       const updatesWithCurrentEstimate = latestEstimate.hasEntry
         ? { ...updates, estimatedValue: latestEstimate.estimatedValue }
         : updates;
@@ -690,6 +903,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePersonalCollectionWatch(ownerId: string, id: number): Promise<boolean> {
+    assertCurrentOwner(ownerId);
     const [deleted] = await db.delete(personalCollectionWatches)
       .where(and(
         eq(personalCollectionWatches.ownerId, ownerId),
@@ -701,9 +915,14 @@ export class DatabaseStorage implements IStorage {
 
   // Expenses
   async getExpenses(): Promise<(Expense & { inventory?: InventoryItem })[]> {
+    const ownerId = requireOwnerId();
     const rows = await db.select({ expense: expenses, inventory: inventory })
       .from(expenses)
-      .leftJoin(inventory, eq(expenses.inventoryId, inventory.id))
+      .leftJoin(inventory, and(
+        eq(expenses.ownerId, inventory.ownerId),
+        eq(expenses.inventoryId, inventory.id),
+      ))
+      .where(eq(expenses.ownerId, ownerId))
       .orderBy(desc(expenses.date));
     return rows.map(({ expense, inventory: linkedInventory }) => ({
       ...expense,
@@ -712,22 +931,45 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExpense(id: number): Promise<Expense | undefined> {
-    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    const ownerId = requireOwnerId();
+    const [expense] = await db.select().from(expenses).where(and(
+      eq(expenses.ownerId, ownerId),
+      eq(expenses.id, id),
+    ));
     return expense;
   }
 
   async createExpense(insertExpense: InsertExpense): Promise<Expense> {
-    const [expense] = await db.insert(expenses).values(insertExpense).returning();
+    const ownerId = requireOwnerId();
+    if (insertExpense.inventoryId != null) {
+      const [watch] = await db.select({ id: inventory.id }).from(inventory).where(and(
+        eq(inventory.ownerId, ownerId),
+        eq(inventory.id, insertExpense.inventoryId),
+      ));
+      if (!watch) throw new RetentionError("Watch not found in this workspace.", 404);
+    }
+    const [expense] = await db.insert(expenses).values({ ...insertExpense, ownerId }).returning();
     return expense;
   }
 
   async updateExpense(id: number, updates: Partial<InsertExpense>): Promise<Expense> {
+    const ownerId = requireOwnerId();
     const original = await this.getExpense(id);
     if (!original) throw new Error("Expense not found");
+    if (updates.inventoryId != null) {
+      const [watch] = await db.select({ id: inventory.id }).from(inventory).where(and(
+        eq(inventory.ownerId, ownerId),
+        eq(inventory.id, updates.inventoryId),
+      ));
+      if (!watch) throw new RetentionError("Watch not found in this workspace.", 404);
+    }
     if (original.inventoryId && FEE_TYPES.some(fee => original.description.startsWith(fee.label))) {
       throw new RetentionError("Watch-fee expense history is protected. Correct the fee on the watch to record an adjustment without changing the original expense.");
     }
-    const [expense] = await db.update(expenses).set(updates).where(eq(expenses.id, id)).returning();
+    const [expense] = await db.update(expenses).set(updates).where(and(
+      eq(expenses.ownerId, ownerId),
+      eq(expenses.id, id),
+    )).returning();
     if (!expense) {
       throw new Error("Expense not found");
     }
@@ -735,12 +977,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteExpense(id: number): Promise<void> {
-    const [deleted] = await db.delete(expenses).where(eq(expenses.id, id)).returning({ id: expenses.id });
+    const ownerId = requireOwnerId();
+    const [deleted] = await db.delete(expenses).where(and(
+      eq(expenses.ownerId, ownerId),
+      eq(expenses.id, id),
+    )).returning({ id: expenses.id });
     if (!deleted) throw new Error("Expense not found");
   }
 
   // Stats
   async getDashboardStats(): Promise<DashboardStats> {
+    const ownerId = requireOwnerId();
     const currentWrFee = await this.getSetting("watch_register_fee") || 600;
     const allInventory = await db.select({
       status: inventory.status,
@@ -759,7 +1006,7 @@ export class DatabaseStorage implements IStorage {
       insuranceFee: inventory.insuranceFee,
       salePrice: inventory.salePrice,
       soldPrice: inventory.soldPrice,
-    }).from(inventory);
+    }).from(inventory).where(eq(inventory.ownerId, ownerId));
     
     const activeInventory = allInventory.filter(i => !i.archivedAt && i.status !== 'sold');
     const soldInventory = allInventory.filter(i => i.status === 'sold');
@@ -807,7 +1054,8 @@ export class DatabaseStorage implements IStorage {
 
   // Settings
   async getAllSettings(): Promise<Record<string, any>> {
-    const rows = await db.select().from(settings);
+    const ownerId = requireOwnerId();
+    const rows = await db.select().from(settings).where(eq(settings.ownerId, ownerId));
     const result: Record<string, any> = {};
     for (const row of rows) {
       result[row.key] = row.value;
@@ -816,16 +1064,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSetting(key: string): Promise<any> {
-    const [row] = await db.select().from(settings).where(eq(settings.key, key));
+    const ownerId = requireOwnerId();
+    const [row] = await db.select().from(settings).where(and(
+      eq(settings.ownerId, ownerId),
+      eq(settings.key, key),
+    ));
     return row?.value ?? null;
   }
 
   async upsertSetting(key: string, value: any): Promise<Setting> {
+    const ownerId = requireOwnerId();
     if (key === retentionKey) throw new RetentionError("Use the dedicated retention schedule approval controls.");
     const [result] = await db
       .insert(settings)
-      .values({ key, value })
-      .onConflictDoUpdate({ target: settings.key, set: { value } })
+      .values({ ownerId, key, value })
+      .onConflictDoUpdate({
+        target: [settings.ownerId, settings.key],
+        set: { value },
+      })
       .returning();
     return result;
   }
