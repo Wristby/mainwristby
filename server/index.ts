@@ -4,6 +4,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { requestMetadataLogger, safeErrorHandler, securityHeaders } from "./security";
+import { startNotebookSnapshotScheduler } from "./notebook-snapshot-scheduler";
+import { storage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -41,6 +43,10 @@ app.use(requestMetadataLogger(log));
 
 (async () => {
   await registerRoutes(httpServer, app);
+  const stopSnapshotScheduler = startNotebookSnapshotScheduler(
+    monthKey => storage.captureDealerNotebookInventorySnapshot(monthKey),
+  );
+  httpServer.once("close", stopSnapshotScheduler);
 
   app.use(safeErrorHandler);
 

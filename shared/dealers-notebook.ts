@@ -42,7 +42,27 @@ export const notebookAiResponseSchema = z.object({
   recommendations: z.array(notebookRecommendationSchema).max(8),
 });
 
+export const notebookInventorySnapshotSchema = z.object({
+  monthKey: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  savedAt: z.string().datetime(),
+  activeWatchCount: z.number().int().nonnegative(),
+  listedWatchCount: z.number().int().nonnegative(),
+  costBasisCents: z.number().int().nonnegative(),
+  listingValueCents: z.number().int().nonnegative(),
+  watches: z.array(z.object({
+    brand: z.string(),
+    model: z.string(),
+    condition: z.string(),
+    isListed: z.boolean(),
+    costBasisCents: z.number().int().nonnegative(),
+    listPriceCents: z.number().int().nonnegative().nullable(),
+  })),
+  dataCaveats: z.array(z.string().max(300)).max(8),
+});
+export type NotebookInventorySnapshot = z.infer<typeof notebookInventorySnapshotSchema>;
+
 export const notebookReportSchema = z.object({
+  inventorySnapshots: z.array(notebookInventorySnapshotSchema).max(4).default([]),
   period: z.object({
     monthKeys: z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)),
     label: z.string(),
@@ -146,6 +166,7 @@ export type NotebookEntry = {
   comparisonMode: NotebookComparisonMode;
   contextNote: string;
   report: NotebookReport | null;
+  inventorySnapshot: NotebookInventorySnapshot | null;
   actions: NotebookAction[];
   generatedAt: string | null;
   updatedAt: string | null;
@@ -243,6 +264,82 @@ export function notebookComparisonMonthKeys(
 
 function safeCost(value: number | null | undefined): number {
   return Number.isFinite(value) && value! > 0 ? value! : 0;
+}
+
+function watchCostBasis(watch: NotebookWatchInput, watchRegisterFeeCents: number): number {
+  return safeCost(watch.purchasePrice) + safeCost(watch.importFee)
+    + safeCost(watch.serviceFee) + safeCost(watch.polishFee)
+    + (watch.watchRegister
+      ? safeCost(watch.watchRegisterFeeSnapshot ?? watchRegisterFeeCents)
+      : 0);
+}
+
+/** The scheduled capture is one second before midnight in Europe/Amsterdam. */
+export function notebookMonthEndCaptureAt(monthKey: string): Date {
+  if (!isNotebookMonthKey(monthKey)) throw new Error("Choose a valid notebook month.");
+  const [year, month] = monthKey.split("-").map(Number);
+  const utc = new Date(0);
+  utc.setUTCFullYear(year, month, 1);
+  utc.setUTCHours(0, 0, 0, 0);
+  const hour = Number(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Amsterdam",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(utc));
+  return new Date(utc.getTime() - hour * 3_600_000 - 1000);
+}
+
+export function canCaptureNotebookInventory(monthKey: string, now: Date): boolean {
+  if (!isNotebookMonthKey(monthKey) || notebookMonthKey(now) !== monthKey) return false;
+  return amsterdamDayOrdinal(now) === amsterdamDayOrdinal(notebookMonthEndCaptureAt(monthKey));
+}
+
+export function calculateNotebookInventorySnapshot(
+  inventory: readonly NotebookWatchInput[],
+  monthKey: string,
+  watchRegisterFeeCents: number,
+  now: Date,
+): NotebookInventorySnapshot {
+  if (!canCaptureNotebookInventory(monthKey, now)) {
+    throw new Error("Month-end inventory can only be captured on the final day of that month in Europe/Amsterdam.");
+  }
+  const watches = inventory.flatMap((watch) => {
+    if (watch.status === "sold" || watch.archivedAt) return [];
+    const listPriceCents = Number.isSafeInteger(watch.listPrice) && watch.listPrice! >= 0
+      ? watch.listPrice
+      : null;
+    const isListed = listPriceCents != null && listPriceCents > 0
+      && daysListedUntilSale(watch.dateListed, now) != null;
+    const costBasisCents = watchCostBasis(watch, watchRegisterFeeCents);
+    return [{
+      brand: watch.brand,
+      model: watch.model,
+      condition: watch.condition,
+      isListed,
+      costBasisCents,
+      listPriceCents,
+    }];
+  }).sort((a, b) =>
+    a.brand.localeCompare(b.brand) || a.model.localeCompare(b.model));
+
+  const listedWatches = watches.filter((watch) => watch.isListed);
+  const dataCaveats = [
+    "This is the inventory recorded at capture time on the month's final day, not a reconstruction of earlier records.",
+    "Active watches include all unarchived, unsold statuses, including incoming and servicing.",
+    "Cost basis includes purchase, import, service, polish and watch-register costs; it excludes selling costs and overhead.",
+    "Listed totals require a positive saved asking price and a listing date on or before capture. Other watches remain in active stock.",
+  ];
+
+  return {
+    monthKey,
+    savedAt: now.toISOString(),
+    activeWatchCount: watches.length,
+    listedWatchCount: listedWatches.length,
+    costBasisCents: watches.reduce((sum, watch) => sum + watch.costBasisCents, 0),
+    listingValueCents: listedWatches.reduce((sum, watch) => sum + (watch.listPriceCents ?? 0), 0),
+    watches,
+    dataCaveats,
+  };
 }
 
 function median(values: number[]): number | null {
@@ -365,9 +462,7 @@ export function calculateNotebookCurrentStock(
     if (watch.status === "sold" || watch.archivedAt || !watch.listPrice || watch.listPrice <= 0) return [];
     const days = daysListedUntilSale(watch.dateListed, now);
     if (days == null) return [];
-    const costBasisCents = safeCost(watch.purchasePrice) + safeCost(watch.importFee)
-      + safeCost(watch.serviceFee) + safeCost(watch.polishFee)
-      + (watch.watchRegister ? safeCost(watch.watchRegisterFeeSnapshot) : 0);
+    const costBasisCents = watchCostBasis(watch, 0);
     return [{
       id: watch.id,
       brand: watch.brand,

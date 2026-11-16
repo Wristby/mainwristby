@@ -27,7 +27,9 @@ import {
   useGenerateDealerNotebookReport,
   useSaveDealerNotebookActions,
   useSaveDealerNotebookContext,
+  useCaptureDealerNotebookInventory,
 } from "@/hooks/use-dealers-notebook";
+import { NotebookInventorySnapshots } from "@/components/notebook-inventory-snapshots";
 import type {
   NotebookAction,
   NotebookComparisonMode,
@@ -172,6 +174,7 @@ export default function DealersNotebook() {
   const saveContext = useSaveDealerNotebookContext();
   const saveActions = useSaveDealerNotebookActions();
   const generateReport = useGenerateDealerNotebookReport();
+  const captureInventory = useCaptureDealerNotebookInventory();
   const [contextNote, setContextNote] = useState("");
   const [comparisonMode, setComparisonMode] = useState<NotebookComparisonMode>("previous-month");
   const [feedback, setFeedback] = useState("");
@@ -218,6 +221,17 @@ export default function DealersNotebook() {
       setFeedback(`Review generated for ${monthLabel(monthKey)}.`);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not generate the review. Please try again.");
+    }
+  }
+
+  async function captureMonthEndInventory() {
+    setFeedback("");
+    setPageError("");
+    try {
+      await captureInventory.mutateAsync(monthKey);
+      setFeedback(`Month-end inventory saved for ${monthLabel(monthKey)}. Watch records were not changed.`);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Could not save month-end inventory.");
     }
   }
 
@@ -389,6 +403,15 @@ export default function DealersNotebook() {
         </aside>
       </section>
 
+      <NotebookInventorySnapshots
+        monthKey={monthKey}
+        snapshot={entry?.inventorySnapshot ?? null}
+        comparisonSnapshots={notebook.data?.comparisonSnapshots ?? []}
+        canCapture={notebook.data?.canCaptureInventory ?? false}
+        busy={captureInventory.isPending}
+        onCapture={() => { void captureMonthEndInventory(); }}
+      />
+
       {report ? (
         <>
           <section aria-label="Monthly sales evidence" className="space-y-3">
@@ -487,8 +510,10 @@ export default function DealersNotebook() {
             </div>
 
             <div className="space-y-5">
-              <CurrentStock currentStock={report.currentStock} />
-              <DataCaveats caveats={report.dataCaveats} />
+              <div className="space-y-5">
+                {notebook.data?.liveStock && <CurrentStock currentStock={notebook.data.liveStock} asOf={notebook.data.liveStockAsOf} />}
+                <DataCaveats caveats={report.dataCaveats} />
+              </div>
             </div>
           </section>
 
@@ -514,7 +539,7 @@ export default function DealersNotebook() {
               <p className="text-xs font-semibold uppercase tracking-[.12em] text-[#718078]">Before you begin</p>
               <ul className="mt-3 space-y-3 text-sm leading-5 text-[#65766b]">
                 <li className="flex gap-2"><CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#63866c]" />Recorded profit is before VAT.</li>
-                <li className="flex gap-2"><CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#63866c]" />Current stock describes today’s snapshot.</li>
+                <li className="flex gap-2"><CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#63866c]" />Month-end inventory is saved separately from live stock.</li>
                 <li className="flex gap-2"><CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#63866c]" />Nothing in a report changes your inventory.</li>
               </ul>
             </div>
@@ -525,7 +550,7 @@ export default function DealersNotebook() {
       <section className="rounded-xl border border-[#e1e7df] bg-[#f4f6f0] p-4 sm:px-5">
         <div className="flex items-start gap-3">
           <Info aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#718477]" />
-          <p className="text-xs leading-5 text-[#728078]"><strong className="font-semibold text-[#52675a]">How to read this:</strong> profit is calculated from recorded sale price less recorded costs, before VAT. Current-stock details are a snapshot of today and are not historical month-end stock. AI findings are decision support, with evidence and confidence shown where available.</p>
+          <p className="text-xs leading-5 text-[#728078]"><strong className="font-semibold text-[#52675a]">How to read this:</strong> profit is calculated from recorded sale price less recorded costs, before VAT. The saved month-end stock snapshot is separate from live inventory. AI findings are decision support, with evidence and confidence shown where available.</p>
         </div>
       </section>
 
@@ -594,10 +619,10 @@ function ActionItem({
   );
 }
 
-function CurrentStock({ currentStock }: { currentStock: { activeListings: number; listedCapitalCents: number; candidates: { id: number; code: string; label: string; brand: string; model: string; daysListed: number; listPriceCents: number; costBasisCents: number }[] } }) {
+function CurrentStock({ currentStock, asOf }: { currentStock: { activeListings: number; listedCapitalCents: number; candidates: { id: number; code: string; label: string; brand: string; model: string; daysListed: number; listPriceCents: number; costBasisCents: number }[] }; asOf: string }) {
   return (
     <section className="dn-panel p-5 sm:p-6">
-      <div className="flex items-start justify-between gap-3"><div><p className="dn-eyebrow">Today’s snapshot</p><h2 className="mt-1 text-lg font-semibold text-[#244235]">Current stock context</h2></div><span className="rounded-full bg-[#edf2eb] px-2.5 py-1 text-xs font-semibold text-[#536a59]">{currentStock.activeListings} listed</span></div>
+      <div className="flex items-start justify-between gap-3"><div><p className="dn-eyebrow">Live inventory</p><h2 className="mt-1 text-lg font-semibold text-[#244235]">Current stock context</h2></div><span className="rounded-full bg-[#edf2eb] px-2.5 py-1 text-xs font-semibold text-[#536a59]">{currentStock.activeListings} listed</span></div>
       <div className="mt-4 flex flex-wrap justify-between gap-3 rounded-lg bg-[#f3f6ef] px-4 py-3"><span className="text-xs text-[#7b887f]">Listed capital</span><strong className="text-sm tabular-nums text-[#385342]">{money(currentStock.listedCapitalCents)}</strong></div>
       {currentStock.candidates.length ? (
         <div className="mt-3 divide-y divide-[#edf0e9]">
@@ -609,7 +634,7 @@ function CurrentStock({ currentStock }: { currentStock: { activeListings: number
           ))}
         </div>
       ) : <p className="mt-4 text-sm leading-6 text-[#78847c]">No active, priced listings were available for this snapshot.</p>}
-      <p className="mt-3 text-xs leading-5 text-[#859087]">Current stock reflects today, not the selected month’s end.</p>
+      <p className="mt-3 text-xs leading-5 text-[#859087]">Live stock as of {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(asOf))}. This is separate from the saved month-end snapshot.</p>
     </section>
   );
 }

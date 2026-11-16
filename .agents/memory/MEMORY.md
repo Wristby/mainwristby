@@ -10,3 +10,4 @@
 - [Client retention scope](client-retention-scope.md) — warranty and financial records matter, but validate which personal data must be kept and for how long
 - [Natural-language inventory search](natural-inventory-search.md) — send only the query to Gemini; validate structured filters and match against app data deterministically
 - [External live hosting](external-live-hosting.md) — live app and database are hosted through cPanel; Replit development checks do not verify that database
+- [Month-end inventory accuracy](month-end-inventory-accuracy.md) — use dated captures, never reconstruct actual historical stock from today's editable watches

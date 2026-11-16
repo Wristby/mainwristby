@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateNotebookPeriod,
+  calculateNotebookInventorySnapshot,
+  canCaptureNotebookInventory,
+  notebookMonthEndCaptureAt,
+  notebookReportSchema,
+  notebookInventorySnapshotSchema,
   notebookComparisonMonthKeys,
   notebookMonthKey,
   type NotebookWatchInput,
@@ -50,6 +55,106 @@ describe("Dealer's Notebook calculations and privacy projection", () => {
     expect(result.revenueCents).toBe(100_000);
     expect(result.netProfitCents).toBe(20_100);
     expect(result.daysSampleCount).toBe(1);
+  });
+
+  it("captures actual stock and saved prices, including unlisted watches, without changing records", () => {
+    const inventory = [
+      watch({
+        id: 1,
+        status: "in_stock",
+        soldDate: null,
+        listPrice: 125_000,
+      }),
+      watch({
+        id: 2,
+        status: "sold",
+        soldDate: "2026-10-31T12:00:00Z",
+      }),
+      watch({
+        id: 3,
+        status: "incoming",
+        soldDate: null,
+      }),
+      watch({
+        id: 4,
+        status: "in_stock",
+        archivedAt: "2026-10-15T12:00:00Z",
+        soldDate: null,
+      }),
+      watch({
+        id: 5,
+        status: "sold",
+        soldDate: "2026-11-02T12:00:00Z",
+      }),
+    ];
+    const original = structuredClone(inventory);
+    const snapshot = calculateNotebookInventorySnapshot(
+      inventory,
+      "2026-10",
+      600,
+      new Date("2026-10-31T22:59:59.000Z"),
+    );
+
+    expect(snapshot.activeWatchCount).toBe(2);
+    expect(snapshot.listedWatchCount).toBe(1);
+    expect(snapshot.watches.map((item) => item.listPriceCents)).toEqual([125_000, null]);
+    expect(snapshot.listingValueCents).toBe(125_000);
+    expect(snapshot.watches[0].costBasisCents).toBe(77_600);
+    expect(snapshot.costBasisCents).toBe(155_200);
+    expect(inventory).toEqual(original);
+    expect(notebookInventorySnapshotSchema.parse(snapshot)).toEqual(snapshot);
+  });
+
+  it("never fabricates a past or future month's holdings from today's inventory", () => {
+    for (const key of ["2026-09", "2026-11", "bad"]) {
+      expect(() => calculateNotebookInventorySnapshot([], key, 600, new Date("2026-10-31T12:00:00Z"))).toThrow();
+    }
+    expect(() => calculateNotebookInventorySnapshot([], "2026-10", 600, new Date("2026-10-30T12:00:00Z"))).toThrow();
+    expect(canCaptureNotebookInventory("2026-10", new Date("2026-10-30T23:00:00Z"))).toBe(true);
+    expect(canCaptureNotebookInventory("2026-10", new Date("2026-10-31T23:00:00Z"))).toBe(false);
+  });
+
+  it.each([
+    ["2026-03", "2026-03-31T21:59:59.000Z"],
+    ["2026-10", "2026-10-31T22:59:59.000Z"],
+    ["2026-12", "2026-12-31T22:59:59.000Z"],
+    ["2028-02", "2028-02-29T22:59:59.000Z"],
+  ])("schedules %s using Amsterdam time including DST and leap years", (month, expected) => {
+    expect(notebookMonthEndCaptureAt(month).toISOString()).toBe(expected);
+  });
+
+  it("captures zero stock and distinguishes zero asking prices from missing prices", () => {
+    const now = new Date("2026-10-31T12:00:00Z");
+    expect(calculateNotebookInventorySnapshot([], "2026-10", 600, now)).toMatchObject({
+      activeWatchCount: 0, listedWatchCount: 0, costBasisCents: 0, listingValueCents: 0,
+    });
+    const snapshot = calculateNotebookInventorySnapshot([
+      watch({ status: "in_stock", listPrice: 0, watchRegisterFeeSnapshot: 0 }),
+      watch({ status: "servicing", listPrice: null }),
+      watch({ status: "received", listPrice: 900, dateListed: "2026-11-01T12:00:00Z" }),
+    ], "2026-10", 600, now);
+    expect(snapshot.activeWatchCount).toBe(3);
+    expect(snapshot.listedWatchCount).toBe(0);
+    expect(snapshot.listingValueCents).toBe(0);
+    expect(snapshot.watches.map(watch => watch.listPriceCents)).toEqual([0, null, 900]);
+    expect(snapshot.watches[0].costBasisCents).toBe(77_000);
+  });
+
+  it("supplies historical totals separately from today's inventory to AI and preserves legacy reports", () => {
+    const saved = calculateNotebookInventorySnapshot([
+      watch({ status: "in_stock", listPrice: 100_000 }),
+    ], "2026-09", 600, new Date("2026-09-30T12:00:00Z"));
+    const prepared = prepareNotebookAnalysis([], [], "2026-10", "previous-month", 600, "", new Date("2026-10-31T12:00:00Z"), [saved]);
+    expect(prepared.currentStock.activeListings).toBe(0);
+    expect(prepared.promptData.inventorySnapshots[0].activeWatchCount).toBe(1);
+    expect(prepared.promptData.inventorySnapshots[0]).not.toHaveProperty("watches");
+    expect(prepared.evidence["month_end_stock_2026-09"]).toContain("1 active watches");
+    const report = notebookReportSchema.parse({
+      period: prepared.period, comparison: prepared.comparison, currentStock: prepared.currentStock,
+      overview: "Saved legacy report", wins: [], challenges: [], improvements: [], recommendations: [],
+      evidence: {}, dataCaveats: [], generatedAt: "2026-10-31T12:00:00.000Z",
+    });
+    expect(report.inventorySnapshots).toEqual([]);
   });
 
   it("keeps private inventory identifiers out of the Gemini data projection", () => {

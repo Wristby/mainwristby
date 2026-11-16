@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "node:crypto";
 import { setupAuth, isAuthenticated } from "./auth";
-import { storage, SaleBuyerSaveError } from "./storage";
+import { storage, SaleBuyerSaveError, NotebookSnapshotError } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { registerRetentionRoutes, RetentionError } from "./retention";
@@ -15,6 +15,9 @@ import {
   notebookAiResponseSchema,
   notebookComparisonModeSchema,
   notebookComparisonMonthKeys,
+  calculateNotebookCurrentStock,
+  canCaptureNotebookInventory,
+  notebookInventorySnapshotSchema,
   notebookMonthKey,
   notebookReportSchema,
   isNotebookMonthKey,
@@ -135,26 +138,46 @@ async function generateGeminiText(apiKey: string, model: string, prompt: string)
 
 async function loadDealerNotebookState(monthKey: string) {
   const previousMonthKey = notebookComparisonMonthKeys(monthKey, "previous-month")[0];
-  const [entry, previousEntry] = await Promise.all([
+  const [entry, previousEntry, inventoryData] = await Promise.all([
     storage.getDealerNotebookEntry(monthKey),
     storage.getDealerNotebookEntry(previousMonthKey),
+    storage.getNotebookInventoryData(),
   ]);
+  const liveStockAsOf = new Date();
+  const liveStock = calculateNotebookCurrentStock(inventoryData, liveStockAsOf);
   const parsedActions = saveNotebookActionsSchema.safeParse({ actions: entry?.actions ?? [] });
   const parsedPreviousActions = saveNotebookActionsSchema.safeParse({ actions: previousEntry?.actions ?? [] });
   const parsedReport = entry?.report ? notebookReportSchema.safeParse(entry.report) : null;
+  const parsedSnapshot = entry?.inventorySnapshot
+    ? notebookInventorySnapshotSchema.safeParse(entry.inventorySnapshot)
+    : null;
   const entryComparisonMode = notebookComparisonModeSchema.safeParse(entry?.comparisonMode);
+  const comparisonKeys = notebookComparisonMonthKeys(
+    monthKey,
+    entryComparisonMode.success ? entryComparisonMode.data : "previous-month",
+  );
+  const comparisonSnapshots = await Promise.all(comparisonKeys.map(async key => {
+    const comparisonEntry = key === previousMonthKey ? previousEntry : await storage.getDealerNotebookEntry(key);
+    const parsed = notebookInventorySnapshotSchema.safeParse(comparisonEntry?.inventorySnapshot);
+    return { monthKey: key, snapshot: parsed.success ? parsed.data : null };
+  }));
   return {
     entry: {
       monthKey,
       comparisonMode: entryComparisonMode.success ? entryComparisonMode.data : "previous-month",
       contextNote: entry?.contextNote ?? "",
       report: parsedReport?.success ? parsedReport.data : null,
+      inventorySnapshot: parsedSnapshot?.success ? parsedSnapshot.data : null,
       actions: parsedActions.success ? parsedActions.data.actions : [],
       generatedAt: entry?.generatedAt ? new Date(entry.generatedAt).toISOString() : null,
       updatedAt: entry?.updatedAt ? new Date(entry.updatedAt).toISOString() : null,
     },
     previousMonthKey,
     previousActions: parsedPreviousActions.success ? parsedPreviousActions.data.actions : [],
+    liveStock,
+    liveStockAsOf: liveStockAsOf.toISOString(),
+    canCaptureInventory: canCaptureNotebookInventory(monthKey, liveStockAsOf),
+    comparisonSnapshots,
   };
 }
 
@@ -535,6 +558,22 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/dealers-notebook/:monthKey/inventory-snapshot", isAuthenticated, async (req, res) => {
+    const monthKey = String(req.params.monthKey);
+    if (!isNotebookMonthKey(monthKey)) {
+      return res.status(400).json({ message: "Choose a valid notebook month." });
+    }
+    try {
+      await storage.captureDealerNotebookInventorySnapshot(monthKey);
+      return res.json(await loadDealerNotebookState(monthKey));
+    } catch (error) {
+      if (error instanceof NotebookSnapshotError) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      return res.status(500).json({ message: "Could not capture month-end inventory. No watch records were changed." });
+    }
+  });
+
   app.put("/api/dealers-notebook/:monthKey/actions", isAuthenticated, async (req, res) => {
     const monthKey = String(req.params.monthKey);
     const parsed = saveNotebookActionsSchema.safeParse(req.body);
@@ -575,6 +614,12 @@ export async function registerRoutes(
         .filter((watch) => watch.status === "sold" && allMonthKeys.has(notebookMonthKey(watch.soldDate ?? watch.dateSold) ?? ""))
         .map((watch) => watch.id);
       const priceHistory = await storage.getNotebookPriceHistory(Array.from(new Set(relevantIds)));
+      const snapshotEntries = await Promise.all([monthKey, ...comparisonMonthKeys]
+        .map(key => storage.getDealerNotebookEntry(key)));
+      const inventorySnapshots = snapshotEntries.flatMap(entry => {
+        const parsed = notebookInventorySnapshotSchema.safeParse(entry?.inventorySnapshot);
+        return parsed.success ? [parsed.data] : [];
+      });
       const registerFee = Number.isFinite(Number(watchRegisterSetting)) && Number(watchRegisterSetting) >= 0
         ? Math.round(Number(watchRegisterSetting))
         : 600;
@@ -585,6 +630,8 @@ export async function registerRoutes(
         comparisonMode,
         registerFee,
         contextNote,
+        new Date(),
+        inventorySnapshots,
       );
       const prompt = `You are the private business analyst for a small EU watch dealer. Analyze only the supplied data and return a single JSON object matching this exact structure:
 {"overview":"short balanced summary","wins":[{"id":"win-1","title":"...","explanation":"...","evidenceKeys":["period_sales"],"confidence":"high"}],"challenges":[{"id":"challenge-1","title":"...","explanation":"...","evidenceKeys":["period_profit"],"confidence":"medium"}],"improvements":[{"id":"improvement-1","title":"...","explanation":"...","evidenceKeys":["period_days"],"confidence":"low"}],"recommendations":[{"id":"recommendation-1","title":"...","action":"specific review-only next step","rationale":"...","evidenceKeys":["oldest_stock"],"relatedWatchCodes":["A01"]}]}
@@ -647,7 +694,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
       const caveats = [
         "Recorded profit is before VAT and excludes general overhead.",
         "Price history only reflects changes recorded after price tracking began.",
-        "Current stock information is a snapshot today, not a historical month-end record.",
+        "The report's current-stock details reflect inventory at report generation; a saved month-end snapshot is displayed separately when available.",
       ];
       if (prepared.period.salesCount < 5) caveats.push("This month has fewer than five recorded sales; treat patterns as preliminary.");
       if (prepared.period.salesWithPriceHistory < prepared.period.salesCount) caveats.push("Some sold watches do not have enough saved price history to assess reductions.");
@@ -655,6 +702,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
         period: prepared.period,
         comparison: prepared.comparison,
         currentStock: prepared.currentStock,
+        inventorySnapshots,
         overview: aiResult.data.overview,
         wins: aiResult.data.wins.map(normalizeInsight),
         challenges: aiResult.data.challenges.map(normalizeInsight),

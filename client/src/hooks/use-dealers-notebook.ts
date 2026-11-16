@@ -4,12 +4,18 @@ import type {
   NotebookAction,
   NotebookComparisonMode,
   NotebookEntry,
+  NotebookReport,
+  NotebookInventorySnapshot,
 } from "@shared/dealers-notebook";
 
 export interface DealerNotebookState {
   entry: NotebookEntry;
   previousMonthKey: string;
   previousActions: NotebookAction[];
+  liveStock: NotebookReport["currentStock"];
+  liveStockAsOf: string;
+  canCaptureInventory: boolean;
+  comparisonSnapshots: Array<{ monthKey: string; snapshot: NotebookInventorySnapshot | null }>;
 }
 
 async function readNotebookResponse(response: Response): Promise<DealerNotebookState> {
@@ -75,6 +81,18 @@ export function useGenerateDealerNotebookReport() {
     onSuccess: (result) => {
       client.setQueryData(notebookQueryKey(result.entry.monthKey), result);
       client.invalidateQueries({ queryKey: notebookQueryKey(result.previousMonthKey) });
+    },
+  });
+}
+
+export function useCaptureDealerNotebookInventory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (monthKey: string) => readNotebookResponse(
+      await apiRequest("POST", `/api/dealers-notebook/${encodeURIComponent(monthKey)}/inventory-snapshot`),
+    ),
+    onSuccess: result => {
+      client.setQueryData(notebookQueryKey(result.entry.monthKey), result);
     },
   });
 }

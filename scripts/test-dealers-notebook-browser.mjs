@@ -99,6 +99,23 @@ const emptyEntry = month => ({
 const writes = [];
 const analyzeRequests = [];
 const notebookReads = [];
+const inventorySnapshot = {
+  monthKey, savedAt: "2026-09-30T21:59:59.000Z",
+  activeWatchCount: 2, listedWatchCount: 1, costBasisCents: 220_125, listingValueCents: 150_099,
+  watches: [
+    { brand: "Omega", model: "Snapshot Watch", condition: "Good", isListed: true, costBasisCents: 100_000, listPriceCents: 150_099 },
+    { brand: "Cartier", model: "Unlisted Watch", condition: "Excellent", isListed: false, costBasisCents: 120_125, listPriceCents: null },
+  ],
+  dataCaveats: ["Saved costs at capture time."],
+};
+entry.inventorySnapshot = structuredClone(inventorySnapshot);
+const withStock = data => ({
+  ...data,
+  canCaptureInventory: false,
+  comparisonSnapshots: [{ monthKey: "2026-08", snapshot: null }],
+  liveStock: { activeListings: 0, listedCapitalCents: 0, candidates: [] },
+  liveStockAsOf: "2026-10-15T12:00:00.000Z",
+});
 let authUserRequests = 0;
 const pending = new Map();
 const errors = [];
@@ -177,7 +194,7 @@ try {
       requestId,
       responseCode: status,
       responseHeaders: [{ name: "Content-Type", value: "application/json" }],
-      body: Buffer.from(JSON.stringify(data)).toString("base64"),
+      body: Buffer.from(JSON.stringify(path.startsWith("/api/dealers-notebook") ? withStock(data) : data)).toString("base64"),
     });
   });
 
@@ -250,6 +267,16 @@ try {
   await fill('input[aria-label="Review month"]', monthKey);
   await selectSavedMonth();
   assert.equal(await evaluate('document.querySelector(\'textarea[aria-label="Business context note"]\')?.value'), "Initial saved business context.");
+  await wait("document.querySelector('[aria-label=\"Month-end inventory snapshots\"]')?.innerText.includes('2,201.25')", "saved historical stock totals");
+  assert(await evaluate("document.querySelector('[aria-label=\"Month-end inventory snapshots\"]')?.innerText.includes('1,500.99')"));
+  assert(await evaluate("document.querySelector('[aria-label=\"Month-end inventory snapshots\"]')?.innerText.includes('historical inventory is unknown')"));
+  assert(await evaluate("document.querySelector('main')?.innerText.toLowerCase().includes('live inventory')"));
+  await evaluate("document.querySelector('[aria-label=\"Month-end inventory snapshots\"] details').open=true");
+  assert(await evaluate("document.querySelector('[aria-label=\"Month-end inventory snapshots\"]')?.innerText.includes('Snapshot Watch')"));
+  assert(await evaluate("document.querySelector('[aria-label=\"Month-end inventory snapshots\"]')?.innerText.includes('Price not recorded')"));
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  assert(await evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "mobile page should not overflow horizontally");
+  await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
 
   const savedNote = "Supply delays reduced available sourcing time.";
   await fill('textarea[aria-label="Business context note"]', savedNote);
@@ -278,6 +305,7 @@ try {
     assert(!analysisPayload.includes(sensitiveValue), `analysis request must not include ${sensitiveValue}`);
   }
   assert.equal(entry.actions[0].status, "done", "report regeneration should preserve the saved action status");
+  assert.deepEqual(entry.inventorySnapshot, inventorySnapshot, "refreshing the report must preserve historical stock");
 
   await reloadAndAssertSavedMonth();
   assert.equal(await evaluate('document.querySelector(\'textarea[aria-label="Business context note"]\')?.value'), savedNote);
@@ -294,7 +322,7 @@ try {
   );
   assert(!notebookReads.includes("2099-12"), "a future URL month must not be requested");
   assert.deepEqual(errors, []);
-  console.log("PASS: shared month links load the matching saved report, context, and actions; month changes and reloads stay on the selected month; future months are clamped. All APIs are fixtures; no live auth, database, contacts, or Gemini calls.");
+  console.log("PASS: shared month links, changes and reloads retain the matching report, context and actions; future months are clamped. The notebook separates saved month-end stock from live inventory, exposes prices and missing history, fits mobile and preserves snapshots across review refreshes. All APIs are fixtures; no live auth, database, contacts, or Gemini calls.");
 } finally {
   socket?.close();
   chrome.kill("SIGTERM");

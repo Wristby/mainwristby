@@ -4,6 +4,7 @@ import {
   notebookComparisonMonthKeys,
   notebookMonthKey,
   type NotebookComparisonMode,
+  type NotebookInventorySnapshot,
   type NotebookPriceInput,
   type NotebookWatchInput,
 } from "@shared/dealers-notebook";
@@ -29,6 +30,7 @@ export function prepareNotebookAnalysis(
   watchRegisterFeeCents: number,
   contextNote: string,
   now = new Date(),
+  inventorySnapshots: readonly NotebookInventorySnapshot[] = [],
 ) {
   const comparisonMonthKeys = notebookComparisonMonthKeys(monthKey, comparisonMode);
   const period = calculateNotebookPeriod(inventory, priceHistory, [monthKey], watchRegisterFeeCents, monthLabel(monthKey));
@@ -101,6 +103,13 @@ export function prepareNotebookAnalysis(
     current_stock: `${currentStock.activeListings} active listings with a saved asking price; recorded cost basis totals ${money(currentStock.listedCapitalCents)}.`,
     oldest_stock: currentStock.candidates.length ? `Oldest listed current-stock candidate: ${currentStock.candidates[0].label}, ${currentStock.candidates[0].daysListed} days listed.` : "No current priced listings with a valid listing date.",
   };
+  const relevantSnapshots = inventorySnapshots.filter(snapshot => selectedMonths.has(snapshot.monthKey));
+  for (const snapshot of relevantSnapshots) {
+    evidence[`month_end_stock_${snapshot.monthKey}`] =
+      `Saved ${monthLabel(snapshot.monthKey)} inventory at ${snapshot.savedAt}: ${snapshot.activeWatchCount} active watches, `
+      + `recorded cost basis ${money(snapshot.costBasisCents)}, ${snapshot.listedWatchCount} priced listings, `
+      + `recorded asking total ${money(snapshot.listingValueCents)}. This is separate from current stock.`;
+  }
   period.brands.slice(0, 6).forEach((brand, index) => {
     evidence[`period_brand_${index + 1}`] = `${brand.brand}: ${brand.salesCount} sale${brand.salesCount === 1 ? "" : "s"}, revenue ${money(brand.revenueCents)}, profit before VAT ${money(brand.netProfitCents)}${brand.marginPercent == null ? "" : `, margin ${brand.marginPercent.toFixed(1)}%`}.`;
   });
@@ -122,6 +131,7 @@ export function prepareNotebookAnalysis(
         listedCapitalCents: currentStock.listedCapitalCents,
         candidates: currentCandidates,
       },
+      inventorySnapshots: relevantSnapshots.map(({ watches: _watches, ...summary }) => summary),
       saleSamples,
       evidence,
       contextNote,
@@ -129,7 +139,8 @@ export function prepareNotebookAnalysis(
         "The period measures completed sales by saved sale date in Europe/Amsterdam time.",
         "Profit is calculated from recorded watch-level purchase, import, service, polish, platform, shipping, insurance, and watch-register costs; it is before VAT and excludes general overhead.",
         "Price-change history begins when tracking started; earlier reductions may not be available.",
-        "Current inventory is a snapshot today, not a historical month-end inventory record.",
+        "The current-stock view reflects inventory at report generation; a saved month-end stock snapshot is shown separately when available.",
+        "Month-end snapshots are actual dated captures, not reconstructions. If a selected or comparison month has no snapshot, its month-end inventory is unknown; do not substitute current stock.",
         "Buyer names, client contacts, serial numbers, tracking numbers, notes, and client records are not included.",
       ],
     },

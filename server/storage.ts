@@ -13,9 +13,23 @@ import { getMatchingSerialFields, normalizeWatchSerial } from "@shared/serial-ma
 import { shouldRecordListedPrice } from "@shared/price-history";
 import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
-import type { NotebookAction, NotebookComparisonMode, NotebookPriceInput, NotebookReport, NotebookWatchInput } from "@shared/dealers-notebook";
+import {
+  canCaptureNotebookInventory,
+  calculateNotebookInventorySnapshot,
+  notebookInventorySnapshotSchema,
+  type NotebookAction,
+  type NotebookComparisonMode,
+  type NotebookInventorySnapshot,
+  type NotebookPriceInput,
+  type NotebookReport,
+  type NotebookWatchInput,
+} from "@shared/dealers-notebook";
 
 export class SaleBuyerSaveError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
+export class NotebookSnapshotError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 
@@ -104,6 +118,7 @@ export interface IStorage {
   getNotebookInventoryData(): Promise<NotebookWatchInput[]>;
   getNotebookPriceHistory(inventoryIds: number[]): Promise<NotebookPriceInput[]>;
   getDealerNotebookEntry(monthKey: string): Promise<DealerNotebookEntry | undefined>;
+  captureDealerNotebookInventorySnapshot(monthKey: string): Promise<NotebookInventorySnapshot>;
   saveDealerNotebookContext(monthKey: string, contextNote: string): Promise<DealerNotebookEntry>;
   saveDealerNotebookActions(monthKey: string, actions: NotebookAction[]): Promise<DealerNotebookEntry>;
   saveDealerNotebookReport(
@@ -116,6 +131,8 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  constructor(private readonly snapshotNow: () => Date = () => new Date()) {}
+
   async getNotebookInventoryData(): Promise<NotebookWatchInput[]> {
     return db.select({
       id: inventory.id,
@@ -158,6 +175,51 @@ export class DatabaseStorage implements IStorage {
     const [entry] = await db.select().from(dealerNotebookEntries)
       .where(eq(dealerNotebookEntries.monthKey, monthKey));
     return entry;
+  }
+
+  async captureDealerNotebookInventorySnapshot(monthKey: string): Promise<NotebookInventorySnapshot> {
+    return db.transaction(async (tx) => {
+      // A single shared lock serializes manual/automatic captures across instances.
+      await tx.execute(sql`select pg_advisory_xact_lock(73284078)`);
+      const [existing] = await tx.select().from(dealerNotebookEntries)
+        .where(eq(dealerNotebookEntries.monthKey, monthKey));
+      if (existing?.inventorySnapshot) {
+        return notebookInventorySnapshotSchema.parse(existing.inventorySnapshot);
+      }
+      if (!canCaptureNotebookInventory(monthKey, this.snapshotNow())) {
+        throw new NotebookSnapshotError(
+          "Month-end inventory can only be captured on the final day of that month in Europe/Amsterdam. Earlier months cannot be reconstructed.",
+          409,
+        );
+      }
+      // These locks keep the inventory and register-fee setting consistent while
+      // reading; no watch, expense, client or setting row is changed by capture.
+      await tx.execute(sql`LOCK TABLE inventory, settings IN SHARE MODE`);
+      const now = this.snapshotNow();
+      if (!canCaptureNotebookInventory(monthKey, now)) {
+        throw new NotebookSnapshotError("Month-end capture was missed. No historical inventory was fabricated.", 409);
+      }
+      const records = await tx.select().from(inventory);
+      const [feeSetting] = await tx.select().from(settings)
+        .where(eq(settings.key, "watch_register_fee"));
+      const fee = Number(feeSetting?.value ?? 600);
+      const snapshot = notebookInventorySnapshotSchema.parse(calculateNotebookInventorySnapshot(
+        records,
+        monthKey,
+        Number.isFinite(fee) && fee >= 0 ? Math.round(fee) : 600,
+        now,
+      ));
+      await tx.insert(dealerNotebookEntries)
+        .values({ monthKey, inventorySnapshot: snapshot })
+        .onConflictDoUpdate({
+          target: dealerNotebookEntries.monthKey,
+          set: { inventorySnapshot: snapshot },
+          setWhere: isNull(dealerNotebookEntries.inventorySnapshot),
+        });
+      const [saved] = await tx.select().from(dealerNotebookEntries)
+        .where(eq(dealerNotebookEntries.monthKey, monthKey));
+      return notebookInventorySnapshotSchema.parse(saved.inventorySnapshot);
+    });
   }
 
   async saveDealerNotebookContext(monthKey: string, contextNote: string): Promise<DealerNotebookEntry> {
