@@ -54,6 +54,16 @@ function currentMonthKey() {
   return notebookMonthKey(new Date()) ?? "";
 }
 
+function isSelectableMonth(monthKey: string, maximumMonth: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey) && monthKey <= maximumMonth;
+}
+
+function initialReviewMonth() {
+  const maximumMonth = currentMonthKey();
+  const requestedMonth = new URLSearchParams(window.location.search).get("month") ?? "";
+  return isSelectableMonth(requestedMonth, maximumMonth) ? requestedMonth : maximumMonth;
+}
+
 function monthLabel(monthKey: string) {
   const [year, month] = monthKey.split("-").map(Number);
   return MONTH_FORMATTER.format(new Date(Date.UTC(year, month - 1, 1)));
@@ -157,7 +167,7 @@ function newAction(recommendation: SavedNotebookRecommendation): NotebookAction 
 }
 
 export default function DealersNotebook() {
-  const [monthKey, setMonthKey] = useState(currentMonthKey);
+  const [monthKey, setMonthKey] = useState(initialReviewMonth);
   const notebook = useDealerNotebookEntry(monthKey);
   const saveContext = useSaveDealerNotebookContext();
   const saveActions = useSaveDealerNotebookActions();
@@ -170,6 +180,14 @@ export default function DealersNotebook() {
 
   const entry = notebook.data?.entry;
   const report = entry?.report ?? null;
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("month") !== monthKey) {
+      url.searchParams.set("month", monthKey);
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [monthKey]);
 
   useEffect(() => {
     if (entry && entry.monthKey === monthKey && initializedMonth.current !== monthKey) {
@@ -274,7 +292,14 @@ export default function DealersNotebook() {
         <div className="dn-month-controls flex flex-wrap items-end gap-3">
           <label className="grid gap-1.5">
             <span className="dn-eyebrow">Review month</span>
-            <input aria-label="Review month" type="month" max={currentMonthKey()} value={monthKey} onChange={(event) => { initializedMonth.current = null; setMonthKey(event.target.value); setFeedback(""); setPageError(""); }} className="dn-control w-[185px]" />
+            <input aria-label="Review month" type="month" max={currentMonthKey()} value={monthKey} onChange={(event) => {
+              const selectedMonth = event.target.value;
+              const nextMonth = isSelectableMonth(selectedMonth, currentMonthKey()) ? selectedMonth : currentMonthKey();
+              initializedMonth.current = null;
+              setMonthKey(nextMonth);
+              setFeedback("");
+              setPageError("");
+            }} className="dn-control w-[185px]" />
           </label>
           <label className="grid gap-1.5">
             <span className="dn-eyebrow">Compare against</span>

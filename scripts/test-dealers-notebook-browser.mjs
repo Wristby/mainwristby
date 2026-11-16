@@ -16,6 +16,7 @@ const previousMonth = month => {
   const [year, monthNumber] = month.split("-").map(Number);
   return new Date(Date.UTC(year, monthNumber - 2, 1)).toISOString().slice(0, 7);
 };
+const otherMonthKey = previousMonth(monthKey);
 const fixtureAction = {
   id: "fb02b69f-a7a7-46d1-bb03-2b144f5d74b1",
   title: "Review sourcing lead times",
@@ -27,16 +28,23 @@ const fixtureAction = {
   completedAt: null,
 };
 
-function report(overview, generatedAt) {
+function monthLabel(month) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+}
+
+function report(overview, generatedAt, reportMonth = monthKey) {
+  const comparisonMonth = previousMonth(reportMonth);
   const period = {
-    monthKeys: [monthKey], label: "September 2026", salesCount: 2, pricedSalesCount: 2,
+    monthKeys: [reportMonth], label: monthLabel(reportMonth), salesCount: 2, pricedSalesCount: 2,
     revenueCents: 250000, netProfitCents: 42000, marginPercent: 16.8, medianDaysListed: 30,
     daysSampleCount: 2, salesWithPriceHistory: 0, salesWithPriceReductions: 0, priceReductionCount: 0, brands: [],
   };
   return {
     period,
     comparison: {
-      ...period, monthKeys: ["2026-08"], label: "August 2026", salesCount: 1, pricedSalesCount: 1,
+      ...period, monthKeys: [comparisonMonth], label: monthLabel(comparisonMonth), salesCount: 1, pricedSalesCount: 1,
       revenueCents: 120000, netProfitCents: 18000, marginPercent: 15, medianDaysListed: 35, daysSampleCount: 1,
     },
     currentStock: { activeListings: 0, listedCapitalCents: 0, candidates: [] },
@@ -50,7 +58,7 @@ function report(overview, generatedAt) {
       relatedWatchCodes: [],
       relatedWatches: [],
     }],
-    evidence: { period_sales: "2 recorded sales in September 2026" },
+    evidence: { period_sales: `2 recorded sales in ${monthLabel(reportMonth)}` },
     dataCaveats: ["Fixture report for browser testing."],
     generatedAt,
   };
@@ -65,6 +73,20 @@ let entry = {
   generatedAt: "2026-10-01T09:00:00.000Z",
   updatedAt: "2026-10-01T09:00:00.000Z",
 };
+const otherEntry = {
+  ...structuredClone(entry),
+  monthKey: otherMonthKey,
+  contextNote: "Saved August business context.",
+  report: report("Previously saved August review.", "2026-09-01T09:00:00.000Z", otherMonthKey),
+  actions: [{
+    ...structuredClone(fixtureAction),
+    id: "d6516c26-71d4-4c4d-9b65-00f543174c41",
+    title: "Review August acquisition timing",
+    createdAt: "2026-08-31T12:00:00.000Z",
+  }],
+  generatedAt: "2026-09-01T09:00:00.000Z",
+  updatedAt: "2026-09-01T09:00:00.000Z",
+};
 const emptyEntry = month => ({
   monthKey: month,
   comparisonMode: "previous-month",
@@ -76,6 +98,7 @@ const emptyEntry = month => ({
 });
 const writes = [];
 const analyzeRequests = [];
+const notebookReads = [];
 let authUserRequests = 0;
 const pending = new Map();
 const errors = [];
@@ -121,8 +144,9 @@ try {
       data = { id: "notebook-browser-fixture", username: "fixture-user" };
     } else if (request.method === "GET" && /^\/api\/dealers-notebook\/\d{4}-(0[1-9]|1[0-2])$/.test(path)) {
       const requestedMonth = path.split("/").at(-1);
+      notebookReads.push(requestedMonth);
       data = {
-        entry: structuredClone(requestedMonth === monthKey ? entry : emptyEntry(requestedMonth)),
+        entry: structuredClone(requestedMonth === monthKey ? entry : requestedMonth === otherMonthKey ? otherEntry : emptyEntry(requestedMonth)),
         previousMonthKey: previousMonth(requestedMonth),
         previousActions: [],
       };
@@ -190,10 +214,11 @@ try {
   };
   const selectSavedMonth = async () => {
     await wait("!!document.querySelector('input[aria-label=\"Review month\"]')", "review month control");
-    await fill('input[aria-label="Review month"]', monthKey);
     await wait("document.querySelector('main')?.innerText.includes('Previously saved September review.') || document.querySelector('main')?.innerText.includes('Mock AI review generated for September.')", "saved September report");
+    assert.equal(await evaluate('document.querySelector(\'input[aria-label="Review month"]\')?.value'), monthKey);
+    assert.equal(await evaluate('new URL(location.href).searchParams.get("month")'), monthKey);
   };
-  const reloadAndSelectSavedMonth = async () => {
+  const reloadAndAssertSavedMonth = async () => {
     const priorAuthRequests = authUserRequests;
     await send("Page.reload");
     for (let i = 0; i < 120 && authUserRequests === priorAuthRequests; i++) await pause(100);
@@ -205,9 +230,24 @@ try {
   await send("Page.enable");
   await send("Fetch.enable", { patterns: [{ urlPattern: "*/api/*", requestStage: "Request" }] });
   await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
-  await send("Page.navigate", { url: `${base}/dealers-notebook` });
+  await send("Page.navigate", { url: `${base}/dealers-notebook?month=${monthKey}` });
   await wait("document.querySelector('main')?.innerText.includes('Dealer’s Notebook')", "signed-in notebook page");
 
+  await selectSavedMonth();
+  assert.equal(await evaluate('document.querySelector(\'textarea[aria-label="Business context note"]\')?.value'), "Initial saved business context.");
+  const currentMonthLimit = await evaluate('document.querySelector(\'input[aria-label="Review month"]\')?.max');
+  assert.match(currentMonthLimit, /^\d{4}-(0[1-9]|1[0-2])$/);
+  assert(await evaluate('document.querySelector(\'input[aria-label="Review month"]\')?.value <= document.querySelector(\'input[aria-label="Review month"]\')?.max'));
+
+  await fill('input[aria-label="Review month"]', otherMonthKey);
+  await wait(
+    `document.querySelector('input[aria-label="Review month"]')?.value === ${JSON.stringify(otherMonthKey)} && document.querySelector('main')?.innerText.includes('Previously saved August review.')`,
+    "saved August report after changing months",
+  );
+  assert.equal(await evaluate('document.querySelector(\'textarea[aria-label="Business context note"]\')?.value'), "Saved August business context.");
+  assert((await evaluate("document.querySelector('main')?.innerText"))?.includes("Review August acquisition timing"));
+
+  await fill('input[aria-label="Review month"]', monthKey);
   await selectSavedMonth();
   assert.equal(await evaluate('document.querySelector(\'textarea[aria-label="Business context note"]\')?.value'), "Initial saved business context.");
 
@@ -222,7 +262,7 @@ try {
   assert.equal(entry.actions[0].status, "done");
   assert(entry.actions[0].completedAt, "completed action should have a completion timestamp");
 
-  await reloadAndSelectSavedMonth();
+  await reloadAndAssertSavedMonth();
   assert.equal(await evaluate('document.querySelector(\'textarea[aria-label="Business context note"]\')?.value'), savedNote);
   await evaluate("(() => { const details=[...document.querySelectorAll('details')].find(el=>el.querySelector('summary')?.innerText.includes('Completed or dismissed')); if(details) details.open=true; })()");
   await wait("[...document.querySelectorAll('details')].some(el=>el.querySelector('summary')?.innerText.includes('Completed or dismissed') && el.innerText.includes('Done'))", "completed action after reload");
@@ -239,7 +279,7 @@ try {
   }
   assert.equal(entry.actions[0].status, "done", "report regeneration should preserve the saved action status");
 
-  await reloadAndSelectSavedMonth();
+  await reloadAndAssertSavedMonth();
   assert.equal(await evaluate('document.querySelector(\'textarea[aria-label="Business context note"]\')?.value'), savedNote);
   await evaluate("(() => { const details=[...document.querySelectorAll('details')].find(el=>el.querySelector('summary')?.innerText.includes('Completed or dismissed')); if(details) details.open=true; })()");
   await wait("[...document.querySelectorAll('details')].some(el=>el.querySelector('summary')?.innerText.includes('Completed or dismissed') && el.innerText.includes('Done'))", "action status after report reload");
@@ -247,8 +287,14 @@ try {
   assert(writes.some(write => write.path.endsWith("/context") && write.method === "PUT"), "context should be saved through its API");
   assert(writes.some(write => write.path.endsWith("/actions") && write.method === "PUT"), "actions should be saved through their API");
   assert(writes.some(write => write.path.endsWith("/analyze") && write.method === "POST"), "report should be generated through its API");
+  await send("Page.navigate", { url: `${base}/dealers-notebook?month=2099-12` });
+  await wait(
+    `document.querySelector('input[aria-label="Review month"]')?.value === document.querySelector('input[aria-label="Review month"]')?.max && new URL(location.href).searchParams.get("month") === document.querySelector('input[aria-label="Review month"]')?.max`,
+    "future review month clamped to the current month",
+  );
+  assert(!notebookReads.includes("2099-12"), "a future URL month must not be requested");
   assert.deepEqual(errors, []);
-  console.log("PASS: authenticated notebook UI loads a saved month, saves notes and action status across reloads, generates a mocked report, and sends no contact fields in the analysis request. All APIs are fixtures; no live auth, database, contacts, or Gemini calls.");
+  console.log("PASS: shared month links load the matching saved report, context, and actions; month changes and reloads stay on the selected month; future months are clamped. All APIs are fixtures; no live auth, database, contacts, or Gemini calls.");
 } finally {
   socket?.close();
   chrome.kill("SIGTERM");
