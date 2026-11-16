@@ -7,6 +7,7 @@ export const modules: ModuleMap = {
   "./components/mockups/wristby-light/Workspace.tsx": () => import("../components/mockups/wristby-light/Workspace.tsx"),
   "./components/mockups/wristby-light/WorkspaceRecentlySold.tsx": () => import("../components/mockups/wristby-light/WorkspaceRecentlySold.tsx"),
   "./components/mockups/wristby-public/CurrentSignIn.tsx": () => import("../components/mockups/wristby-public/CurrentSignIn.tsx"),
+  "./components/mockups/wristby-public/NocturneLanding.tsx": () => import("../components/mockups/wristby-public/NocturneLanding.tsx"),
   "./components/mockups/wristby-public/PublicLanding.tsx": () => import("../components/mockups/wristby-public/PublicLanding.tsx"),
   "./components/mockups/wristby-public/PublicLandingCurrent.tsx": () => import("../components/mockups/wristby-public/PublicLandingCurrent.tsx"),
   "./components/mockups/wristby-public/PublicLandingRedesign.tsx": () => import("../components/mockups/wristby-public/PublicLandingRedesign.tsx"),
