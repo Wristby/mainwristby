@@ -1,1 +1,0 @@
-import{j as e,L as r,h as i}from"./index-CWC2seUJ.js";function l({href:a,label:s,className:n}){return e.jsx(r,{href:a,"aria-label":s,className:i("absolute inset-0 z-0",n),"data-testid":`link-row-${a.replace(/[^a-zA-Z0-9]+/g,"-").replace(/^-|-$/g,"")}`,children:e.jsx("span",{className:"sr-only",children:s})})}export{l as R};
