@@ -162,6 +162,23 @@ describe("client watch histories", () => {
 });
 
 describe("role-specific client summaries", () => {
+  it("shows the saved address on the client profile", () => {
+    state.clients[0] = {
+      ...state.clients[0],
+      addressLine1: "Keizersgracht 100",
+      addressLine2: "Unit 2",
+      city: "Amsterdam",
+      state: "",
+      postalCode: "1015",
+      country: "Netherlands",
+    };
+    const html = render();
+    expect(html).toContain("Address");
+    expect(html).toContain("Keizersgracht 100");
+    expect(html).toContain("Unit 2");
+    expect(html).toContain("Amsterdam, 1015");
+  });
+
   it("shows buyer-only purchases and spending without acquisition value", () => {
     state.inventory = [watch(1, { buyerId: 12, salePrice: 123456 }), watch(2, { buyerId: 12, salePrice: 101 })];
     const html = render();

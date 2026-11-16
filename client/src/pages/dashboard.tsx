@@ -50,6 +50,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { RecentlySold } from "@/components/recently-sold";
+import { COUNTRIES } from "@/lib/countries";
 
 const createExpenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
@@ -57,30 +58,6 @@ const createExpenseFormSchema = insertExpenseSchema.extend({
 });
 
 type CreateExpenseFormValues = z.infer<typeof createExpenseFormSchema>;
-
-const COUNTRIES = [
-  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
-  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
-  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
-  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica",
-  "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt",
-  "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon",
-  "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
-  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
-  "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kosovo",
-  "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania",
-  "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius",
-  "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia",
-  "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman",
-  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
-  "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent", "Samoa", "San Marino", "Sao Tome and Principe",
-  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia",
-  "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
-  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
-  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
-  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
-];
-
 
 export default function Dashboard() {
   const [isAddWatchOpen, setIsAddWatchOpen] = useState(false);
@@ -119,6 +96,11 @@ export default function Dashboard() {
       phone: "",
       socialHandle: "",
       website: "",
+      addressLine1: "",
+      addressLine2: "",
+      city: "",
+      state: "",
+      postalCode: "",
       country: "",
       type: "client",
       notes: "",
@@ -752,10 +734,10 @@ export default function Dashboard() {
       </Dialog>
       {/* Add Client Dialog - Full Form */}
       <Dialog open={isAddClientOpen} onOpenChange={setIsAddClientOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto bg-white border-slate-200 text-slate-900 sm:max-w-[680px]">
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
           <form onSubmit={clientForm.handleSubmit(onClientSubmit)} className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Name *</Label>
                 <Input {...clientForm.register("name")} className="bg-white border-slate-200" placeholder="John Doe" />
@@ -771,7 +753,7 @@ export default function Dashboard() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Email</Label>
                 <Input {...clientForm.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
@@ -790,16 +772,38 @@ export default function Dashboard() {
               <Input {...clientForm.register("website")} className="bg-white border-slate-200" placeholder="https://example.com" />
             </div>
             <div className="space-y-2">
-              <Label>Country</Label>
-              <Select value={clientForm.watch("country") as string || "none"} onValueChange={(val) => clientForm.setValue("country", val === "none" ? "" : val)}>
-                <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Country" /></SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 text-slate-900 max-h-[200px]">
-                  <SelectItem value="none">None</SelectItem>
-                  {["Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Korea, North", "Korea, South", "Kosovo", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"].map(country => (
-                    <SelectItem key={country} value={country}>{country}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Address line 1</Label>
+              <Input {...clientForm.register("addressLine1")} className="bg-white border-slate-200" autoComplete="address-line1" />
+            </div>
+            <div className="space-y-2">
+              <Label>Address line 2</Label>
+              <Input {...clientForm.register("addressLine2")} className="bg-white border-slate-200" autoComplete="address-line2" />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input {...clientForm.register("city")} className="bg-white border-slate-200" autoComplete="address-level2" />
+              </div>
+              <div className="space-y-2">
+                <Label>State / Province</Label>
+                <Input {...clientForm.register("state")} className="bg-white border-slate-200" autoComplete="address-level1" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Postal code</Label>
+                <Input {...clientForm.register("postalCode")} className="bg-white border-slate-200" autoComplete="postal-code" />
+              </div>
+              <div className="space-y-2">
+                <Label>Country</Label>
+                <Select value={clientForm.watch("country") as string || "none"} onValueChange={(val) => clientForm.setValue("country", val === "none" ? "" : val)}>
+                  <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Country" /></SelectTrigger>
+                  <SelectContent className="max-h-[200px] bg-white border-slate-200 text-slate-900">
+                    <SelectItem value="none">None</SelectItem>
+                    {COUNTRIES.map(country => <SelectItem key={country} value={country}>{country}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>

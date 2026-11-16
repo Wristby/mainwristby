@@ -227,6 +227,11 @@ export default function InventoryDetail() {
       phone: "",
       socialHandle: "",
       website: "",
+      addressLine1: "",
+      addressLine2: "",
+      city: "",
+      state: "",
+      postalCode: "",
       country: "",
       type: "client",
       notes: "",
@@ -2595,7 +2600,7 @@ export default function InventoryDetail() {
         </Card>
       )}
       <Dialog open={isQuickAddClientOpen} onOpenChange={(open) => { setIsQuickAddClientOpen(open); if (!open) quickClientForm.reset(); }}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900" data-testid="dialog-quick-add-client">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto bg-white border-slate-200 text-slate-900 sm:max-w-[680px]" data-testid="dialog-quick-add-client">
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
           <form onSubmit={quickClientForm.handleSubmit((data) => {
             quickAddClientMutation.mutate(data, {
@@ -2611,7 +2616,7 @@ export default function InventoryDetail() {
               }
             });
           })} className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Name *</Label>
                 <Input {...quickClientForm.register("name")} className="bg-white border-slate-200" placeholder="John Doe" data-testid="input-quick-add-name" />
@@ -2628,7 +2633,7 @@ export default function InventoryDetail() {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Email</Label>
                 <Input {...quickClientForm.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
@@ -2647,16 +2652,39 @@ export default function InventoryDetail() {
               <Input {...quickClientForm.register("website")} className="bg-white border-slate-200" placeholder="https://example.com" />
             </div>
             <div className="space-y-2">
-              <Label>Country</Label>
-              <select 
-                {...quickClientForm.register("country")} 
-                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              >
-                <option value="">Select Country</option>
-                {COUNTRIES.map(country => (
-                  <option key={country} value={country}>{country}</option>
-                ))}
-              </select>
+              <Label>Address line 1</Label>
+              <Input {...quickClientForm.register("addressLine1")} className="bg-white border-slate-200" autoComplete="address-line1" />
+            </div>
+            <div className="space-y-2">
+              <Label>Address line 2</Label>
+              <Input {...quickClientForm.register("addressLine2")} className="bg-white border-slate-200" autoComplete="address-line2" />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input {...quickClientForm.register("city")} className="bg-white border-slate-200" autoComplete="address-level2" />
+              </div>
+              <div className="space-y-2">
+                <Label>State / Province</Label>
+                <Input {...quickClientForm.register("state")} className="bg-white border-slate-200" autoComplete="address-level1" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Postal code</Label>
+                <Input {...quickClientForm.register("postalCode")} className="bg-white border-slate-200" autoComplete="postal-code" />
+              </div>
+              <div className="space-y-2">
+                <Label>Country</Label>
+                <select
+                  {...quickClientForm.register("country")}
+                  autoComplete="country-name"
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                >
+                  <option value="">Select Country</option>
+                  {COUNTRIES.map(country => <option key={country} value={country}>{country}</option>)}
+                </select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>

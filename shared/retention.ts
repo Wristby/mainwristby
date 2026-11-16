@@ -46,7 +46,11 @@ export type RetentionSchedule = RetentionScheduleInput & {
   automaticDeletionEnabled: false;
 };
 
-export const profileFields = ["name", "email", "phone", "socialHandle", "website", "country", "notes", "isVip"] as const;
+export const profileFields = [
+  "name", "email", "phone", "socialHandle", "website",
+  "addressLine1", "addressLine2", "city", "state", "postalCode", "country",
+  "notes", "isVip",
+] as const;
 
 export type RetentionPreview = {
   clientId: number;

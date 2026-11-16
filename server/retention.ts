@@ -107,7 +107,9 @@ export async function clearClient(id: number, fingerprint: string) {
     }
     await tx.update(clients).set({
       name: `Cleared client #${id}`, email: null, phone: null, socialHandle: null,
-      website: null, country: null, notes: null, isVip: false, profileClearedAt: new Date(),
+      website: null, addressLine1: null, addressLine2: null, city: null,
+      state: null, postalCode: null, country: null, notes: null, isVip: false,
+      profileClearedAt: new Date(),
     }).where(eq(clients.id, id));
     const schedule = await readSchedule(tx);
     await tx.insert(retentionAudit).values({ action: "profile_cleared", recordId: id, revision: schedule!.revision });

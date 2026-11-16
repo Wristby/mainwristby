@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useInventory } from "@/hooks/use-inventory";
 import { useParams, useLocation } from "wouter";
 import { Client, InventoryItem, insertClientSchema } from "@shared/schema";
+import { COUNTRIES } from "@/lib/countries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,11 @@ export default function ClientDetail() {
       phone: "",
       socialHandle: "",
       website: "",
+      addressLine1: "",
+      addressLine2: "",
+      city: "",
+      state: "",
+      postalCode: "",
       country: "",
       type: "client" as "client" | "dealer",
       notes: "",
@@ -99,6 +105,11 @@ export default function ClientDetail() {
         phone: client.phone || "",
         socialHandle: client.socialHandle || "",
         website: client.website || "",
+        addressLine1: client.addressLine1 || "",
+        addressLine2: client.addressLine2 || "",
+        city: client.city || "",
+        state: client.state || "",
+        postalCode: client.postalCode || "",
         country: client.country || "",
         type: client.type as "client" | "dealer",
         notes: client.notes || "",
@@ -136,6 +147,12 @@ export default function ClientDetail() {
       </div>
     );
   }
+
+  const addressLocality = [
+    client.city,
+    [client.state, client.postalCode].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  const addressLines = [client.addressLine1, client.addressLine2, addressLocality].filter(Boolean);
 
   const onEditSubmit = (data: any) => {
     updateClientMutation.mutate({ id: client.id, ...data }, {
@@ -213,7 +230,7 @@ export default function ClientDetail() {
                 Edit
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] bg-white border-slate-200 text-slate-900">
+            <DialogContent className="max-h-[90dvh] overflow-y-auto bg-white border-slate-200 text-slate-900 sm:max-w-[680px]">
               <DialogHeader>
                 <DialogTitle>Edit Client</DialogTitle>
               </DialogHeader>
@@ -290,17 +307,84 @@ export default function ClientDetail() {
                   </div>
                   <FormField
                     control={form.control}
-                    name="country"
+                    name="addressLine1"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Country</FormLabel>
-                        <FormControl>
-                          <Input {...field} className="bg-white border-slate-200" />
-                        </FormControl>
+                        <FormLabel>Address line 1</FormLabel>
+                        <FormControl><Input {...field} value={field.value || ""} autoComplete="address-line1" className="bg-white border-slate-200" /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="addressLine2"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Address line 2</FormLabel>
+                        <FormControl><Input {...field} value={field.value || ""} autoComplete="address-line2" className="bg-white border-slate-200" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="city"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>City</FormLabel>
+                          <FormControl><Input {...field} value={field.value || ""} autoComplete="address-level2" className="bg-white border-slate-200" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="state"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>State / Province</FormLabel>
+                          <FormControl><Input {...field} value={field.value || ""} autoComplete="address-level1" className="bg-white border-slate-200" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="postalCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Postal code</FormLabel>
+                          <FormControl><Input {...field} value={field.value || ""} autoComplete="postal-code" className="bg-white border-slate-200" /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="country"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Country</FormLabel>
+                          <FormControl>
+                            <select
+                              {...field}
+                              value={field.value || ""}
+                              autoComplete="country-name"
+                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                            >
+                              <option value="">Select Country</option>
+                              {COUNTRIES.map(country => <option key={country} value={country}>{country}</option>)}
+                            </select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   <FormField
                     control={form.control}
                     name="type"
@@ -423,6 +507,17 @@ export default function ClientDetail() {
                 <p className="text-sm">{client.country || 'No location provided'}</p>
               </div>
             </div>
+            {addressLines.length > 0 && (
+              <div className="flex items-start gap-3 text-slate-600">
+                <div className="p-2 bg-slate-100 rounded-lg">
+                  <Globe className="w-4 h-4 text-slate-500" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 font-medium uppercase">Address</p>
+                  <p className="text-sm whitespace-pre-line">{addressLines.join("\n")}</p>
+                </div>
+              </div>
+            )}
             {client.website && (
               <div className="flex items-center gap-3 text-slate-600">
                 <div className="p-2 bg-slate-100 rounded-lg">

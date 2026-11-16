@@ -50,6 +50,11 @@ export default function Clients() {
       phone: "",
       socialHandle: "",
       website: "",
+      addressLine1: "",
+      addressLine2: "",
+      city: "",
+      state: "",
+      postalCode: "",
       country: "",
       type: "client",
       notes: "",
@@ -97,12 +102,12 @@ export default function Clients() {
               Add Client
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-white border-slate-200 text-slate-900">
+          <DialogContent className="max-h-[90dvh] overflow-y-auto bg-white border-slate-200 text-slate-900 sm:max-w-[680px]">
             <DialogHeader>
               <DialogTitle>Add New Client</DialogTitle>
             </DialogHeader>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Name</Label>
                   <Input {...form.register("name")} className="bg-white border-slate-200" placeholder="John Doe" />
@@ -119,7 +124,7 @@ export default function Clients() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Email</Label>
                   <Input {...form.register("email")} className="bg-white border-slate-200" placeholder="john@example.com" />
@@ -138,16 +143,40 @@ export default function Clients() {
                 <Input {...form.register("website")} className="bg-white border-slate-200" placeholder="https://example.com" />
               </div>
               <div className="space-y-2">
-                <Label>Country</Label>
-                <select 
-                  {...form.register("country")} 
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                >
-                  <option value="">Select Country</option>
-                  {COUNTRIES.map(country => (
-                    <option key={country} value={country}>{country}</option>
-                  ))}
-                </select>
+                <Label htmlFor="client-address-line-1">Address line 1</Label>
+                <Input id="client-address-line-1" {...form.register("addressLine1")} className="bg-white border-slate-200" autoComplete="address-line1" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-address-line-2">Address line 2</Label>
+                <Input id="client-address-line-2" {...form.register("addressLine2")} className="bg-white border-slate-200" autoComplete="address-line2" />
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="client-city">City</Label>
+                  <Input id="client-city" {...form.register("city")} className="bg-white border-slate-200" autoComplete="address-level2" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="client-state">State / Province</Label>
+                  <Input id="client-state" {...form.register("state")} className="bg-white border-slate-200" autoComplete="address-level1" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="client-postal-code">Postal code</Label>
+                  <Input id="client-postal-code" {...form.register("postalCode")} className="bg-white border-slate-200" autoComplete="postal-code" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="client-country">Country</Label>
+                  <select
+                    id="client-country"
+                    {...form.register("country")}
+                    autoComplete="country-name"
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="">Select Country</option>
+                    {COUNTRIES.map(country => <option key={country} value={country}>{country}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Notes</Label>

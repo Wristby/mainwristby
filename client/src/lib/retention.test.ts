@@ -182,7 +182,10 @@ describe("reviewable profile cleanup", () => {
       { inventoryId: 11, role: "seller", name: "Transaction Seller" },
     ]);
     const profile = harness.writes.find(w => w.table === clients)!.values;
-    expect(profile).toMatchObject({ name: "Cleared client #1", email: null, phone: null, notes: null, isVip: false });
+    expect(profile).toMatchObject({
+      name: "Cleared client #1", email: null, phone: null, notes: null, isVip: false,
+      addressLine1: null, addressLine2: null, city: null, state: null, postalCode: null,
+    });
     expect(profile.buyerId).toBeUndefined();
     const audit = harness.writes.find(w => w.table === retentionAudit)!.values;
     expect(audit).toEqual({ action: "profile_cleared", recordId: 1, revision: "test-revision" });
