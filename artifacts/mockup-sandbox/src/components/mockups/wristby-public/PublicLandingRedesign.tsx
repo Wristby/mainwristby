@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import "./PublicLandingRedesign.css";
 
 const capabilities = [
@@ -32,8 +33,34 @@ function Arrow() {
 }
 
 export function PublicLandingRedesign() {
+  const pageRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const root = pageRef.current;
+    if (!root) return;
+
+    const revealItems = Array.from(root.querySelectorAll<HTMLElement>("[data-wr-reveal]"));
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion || !("IntersectionObserver" in window)) {
+      revealItems.forEach((item) => item.classList.add("is-visible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -36px 0px" });
+
+    revealItems.forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <main className="wr-page" id="top">
+    <main className="wr-page" id="top" ref={pageRef}>
       <header className="wr-header">
         <a className="wr-brand" href="#top" aria-label="WRISTBY home">
           <img src="/__mockup/images/wristby-logo.png" alt="" />
@@ -49,7 +76,7 @@ export function PublicLandingRedesign() {
       </header>
 
       <section className="wr-hero">
-        <div className="wr-hero-copy">
+        <div className="wr-hero-copy" data-wr-reveal>
           <div className="wr-eyebrow"><span className="wr-dot" /> A private workspace for independent watch dealers</div>
           <h1>The work behind<br />every <em>good watch.</em></h1>
           <div className="wr-hero-bottom">
@@ -57,7 +84,7 @@ export function PublicLandingRedesign() {
             <a className="wr-button" href="/signup">Find your clear view <Arrow /></a>
           </div>
         </div>
-        <figure className="wr-hero-visual">
+        <figure className="wr-hero-visual" data-wr-reveal>
           <img src="/__mockup/images/wristby-editorial.jpg" alt="Fictional vintage steel wristwatch in a quiet, naturally lit studio" />
           <div className="wr-image-wash" />
           <figcaption><span>FIELD NOTES / 01</span><span>Steel, considered.</span></figcaption>
@@ -68,7 +95,7 @@ export function PublicLandingRedesign() {
 
       <section className="wr-intro" id="workspace">
         <div className="wr-section-kicker">A little more room to think <span>01 — THE WORKSPACE</span></div>
-        <div className="wr-intro-grid">
+        <div className="wr-intro-grid" data-wr-reveal>
           <h2>Good dealing<br />lives in the <em>details.</em></h2>
           <div className="wr-intro-text">
             <p>What you paid. What it needs. Who has been looking for one. Where it is going next.</p>
@@ -76,7 +103,7 @@ export function PublicLandingRedesign() {
             <a className="wr-text-link" href="#capabilities">See what has a place here <Arrow /></a>
           </div>
         </div>
-        <div className="wr-principles">
+        <div className="wr-principles" data-wr-reveal>
           <span><b>01</b> One record, from source to sale</span>
           <span><b>02</b> Costs beside the asking price</span>
           <span><b>03</b> The handover, still in view</span>
@@ -84,14 +111,14 @@ export function PublicLandingRedesign() {
       </section>
 
       <section className="wr-dashboard-section">
-        <div className="wr-dashboard-heading">
+        <div className="wr-dashboard-heading" data-wr-reveal>
           <div>
             <div className="wr-eyebrow">A workspace that feels like yours</div>
             <h2>See the whole picture.<br /><em>Stay with the work.</em></h2>
           </div>
           <p>Stock, margin and client context, thoughtfully arranged in one private workspace.</p>
         </div>
-        <div className="wr-dashboard">
+        <div className="wr-dashboard" data-wr-reveal>
           <aside className="wr-dash-side">
             <div className="wr-dash-brand"><img src="/__mockup/images/wristby-logo.png" alt="" /> WRISTBY</div>
             <span className="wr-dash-caption">YOUR WORKSPACE</span>
@@ -133,7 +160,7 @@ export function PublicLandingRedesign() {
         </div>
         <div className="wr-cap-list">
           {capabilities.map((item) => (
-            <article className="wr-cap-row" key={item.number}>
+              <article className="wr-cap-row" key={item.number} data-wr-reveal>
               <span className="wr-cap-number">{item.number}</span>
               <div><span className="wr-cap-label">{item.label}</span><h3>{item.title}</h3><p>{item.text}</p></div>
               <span className="wr-cap-symbol" aria-hidden="true">↗</span>
@@ -142,7 +169,7 @@ export function PublicLandingRedesign() {
         </div>
       </section>
 
-      <section className="wr-interlude">
+      <section className="wr-interlude" data-wr-reveal>
         <div className="wr-interlude-mark"><img src="/__mockup/images/wristby-logo.png" alt="" /></div>
         <div className="wr-eyebrow">A quieter kind of control</div>
         <h2>Software should<br />respect the <em>craft.</em></h2>
@@ -151,19 +178,19 @@ export function PublicLandingRedesign() {
       </section>
 
       <section className="wr-access" id="pricing">
-        <div className="wr-access-head">
+        <div className="wr-access-head" data-wr-reveal>
           <div><div className="wr-eyebrow">03 — Access</div><h2>Start where<br />you <em>are.</em></h2></div>
           <p>The fundamentals are here when you’re starting out. Pro opens the full workspace as your business grows.</p>
         </div>
         <div className="wr-plan-grid">
-          <article className="wr-plan-card">
+          <article className="wr-plan-card" data-wr-reveal>
             <div className="wr-plan-top"><span className="wr-plan-name">FREE</span><span className="wr-plan-note">A considered place to begin</span></div>
             <div className="wr-plan-price">€0 <small>/ month</small></div>
             <p>Keep the essentials in order, at your own pace.</p>
             <ul><li>Up to 10 active watches</li><li>Up to 25 clients</li><li>AI features unavailable</li></ul>
             <a className="wr-button wr-button-light" href="/signup?plan=free">Start on Free <Arrow /></a>
           </article>
-          <article className="wr-plan-card wr-plan-pro">
+          <article className="wr-plan-card wr-plan-pro" data-wr-reveal>
             <div className="wr-plan-top"><span className="wr-plan-name">PRO</span><span className="wr-plan-note">For the whole picture</span></div>
             <div className="wr-plan-price">€39.99 <small>/ month</small></div>
             <p>Every record and every AI feature, together.</p>
@@ -171,11 +198,11 @@ export function PublicLandingRedesign() {
             <a className="wr-button" href="/signup?plan=pro">Choose Pro <Arrow /></a>
           </article>
         </div>
-        <p className="wr-plan-footnote">Choose the plan that fits the way you work. You can create a workspace at any time.</p>
+        <p className="wr-plan-footnote" data-wr-reveal>Public account creation is currently closed while hosting and privacy setup are finalized.</p>
       </section>
 
       <section className="wr-last-call">
-        <div className="wr-last-call-inner">
+        <div className="wr-last-call-inner" data-wr-reveal>
           <div className="wr-eyebrow">Your next deal, in view</div>
           <h2>Keep the details<br />in their <em>place.</em></h2>
           <p>A private workspace for the people and watches behind your business.</p>
