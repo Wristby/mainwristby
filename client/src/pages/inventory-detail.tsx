@@ -45,19 +45,30 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { cn, parsePriceInput } from "@/lib/utils";
 import { calculateWatchFinancials } from "@shared/watch-financials";
 import { getSoldDate } from "@shared/sold-date";
-import { calculateCogsMarginTargetPrice, COGS_MARGIN_TARGETS } from "@/lib/margin-presets";
 import { useSettings } from "@/hooks/use-settings";
 import { QuickEstimate } from "@/components/quick-estimate";
-import { DeliveryStatus } from "@/components/delivery-status";
-import { SaleBuyerFields } from "@/components/sale-buyer-fields";
 import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuyerInput } from "@shared/sale-buyer";
 import { COUNTRIES } from "@/lib/countries";
 import { normalizeWatchSerial } from "@shared/serial-match";
 import { SerialMatchNotice } from "@/components/watch-intake/serial-match-notice";
-import { getManufacturerWarrantyCoverage, getStoreWarrantyCoverage } from "@shared/warranty";
-import { formatDeliveryDate } from "@shared/delivery";
 import { PriceHistoryCard } from "@/components/price-history-card";
-import { normalizeWatchCondition, WATCH_DETAIL_CONDITIONS } from "@/lib/watch-condition";
+import { normalizeWatchCondition } from "@/lib/watch-condition";
+import { getTrackingUrl } from "@/lib/tracking-url";
+import { WatchIdentityCard } from "@/components/watch-details/identity-card";
+import { PurchaseInformationCard } from "@/components/watch-details/purchase-information-card";
+import { DealOverviewCard } from "@/components/watch-details/deal-overview-card";
+import { BuyerDeliverySummary } from "@/components/watch-details/buyer-delivery-summary";
+import { BuyerContactCard } from "@/components/watch-details/buyer-contact-card";
+import {
+  PurchaseAndPreparationFields,
+  SaleDetailsFields,
+  ServiceMaintenanceFields,
+  ShippingFields,
+  StatusAndListingFields,
+  WatchIdentityFields,
+  WatchNotesFields,
+  WarrantyFields,
+} from "@/components/watch-details/watch-edit-fields";
 import {
   buildWatchEditPayload,
   watchEditFormDefaults,
@@ -66,16 +77,6 @@ import {
 } from "@/lib/watch-form-contract";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
-
-const getTrackingUrl = (partner: string | null | undefined, trackingNumber: string | null | undefined): string | null => {
-  if (!partner || !trackingNumber) return null;
-  switch (partner) {
-    case "UPS": return `https://www.ups.com/track?tracknum=${encodeURIComponent(trackingNumber)}`;
-    case "FedEx": return `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(trackingNumber)}`;
-    case "DHL": return `https://www.dhl.com/en/express/tracking.html?AWB=${encodeURIComponent(trackingNumber)}`;
-    default: return null;
-  }
-};
 
 const formatCurrency = (val: number) => {
   return new Intl.NumberFormat("de-DE", {
@@ -94,56 +95,6 @@ const expenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number().min(0.01, "Amount is required"),
   date: z.coerce.date(),
 });
-
-function WatchWarrantySummary({ item }: { item: InventoryItem }) {
-  const store = getStoreWarrantyCoverage(item.storeWarrantyMonths, item.deliveredDate);
-  const manufacturer = getManufacturerWarrantyCoverage(
-    item.manufacturerPurchaseDate,
-    item.manufacturerWarrantyExpires,
-    item.manufacturerWarrantyCardPresent,
-    item.manufacturerWarrantyDetails,
-  );
-  const term = item.storeWarrantyMonths == null
-    ? "Term not recorded"
-    : item.storeWarrantyMonths === 0
-      ? "No store warranty"
-      : `${item.storeWarrantyMonths} months`;
-  const storeStatus = {
-    not_recorded: "Not recorded",
-    none: "No warranty",
-    awaiting_delivery: "Awaiting delivery",
-    active: "Active",
-    expiring: "Expiring soon",
-    expired: "Expired",
-  }[store.status];
-  const manufacturerStatus = {
-    not_recorded: "Not recorded",
-    end_date_unknown: "End date not recorded",
-    active: "Active",
-    expiring: "Expiring soon",
-    expired: "Expired",
-  }[manufacturer.status];
-  const remaining = (days: number | null) => days == null ? "" : days < 0
-    ? ` · expired ${Math.abs(days)} days ago`
-    : days === 0 ? " · expires today" : ` · ${days} days remaining`;
-
-  return (
-    <section className="mt-4 border-t border-slate-100 pt-4" data-testid="watch-warranty-summary">
-      <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-700">Warranty Coverage</h4>
-      <div className="space-y-2 text-sm">
-        <p className="flex flex-wrap justify-between gap-x-4 gap-y-1"><span className="text-slate-500">Store warranty</span><strong>{term} · {storeStatus}{remaining(store.daysRemaining)}</strong></p>
-        {store.startDate && <p className="text-xs text-slate-500">Delivery {formatDeliveryDate(store.startDate)} · Ends {formatDeliveryDate(store.endDate!)}</p>}
-        {store.status === "awaiting_delivery" && <p className="text-xs text-slate-500">Countdown begins when the customer delivery date is recorded.</p>}
-        <Separator className="my-2"/>
-        <p className="flex flex-wrap justify-between gap-x-4 gap-y-1"><span className="text-slate-500">Manufacturer</span><strong>{manufacturerStatus}{remaining(manufacturer.daysRemaining)}</strong></p>
-        {item.manufacturerPurchaseDate && <p className="text-xs text-slate-500">Original purchase {formatDeliveryDate(item.manufacturerPurchaseDate)}</p>}
-        {item.manufacturerWarrantyExpires && <p className="text-xs text-slate-500">Coverage ends {formatDeliveryDate(item.manufacturerWarrantyExpires)}</p>}
-        {item.manufacturerWarrantyCardPresent && <p className="text-xs text-emerald-800">Warranty card marked as present</p>}
-        {item.manufacturerWarrantyDetails && <p className="whitespace-pre-wrap text-xs text-slate-600">{item.manufacturerWarrantyDetails}</p>}
-      </div>
-    </section>
-  );
-}
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
@@ -170,7 +121,6 @@ export default function InventoryDetail() {
   const { settings } = useSettings();
   const WATCH_BRANDS = settings.watch_brands;
   const SOLD_ON_OPTIONS = settings.sales_platforms;
-  const SHIPPING_PARTNERS = settings.shipping_partners;
   const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
   const EXPENSE_CATEGORIES = settings.expense_categories;
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -839,559 +789,72 @@ export default function InventoryDetail() {
                 <DialogTitle>Edit Watch</DialogTitle>
               </DialogHeader>
               <form onSubmit={form.handleSubmit(onSubmitEdit)} className="space-y-6 mt-4">
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Watch Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Brand *</Label>
-                      <Select value={form.watch("brand")} onValueChange={(val) => form.setValue("brand", val)}>
-                        <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Brand" /></SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {WATCH_BRANDS.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Model *</Label>
-                      <Input {...form.register("model")} className="bg-white border-slate-200" data-testid="edit-input-model" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Reference Number *</Label>
-                      <Input {...form.register("referenceNumber")} className="bg-white border-slate-200" data-testid="edit-input-reference" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Serial #</Label>
-                      <Input {...form.register("serialNumber")} className="bg-white border-slate-200" data-testid="edit-input-serial" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Movement Serial Number</Label>
-                      <Input {...form.register("internalSerial")} className="bg-white border-slate-200" />
-                    </div>
-                    {serialLookupIsCurrent && <SerialMatchNotice
-                      matches={serialMatches.data ?? []}
-                      loading={serialMatches.isFetching}
-                      error={serialMatches.isError}
-                      action="update"
-                    />}
-                    <div className="space-y-2">
-                      <Label>Year</Label>
-                      <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("year")} className="bg-white border-slate-200" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Link Count</Label>
-                      <Input type="text" inputMode="numeric" pattern="[0-9]*" {...form.register("linkCount")} placeholder="e.g. 18" className="bg-white border-slate-200" data-testid="edit-input-link-count" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Condition</Label>
-                          <Select value={form.watch("condition")} onValueChange={(val) => form.setValue("condition", val as any)}>
-                        <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Condition" /></SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                              {WATCH_DETAIL_CONDITIONS.map((condition) => (
-                                <SelectItem key={condition} value={condition}>{condition}</SelectItem>
-                              ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center space-x-4 pt-6">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="edit-box" checked={form.watch("box")} onCheckedChange={(checked) => form.setValue("box", !!checked)} />
-                        <Label htmlFor="edit-box" className="cursor-pointer">Box</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="edit-papers" checked={form.watch("papers")} onCheckedChange={(checked) => form.setValue("papers", !!checked)} />
-                        <Label htmlFor="edit-papers" className="cursor-pointer">Papers</Label>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label>Google Drive Link</Label>
-                        <a 
-                          href="https://drive.google.com/drive/u/1/folders/19gIwCa7aNqQk1s00gmkCWWzFC_dfL4sG" 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
-                        >
-                          Open Folder <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </div>
-                      <Input {...form.register("gdriveLink")} className="bg-white border-slate-200" placeholder="https://drive.google.com/..." />
-                    </div>
-                  </div>
-                </div>
+                <WatchIdentityFields
+                  form={form}
+                  watchBrands={WATCH_BRANDS}
+                  serialLookupIsCurrent={serialLookupIsCurrent}
+                  serialMatchNotice={<SerialMatchNotice
+                    matches={serialMatches.data ?? []}
+                    loading={serialMatches.isFetching}
+                    error={serialMatches.isError}
+                    action="update"
+                  />}
+                />
 
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Purchase Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Purchase Channel *</Label>
-                      <Select value={form.watch("purchasedFrom") || ""} onValueChange={(val) => form.setValue("purchasedFrom", val)}>
-                        <SelectTrigger className="bg-white border-slate-200" data-testid="select-purchase-channel"><SelectValue placeholder="Select Channel" /></SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {PURCHASE_CHANNEL_OPTIONS.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {showSellerField && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-1 min-h-[1.5rem]">
-                          <Label>Seller / Dealer{isSellerRequired ? ' *' : ''}</Label>
-                          <Button size="icon" variant="ghost" onClick={() => { quickClientForm.setValue("type", filterDealersOnly ? "dealer" : "client"); setIsQuickAddClientOpen(true); }} data-testid="button-quick-add-client" className="h-6 w-6"><Plus className="h-3.5 w-3.5" /></Button>
-                        </div>
-                        <Select value={form.watch("clientId")?.toString() || "none"} onValueChange={(val) => form.setValue("clientId", val === "none" ? null : parseInt(val))}>
-                          <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Dealer" /></SelectTrigger>
-                          <SelectContent className="bg-white border-slate-200 text-slate-900">
-                            <SelectItem value="none">None</SelectItem>
-                            {clients?.filter((c: any) => filterDealersOnly ? c.type === 'dealer' : true).map((client: any) => (
-                              <SelectItem key={client.id} value={client.id.toString()}>{client.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      <Label>Paid With *</Label>
-                      <Select value={form.watch("paidWith") || ""} onValueChange={(val) => form.setValue("paidWith", val)}>
-                        <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Payment" /></SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          {(settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT.map(n => ({ name: n, isCredit: false }))).map((opt) => <SelectItem key={opt.name} value={opt.name}>{opt.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Purchase Price (COGS) *</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">€</span>
-                        <Input 
-                          type="text" 
-                          {...form.register("purchasePrice", { setValueAs: parsePriceInput })}
-                          onBlur={(e) => {
-                            const val = parsePriceInput(e.target.value);
-                            form.setValue("purchasePrice", parseFloat(val.toFixed(2)));
-                          }}
-                          className="pl-7 bg-white border-slate-200" 
-                          data-testid="edit-input-price" 
-                          placeholder="0,00"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Import Fee</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                        <Input 
-                          type="text" 
-                          {...form.register("importFee", { setValueAs: parsePriceInput })}
-                          onBlur={(e) => {
-                            const val = parsePriceInput(e.target.value);
-                            form.setValue("importFee", parseFloat(val.toFixed(2)));
-                          }}
-                          className="pl-7 bg-white border-slate-200" 
-                          placeholder="0,00"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2 pt-8">
-                      <Checkbox id="edit-watchRegister" checked={form.watch("watchRegister")} onCheckedChange={(checked) => form.setValue("watchRegister", !!checked)} />
-                      <Label htmlFor="edit-watchRegister" className="cursor-pointer">Watch Register</Label>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Purchase Date</Label>
-                      <Popover open={isPurchaseDateOpen} onOpenChange={setIsPurchaseDateOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("purchaseDate") && "text-muted-foreground")}>
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {form.watch("purchaseDate") ? format(new Date(form.watch("purchaseDate")!), "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <Calendar mode="single" selected={form.watch("purchaseDate") ? new Date(form.watch("purchaseDate")!) : undefined} onSelect={(date) => { form.setValue("purchaseDate", date ? date.toISOString() : null); if (date) form.setValue("status", "incoming"); setIsPurchaseDateOpen(false); }} initialFocus />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                </div>
+                <PurchaseAndPreparationFields
+                  form={form}
+                  purchaseChannels={PURCHASE_CHANNEL_OPTIONS}
+                  clients={clients}
+                  showSellerField={showSellerField}
+                  isSellerRequired={isSellerRequired}
+                  filterDealersOnly={filterDealersOnly}
+                  paidWithMethods={settings.paid_with_methods?.length ? settings.paid_with_methods : PAID_WITH_OPTIONS_DEFAULT.map(name => ({ name }))}
+                  onQuickAddSeller={() => {
+                    quickClientForm.setValue("type", filterDealersOnly ? "dealer" : "client");
+                    setIsQuickAddClientOpen(true);
+                  }}
+                  purchaseDatePopover={{ open: isPurchaseDateOpen, onOpenChange: setIsPurchaseDateOpen }}
+                />
 
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Status & Listing</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Current Status *</Label>
-                      <Select value={form.watch("status")} onValueChange={(val) => form.setValue("status", val as any)}>
-                        <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Status" /></SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          <SelectItem value="incoming">Incoming</SelectItem>
-                          <SelectItem value="received">Received</SelectItem>
-                          <SelectItem value="servicing">In Service</SelectItem>
-                          <SelectItem value="in_stock">Listed</SelectItem>
-                          <SelectItem value="sold">Sold</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date Received</Label>
-                      <Popover open={isDateReceivedOpen} onOpenChange={setIsDateReceivedOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200 text-slate-900", !form.watch("dateReceived") && "text-slate-500")}>
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {form.watch("dateReceived") ? format(new Date(form.watch("dateReceived")!), "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <Calendar mode="single" selected={form.watch("dateReceived") ? new Date(form.watch("dateReceived")!) : undefined} onSelect={(date) => { form.setValue("dateReceived", date ? date.toISOString() : null); if (date) form.setValue("status", "received"); setIsDateReceivedOpen(false); }} initialFocus />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date Listed</Label>
-                      <Popover open={isDateListedOpen} onOpenChange={setIsDateListedOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateListed") && "text-muted-foreground")}>
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {form.watch("dateListed") ? format(new Date(form.watch("dateListed")!), "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                          <Calendar
-                            mode="single"
-                            selected={form.watch("dateListed") ? new Date(form.watch("dateListed")!) : undefined}
-                            onSelect={(date) => {
-                              const dateValue = date ? date.toISOString() : null;
-                              form.setValue("dateListed", dateValue);
-                              if (date) {
-                                form.setValue("status", "in_stock");
-                                if (form.getValues("serviceStartDate")) {
-                                  form.setValue("dateReturnedFromService", dateValue);
-                                }
-                              }
-                              setIsDateListedOpen(false);
-                            }}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Price Listed At</Label>
-                      <div className="relative">
-                        <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">€</span>
-                        <Input
-                          type="text"
-                          {...form.register("listPrice", { setValueAs: (v) => v === "" || v === null ? null : parsePriceInput(v) })}
-                          onBlur={(e) => {
-                            const val = e.target.value;
-                            if (val === "" || val === null) { form.setValue("listPrice", null); return; }
-                            const parsed = parsePriceInput(val);
-                            form.setValue("listPrice", parsed > 0 ? parseFloat(parsed.toFixed(2)) : null);
-                          }}
-                          className="pl-7 bg-white border-slate-200"
-                          data-testid="edit-input-list-price"
-                          placeholder="0,00"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <StatusAndListingFields
+                  form={form}
+                  receivedDatePopover={{ open: isDateReceivedOpen, onOpenChange: setIsDateReceivedOpen }}
+                  listedDatePopover={{ open: isDateListedOpen, onOpenChange: setIsDateListedOpen }}
+                />
 
-                <div className="space-y-4" ref={salesSectionRef}>
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="edit-showSale" className="text-sm font-medium text-slate-500">Show Sale Fields</Label>
-                      <Switch id="edit-showSale" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
-                    </div>
-                  </div>
-                  {showSaleDetails && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="space-y-2">
-                        <Label>Sold Price</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input 
-                            type="text" 
-                            {...form.register("salePrice", { setValueAs: parsePriceInput })}
-                            onBlur={(e) => {
-                              const val = parsePriceInput(e.target.value);
-                              form.setValue("salePrice", parseFloat(val.toFixed(2)));
-                            }}
-                            className="pl-7 bg-white border-slate-200" 
-                            placeholder="0,00"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sold On</Label>
-                        <Select value={form.watch("soldPlatform") || ""} onValueChange={(val) => form.setValue("soldPlatform", val)}>
-                          <SelectTrigger className="bg-white border-slate-200"><SelectValue placeholder="Select Platform" /></SelectTrigger>
-                          <SelectContent className="bg-white border-slate-200 text-slate-900">
-                            {SOLD_ON_OPTIONS.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {watchedSoldPlatform === "Chrono24" && (
-                        <div className="space-y-2">
-                          <Label>Chrono24 Fee (%)</Label>
-                          <div className="relative">
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              {...form.register("chrono24FeeRate", {
-                                setValueAs: (value) => value === "" ? undefined : Number(value),
-                              })}
-                              className="pr-8 bg-white border-slate-200"
-                              data-testid="edit-input-chrono24-fee-rate"
-                            />
-                            <span className="absolute right-3 top-2.5 text-slate-400">%</span>
-                          </div>
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        <Label>Platform Fees</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input 
-                            type="text" 
-                            {...form.register("platformFees", { setValueAs: parsePriceInput })}
-                            onBlur={(e) => {
-                              const val = parsePriceInput(e.target.value);
-                              form.setValue("platformFees", parseFloat(val.toFixed(2)));
-                            }}
-                            className="pl-7 bg-white border-slate-200" 
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Shipping Fee</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input 
-                            type="text" 
-                            {...form.register("shippingFee", { setValueAs: parsePriceInput })}
-                            onBlur={(e) => {
-                              const val = parsePriceInput(e.target.value);
-                              form.setValue("shippingFee", parseFloat(val.toFixed(2)));
-                            }}
-                            className="pl-7 bg-white border-slate-200" 
-                            placeholder="0,00"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Insurance Fee</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                          <Input 
-                            type="text" 
-                            {...form.register("insuranceFee", { setValueAs: parsePriceInput })}
-                            onBlur={(e) => {
-                              const val = parsePriceInput(e.target.value);
-                              form.setValue("insuranceFee", parseFloat(val.toFixed(2)));
-                            }}
-                            className="pl-7 bg-white border-slate-200" 
-                            placeholder="0,00"
-                          />
-                        </div>
-                      </div>
-                      <SaleBuyerFields value={buyerDraft} clients={clients || []} loading={clientsLoading}
-                        unavailable={clientsUnavailable} dirty={buyerDirty} error={buyerError}
-                        onChange={value => {
-                          setBuyerDraft(value); setBuyerDirty(true); setBuyerError("");
-                          form.setValue("soldTo", value.name, { shouldDirty: true });
-                        }}/>
-                      <div className="space-y-2">
-                        <Label>Date Sold</Label>
-                        <Popover open={isDateSoldOpen} onOpenChange={setIsDateSoldOpen}>
-                          <PopoverTrigger asChild>
-                            <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateSold") && "text-muted-foreground")}>
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {form.watch("dateSold") ? format(new Date(form.watch("dateSold")!), "PPP") : <span>Pick a date</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                            <Calendar mode="single" selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined} onSelect={(date) => { form.setValue("dateSold", date ? date.toISOString() : null, { shouldDirty: true }); if (date) form.setValue("status", "sold", { shouldDirty: true }); setIsDateSoldOpen(false); }} initialFocus />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <SaleDetailsFields
+                  form={form}
+                  platforms={SOLD_ON_OPTIONS}
+                  showSaleDetails={showSaleDetails}
+                  setShowSaleDetails={setShowSaleDetails}
+                  salesSectionRef={salesSectionRef}
+                  buyerDraft={buyerDraft}
+                  clients={clients}
+                  clientsLoading={clientsLoading}
+                  clientsUnavailable={clientsUnavailable}
+                  buyerDirty={buyerDirty}
+                  buyerError={buyerError}
+                  onBuyerChange={value => {
+                    setBuyerDraft(value);
+                    setBuyerDirty(true);
+                    setBuyerError("");
+                    form.setValue("soldTo", value.name, { shouldDirty: true });
+                  }}
+                  soldDatePopover={{ open: isDateSoldOpen, onOpenChange: setIsDateSoldOpen }}
+                />
 
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Warranty Coverage</h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Store Warranty Term</Label>
-                      <Select
-                        value={form.watch("storeWarrantyMonths") == null ? "not-recorded" : String(form.watch("storeWarrantyMonths"))}
-                        onValueChange={value => form.setValue("storeWarrantyMonths", value === "not-recorded" ? null : Number(value) as EditFormValues["storeWarrantyMonths"], { shouldDirty: true })}
-                      >
-                        <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                        <SelectContent className="bg-white border-slate-200 text-slate-900">
-                          <SelectItem value="not-recorded">Not recorded</SelectItem>
-                          <SelectItem value="0">No warranty</SelectItem>
-                          <SelectItem value="6">6 months</SelectItem>
-                          <SelectItem value="12">1 year</SelectItem>
-                          <SelectItem value="24">2 years</SelectItem>
-                          <SelectItem value="36">3 years</SelectItem>
-                          <SelectItem value="60">5 years</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-slate-500">For sold watches, the term starts on the recorded delivery date.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-manufacturer-purchase-date">Manufacturer Purchase Date</Label>
-                      <Input id="edit-manufacturer-purchase-date" type="date" {...form.register("manufacturerPurchaseDate")} className="bg-white border-slate-200"/>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-manufacturer-warranty-expires">Manufacturer Warranty Ends</Label>
-                      <Input id="edit-manufacturer-warranty-expires" type="date" {...form.register("manufacturerWarrantyExpires")} className="bg-white border-slate-200"/>
-                    </div>
-                    <div className="flex items-center gap-2 pt-2">
-                      <Checkbox id="edit-manufacturer-card" checked={form.watch("manufacturerWarrantyCardPresent")} onCheckedChange={checked => form.setValue("manufacturerWarrantyCardPresent", !!checked, { shouldDirty: true })}/>
-                      <Label htmlFor="edit-manufacturer-card" className="cursor-pointer">Manufacturer warranty card is present</Label>
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="edit-manufacturer-warranty-details">Warranty card / coverage details</Label>
-                      <Textarea id="edit-manufacturer-warranty-details" {...form.register("manufacturerWarrantyDetails")} maxLength={2000} className="min-h-20 bg-white border-slate-200" placeholder="Optional warranty-card or coverage notes"/>
-                    </div>
-                  </div>
-                </div>
+                <WarrantyFields form={form} />
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service & Maintenance</h3>
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="edit-showService" className="text-sm font-medium text-slate-500">Show Service Fields</Label>
-                      <Switch id="edit-showService" checked={showServiceDetails} onCheckedChange={setShowServiceDetails} />
-                    </div>
-                  </div>
-                  {showServiceDetails && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Service Start Date</Label>
-                          <Popover open={isDateServiceStartOpen} onOpenChange={setIsDateServiceStartOpen}>
-                            <PopoverTrigger asChild>
-                              <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("serviceStartDate") && "text-muted-foreground")} data-testid="button-service-start-date">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {form.watch("serviceStartDate") ? format(new Date(form.watch("serviceStartDate")!), "PPP") : <span>Pick a date</span>}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                              <Calendar mode="single" selected={form.watch("serviceStartDate") ? new Date(form.watch("serviceStartDate")!) : undefined} onSelect={(date) => { form.setValue("serviceStartDate", date ? date.toISOString() : null); if (date) form.setValue("status", "servicing"); setIsDateServiceStartOpen(false); }} initialFocus />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Date Service Completed</Label>
-                          <Popover open={isDateReturnedOpen} onOpenChange={setIsDateReturnedOpen}>
-                            <PopoverTrigger asChild>
-                              <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateReturnedFromService") && "text-muted-foreground")}>
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {form.watch("dateReturnedFromService") ? format(new Date(form.watch("dateReturnedFromService")!), "PPP") : <span>Pick a date</span>}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                              <Calendar mode="single" selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined} onSelect={(date) => { form.setValue("dateReturnedFromService", date ? date.toISOString() : null); setIsDateReturnedOpen(false); }} initialFocus />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Service Fee</Label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                            <Input 
-                              type="text" 
-                              {...form.register("serviceFee", { setValueAs: parsePriceInput })}
-                              onBlur={(e) => {
-                                const val = parsePriceInput(e.target.value);
-                                form.setValue("serviceFee", parseFloat(val.toFixed(2)));
-                              }}
-                              className="pl-7 bg-white border-slate-200" 
-                              placeholder="0,00"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Polish Fee</Label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400">€</span>
-                            <Input 
-                              type="text" 
-                              {...form.register("polishFee", { setValueAs: parsePriceInput })}
-                              onBlur={(e) => {
-                                const val = parsePriceInput(e.target.value);
-                                form.setValue("polishFee", parseFloat(val.toFixed(2)));
-                              }}
-                              className="pl-7 bg-white border-slate-200" 
-                              placeholder="0,00"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Service Notes</Label>
-                        <Textarea {...form.register("serviceNotes")} className="bg-white border-slate-200 min-h-[80px]" placeholder="Notes about service work performed..." />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <ServiceMaintenanceFields
+                  form={form}
+                  showServiceDetails={showServiceDetails}
+                  setShowServiceDetails={setShowServiceDetails}
+                  serviceStartDatePopover={{ open: isDateServiceStartOpen, onOpenChange: setIsDateServiceStartOpen }}
+                  serviceCompletedDatePopover={{ open: isDateReturnedOpen, onOpenChange: setIsDateReturnedOpen }}
+                />
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Shipping & Tracking</h3>
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="edit-showShipping" className="text-sm font-medium text-slate-500">Show Shipping Fields</Label>
-                      <Switch id="edit-showShipping" checked={showShippingDetails} onCheckedChange={setShowShippingDetails} />
-                    </div>
-                  </div>
-                  
-                  {showShippingDetails && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div className="space-y-2">
-                        <Label>Shipping Partner</Label>
-                        <Select value={form.watch("shippingPartner") || ""} onValueChange={(val) => form.setValue("shippingPartner", val)}>
-                          <SelectTrigger className="bg-white border-slate-200">
-                            <SelectValue placeholder="Select Partner" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white border-slate-200 text-slate-900">
-                            <SelectItem value="UPS">UPS</SelectItem>
-                            <SelectItem value="FedEx">FedEx</SelectItem>
-                            <SelectItem value="DHL">DHL</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Tracking Number</Label>
-                        <Input {...form.register("trackingNumber")} className="bg-white border-slate-200" placeholder="Enter tracking number" />
-                      </div>
-                      <div className="md:col-span-2 flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3">
-                        <Controller
-                          control={form.control}
-                          name="chrono24CertificationSent"
-                          render={({ field }) => (
-                            <Checkbox
-                              id="edit-chrono24-certification-sent"
-                              checked={field.value}
-                              onCheckedChange={(checked) => field.onChange(checked === true)}
-                              className="mt-0.5"
-                            />
-                          )}
-                        />
-                        <div className="space-y-1">
-                          <Label htmlFor="edit-chrono24-certification-sent" className="cursor-pointer">Sent for Chrono24 Certification</Label>
-                          <p className="text-xs text-slate-500">The sent date is recorded automatically when checked. Older checked watches without a date remain undated.</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Notes</h3>
-                  <Textarea {...form.register("notes")} className="bg-white border-slate-200 min-h-[100px]" placeholder="Add any additional notes about the watch, movement condition, etc." />
-                </div>
+                <ShippingFields form={form} showShippingDetails={showShippingDetails} setShowShippingDetails={setShowShippingDetails} />
+                <WatchNotesFields form={form} />
 
                 <div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
                   <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
@@ -1426,338 +889,24 @@ export default function InventoryDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Info Columns */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Watch Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Brand</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.brand}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Model</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.model}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Reference</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.referenceNumber}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Serial #</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.serialNumber || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Movement Serial Number</p>
-                  <p className="text-slate-900 font-medium mt-1">{(item as any).internalSerial || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Year</p>
-                  <p className="text-slate-900 font-medium mt-1">{item.year || 'Unknown'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Condition</p>
-                  <p className="text-slate-900 font-medium mt-1">{normalizeWatchCondition(item.condition)}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Link Count</p>
-                  <p className="text-slate-900 font-medium mt-1">{(item as any).linkCount ?? 'N/A'}</p>
-                </div>
-                {item.gdriveLink && (
-                  <div className="col-span-2">
-                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Google Drive Link</p>
-                    <a 
-                      href={item.gdriveLink} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-emerald-600 hover:text-emerald-700 font-medium mt-1 inline-flex items-center gap-1 hover:underline"
-                    >
-                      View Photos <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Includes</p>
-                  <div className="flex gap-2 mt-1">
-                    {item.box && <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">Box</Badge>}
-                    {item.papers && <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">Papers</Badge>}
-                    {!item.box && !item.papers && <span className="text-slate-400 text-sm">Watch only</span>}
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4 pt-2 border-t border-slate-100">
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Hold Time</p>
-                  <p className="text-xl font-bold text-slate-900 tabular-nums">{holdTime} days</p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Days In Service</p>
-                  <p className="text-xl font-bold text-slate-900 tabular-nums">
-                    {daysInService !== null ? (
-                      <>
-                        {daysInService} days
-                        {!item.dateReturnedFromService && item.serviceStartDate && (
-                          <span className="ml-2 text-xs font-normal text-amber-500">ongoing</span>
-                        )}
-                      </>
-                    ) : "—"}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Days Listed</p>
-                  <p className="text-xl font-bold text-slate-900 tabular-nums">
-                    {daysListed !== null ? `${daysListed} days` : "—"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <WatchIdentityCard item={item} holdTime={holdTime} daysInService={daysInService} daysListed={daysListed} />
+          <PurchaseInformationCard item={item} formatCurrency={formatCurrency} />
 
-          <Card className="border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Purchase Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex justify-between py-2 border-b border-slate-50">
-                  <span className="text-sm text-slate-500">Purchase Channel</span>
-                  <span className="text-sm font-medium text-slate-900">{(item as any).purchasedFrom || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-50">
-                  <span className="text-sm text-slate-500">Paid With</span>
-                  <span className="text-sm font-medium text-slate-900">{(item as any).paidWith || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-50">
-                  <span className="text-sm text-slate-500">COGS</span>
-                  <span className="text-sm font-medium text-slate-900">{formatCurrency(item.purchasePrice)}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-50">
-                  <span className="text-sm text-slate-500">Import Fee</span>
-                  <span className="text-sm font-medium text-slate-900">{formatCurrency((item as any).importFee || 0)}</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-slate-50">
-                  <span className="text-sm text-slate-500">Watch Register Check</span>
-                  <span className="text-sm font-medium text-slate-900">{(item as any).watchRegister ? 'Yes ' : 'No'}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg text-slate-900">Deal Overview</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">COGS</p>
-                  <p className="text-xl font-bold text-slate-900">{formatCurrency(item.purchasePrice)}</p>
-                </div>
-                {item.listPrice != null && item.listPrice > 0 && (
-                  <div className="p-4 bg-violet-50/50 rounded-xl border border-violet-100">
-                    <p className="text-xs font-medium text-violet-500 uppercase tracking-wider mb-1">Price Listed At</p>
-                    <p className="text-xl font-bold text-violet-700">{formatCurrency(item.listPrice)}</p>
-                  </div>
-                )}
-                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
-                  <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider mb-1">Sale Price</p>
-                  <p className="text-xl font-bold text-emerald-600">{formatCurrency(salePrice)}</p>
-                </div>
-                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
-                  <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider mb-1">Net Profit</p>
-                  <p className="text-xl font-bold text-emerald-600">{formatCurrency(profit)}</p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Margin</p>
-                  <p className="text-xl font-bold text-emerald-600">{margin.toFixed(1)}%</p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Total Fees</p>
-                  <p className="text-xl font-bold text-red-500">{formatCurrency(totalFees)}</p>
-                </div>
-                <div className="p-4 bg-violet-50/50 rounded-xl border border-violet-100">
-                  <p className="text-xs font-medium text-violet-500 uppercase tracking-wider mb-1">Net After VAT</p>
-                  <p className={`text-xl font-bold ${netAfterVat >= 0 ? "text-violet-700" : "text-red-600"}`}>
-                    {formatCurrency(netAfterVat)}
-                  </p>
-                </div>
-                <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-100">
-                  <p className="text-xs font-medium text-amber-600 uppercase tracking-wider mb-1">VAT Amount</p>
-                  <p className="text-xl font-bold text-amber-700">{formatCurrency(vatAmount)}</p>
-                </div>
-              </div>
-
-              <section
-                className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-4"
-                aria-labelledby="cogs-margin-presets-title"
-                data-testid="cogs-margin-presets"
-              >
-                <div className="mb-3">
-                  <h3 id="cogs-margin-presets-title" className="text-sm font-semibold text-slate-800">
-                    Target Sale Price by Margin
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Based on COGS and includes a {settings.chrono24_commission.toFixed(1)}% Chrono24 fee; other fees and expenses are excluded.
-                  </p>
-                </div>
-                {item.purchasePrice > 0 ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {COGS_MARGIN_TARGETS.map((targetMargin) => {
-                      const targetPrice = calculateCogsMarginTargetPrice(
-                        item.purchasePrice,
-                        targetMargin,
-                        settings.chrono24_commission,
-                      );
-                      return (
-                        <div
-                          key={targetMargin}
-                          className="rounded-lg border border-white bg-white/80 px-3 py-3"
-                          data-testid={`cogs-margin-target-${targetMargin}`}
-                        >
-                          <p className="text-xs font-medium text-slate-500">{targetMargin}% margin</p>
-                          <p className="mt-1 text-lg font-bold text-emerald-700">
-                            {targetPrice === null ? "—" : formatCurrency(targetPrice)}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">Add a COGS amount to see target prices.</p>
-                )}
-              </section>
-
-              {/* Financial Pillars - 2 Row Layout */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Pillar A: Investment (Procurement) */}
-                <div className="p-5 bg-slate-50/50 rounded-xl border border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">The Investment</h4>
-                  <p className="text-xs text-slate-400 mb-4">Procurement costs to acquire the watch</p>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Purchase Price</span>
-                      <span className="font-medium">{formatCurrency(item.purchasePrice)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Import/Customs Fee</span>
-                      <span className="font-medium">{formatCurrency((item as any).importFee || 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Watch Register</span>
-                      <span className="font-medium">{formatCurrency((item as any).watchRegister ? effectiveWrFee : 0)}</span>
-                    </div>
-                    <Separator className="my-3" />
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-slate-700">Total Sourcing</span>
-                      <span className="text-slate-900">{formatCurrency(item.purchasePrice + ((item as any).importFee || 0) + ((item as any).watchRegister ? effectiveWrFee : 0))}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pillar B: Value-Add (Maintenance) */}
-                <div className="p-5 bg-amber-50/30 rounded-xl border border-amber-100/50">
-                  <h4 className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-4">Value-Add</h4>
-                  <p className="text-xs text-slate-400 mb-4">Costs to make the watch retail-ready</p>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Service Fee</span>
-                      <span className="font-medium">{formatCurrency((item as any).serviceFee || 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Polish Fee</span>
-                      <span className="font-medium">{formatCurrency((item as any).polishFee || 0)}</span>
-                    </div>
-                    <Separator className="my-3" />
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-amber-700">Total Value-Add</span>
-                      <span className="text-amber-900">{formatCurrency(((item as any).serviceFee || 0) + ((item as any).polishFee || 0))}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pillar C: Transaction (Exit) */}
-                {item.status === 'sold' && (
-                  <div className="p-5 bg-emerald-50/30 rounded-xl border border-emerald-100/50">
-                    <h4 className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-4">The Transaction</h4>
-                    <p className="text-xs text-slate-400 mb-4">Exit details and final outcome</p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Sale Price</span>
-                        <span className="font-medium text-emerald-600">{formatCurrency(salePrice)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Platform Fees</span>
-                        <span className="font-medium text-red-500">-{formatCurrency((item as any).platformFees || 0)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Shipping Fee</span>
-                        <span className="font-medium text-red-500">-{formatCurrency((item as any).shippingFee || 0)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Insurance Fee</span>
-                        <span className="font-medium text-red-500">-{formatCurrency((item as any).insuranceFee || 0)}</span>
-                      </div>
-                      <Separator className="my-3" />
-                      <div className="flex justify-between text-sm font-bold">
-                        <span className="text-emerald-700">Net Profit</span>
-                        <span className={profit >= 0 ? "text-emerald-600" : "text-red-600"}>{formatCurrency(profit)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Buyer, shipping, and return details are kept separate from sale financials. */}
-                {item.status === 'sold' && (
-                  <div className="p-5 bg-slate-50/50 rounded-xl border border-slate-100">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Buyer &amp; Delivery</h4>
-                    <p className="text-xs text-slate-400 mb-4">Buyer contact, shipment, and return-window details</p>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Sold To</span>
-                        {linkedBuyer ? <Link href={`/clients/${linkedBuyer.id}`} className="inline-flex items-center gap-1 font-medium text-emerald-600 hover:underline">
-                          <Check className="h-3 w-3" aria-hidden="true"/>{linkedBuyer.name}
-                        </Link> : <span className="font-medium">{item.soldTo || 'N/A'}</span>}
-                      </div>
-                      {linkedBuyer && ([
-                        ["Email", linkedBuyer.email], ["Phone", linkedBuyer.phone], ["Country", linkedBuyer.country],
-                      ] as const).map(([label, value]) => value && <div key={label} className="flex justify-between gap-4 text-sm">
-                        <span className="shrink-0 text-slate-500">{label}</span><span className="min-w-0 break-words text-right font-medium">{value}</span>
-                      </div>)}
-                      {item.buyerId && clientsUnavailable && <p className="text-xs text-red-600">Buyer contact details could not be loaded.</p>}
-                      <Separator className="my-3" />
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Shipper</span>
-                        <span className="font-medium">{item.shippingPartner || 'N/A'}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Tracking #</span>
-                        {item.trackingNumber ? (
-                          getTrackingUrl(item.shippingPartner, item.trackingNumber) ? (
-                            <a href={getTrackingUrl(item.shippingPartner, item.trackingNumber)!} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-600 hover:underline inline-flex items-center gap-1" data-testid="link-tracking-transaction">
-                              {item.trackingNumber} <ExternalLink className="w-3 h-3" />
-                            </a>
-                          ) : (
-                            <span className="font-medium">{item.trackingNumber}</span>
-                          )
-                        ) : (
-                          <span className="font-medium">N/A</span>
-                        )}
-                      </div>
-                      {item.chrono24CertificationSent && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-500">Chrono24 Certification</span>
-                          <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
-                            <Check className="h-3.5 w-3.5" aria-hidden="true" />Sent
-                          </span>
-                        </div>
-                      )}
-                      <DeliveryStatus key={id} id={id} deliveredDate={item.deliveredDate} />
-                      <WatchWarrantySummary item={item} />
-                    </div>
-                  </div>
-                )}
-              </div>
+          <DealOverviewCard
+            item={item}
+            salePrice={salePrice}
+            profit={profit}
+            margin={margin}
+            totalFees={totalFees}
+            netAfterVat={netAfterVat}
+            vatAmount={vatAmount}
+            effectiveRegisterFee={effectiveWrFee}
+            chrono24Commission={settings.chrono24_commission}
+            formatCurrency={formatCurrency}
+            buyerDelivery={item.status === "sold" ? (
+              <BuyerDeliverySummary item={item} buyer={linkedBuyer} clientsUnavailable={clientsUnavailable} />
+            ) : undefined}
+          >
 
               {/* Shipping Details - shows when info exists and item is not sold (sold items show in Transaction pillar) */}
               {item.status !== 'sold' && (item.shippingPartner || item.trackingNumber || item.chrono24CertificationSent) && (
@@ -1884,8 +1033,7 @@ export default function InventoryDetail() {
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </DealOverviewCard>
 
         </div>
 
@@ -2136,57 +1284,12 @@ export default function InventoryDetail() {
             }}
           />
 
-          {(linkedBuyer || item.buyerId || item.soldTo) && (
-            <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-watch-buyer">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-slate-900">Buyer information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {linkedBuyer ? (
-                  <>
-                    <Link href={`/clients/${linkedBuyer.id}`} className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:underline" data-testid="link-watch-buyer-client">
-                      {linkedBuyer.name}
-                    </Link>
-                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
-                      {linkedBuyer.email && <div className="min-w-0">
-                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Email</p>
-                        <a className="break-words text-slate-700 hover:text-emerald-700 hover:underline" href={`mailto:${linkedBuyer.email}`}>{linkedBuyer.email}</a>
-                      </div>}
-                      {linkedBuyer.phone && <div className="min-w-0">
-                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Phone</p>
-                        <a className="break-words text-slate-700 hover:text-emerald-700 hover:underline" href={`tel:${linkedBuyer.phone}`}>{linkedBuyer.phone}</a>
-                      </div>}
-                      {linkedBuyer.country && <div className="min-w-0">
-                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Country</p>
-                        <p className="break-words text-slate-700">{linkedBuyer.country}</p>
-                      </div>}
-                    </div>
-                    {!linkedBuyer.email && !linkedBuyer.phone && !linkedBuyer.country && (
-                      <p className="text-sm text-slate-500">No additional contact details are saved for this Client.</p>
-                    )}
-                    <Link href={`/clients/${linkedBuyer.id}`} className="inline-block text-xs font-medium text-emerald-700 hover:underline">View Client profile</Link>
-                  </>
-                ) : item.soldTo ? (
-                  <>
-                    <p className="font-semibold text-slate-800">{item.soldTo}</p>
-                    {clientsLoading ? (
-                      <p className="text-sm text-slate-500">Loading buyer contact details…</p>
-                    ) : clientsUnavailable ? (
-                      <p className="text-sm text-red-600">Buyer contact details could not be loaded.</p>
-                    ) : (
-                      <p className="text-sm text-slate-500">
-                        This buyer is not linked to a Client profile yet. <Link href="/clients" className="font-medium text-emerald-700 hover:underline">Review in Clients</Link>
-                      </p>
-                    )}
-                  </>
-                ) : clientsUnavailable ? (
-                  <p className="text-sm text-red-600">Buyer contact details could not be loaded.</p>
-                ) : (
-                  <p className="text-sm text-slate-500">Loading buyer contact details…</p>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          <BuyerContactCard
+            item={item}
+            buyer={linkedBuyer}
+            isLoading={clientsLoading}
+            isUnavailable={clientsUnavailable}
+          />
 
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
