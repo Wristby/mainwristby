@@ -1,5 +1,6 @@
 import { useSettings } from "@/hooks/use-settings";
 import { calculateWatchCostBreakdown, calculateWatchFinancials } from "@shared/watch-financials";
+import { getSoldDate } from "@shared/sold-date";
 import { useInventory } from "@/hooks/use-inventory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -131,8 +132,9 @@ function getPresetDateRange(preset: PeriodPreset, year: number, customMonth?: st
 
 function filterByDateRange(items: InventoryItem[], range: DateRange, customMonth?: string, customYear?: string, preset?: PeriodPreset): InventoryItem[] {
   return items.filter((item) => {
-    const date = item.status === 'sold' && (item.soldDate || item.dateSold)
-      ? new Date(item.soldDate || item.dateSold!)
+    const saleDate = item.status === "sold" ? getSoldDate(item) : null;
+    const date = saleDate
+      ? saleDate
       : item.purchaseDate
         ? new Date(item.purchaseDate)
         : null;
@@ -185,7 +187,7 @@ export default function Analytics() {
   const years = useMemo(() => {
     if (!inventory) return [];
     const dates = inventory
-      .map(i => i.soldDate ? new Date(i.soldDate) : i.purchaseDate ? new Date(i.purchaseDate) : null)
+      .map(i => getSoldDate(i) ?? (i.purchaseDate ? new Date(i.purchaseDate) : null))
       .filter((d): d is Date => d !== null);
     const uniqueYears = Array.from(new Set(dates.map(d => getYear(d))));
     return uniqueYears.sort((a, b) => b - a);
@@ -251,9 +253,9 @@ export default function Analytics() {
       const fees = getItemFees(item);
       const { profitCents: profit, marginPercent: margin, roiPercent: roi } =
         calculateWatchFinancials(item, revenue, 0, settings.watch_register_fee, true);
-      const soldDate = item.soldDate || item.dateSold;
+      const soldDate = getSoldDate(item);
       const daysHeld = soldDate && item.purchaseDate
-        ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
+        ? differenceInDays(soldDate, new Date(item.purchaseDate))
         : 0;
       return [
         csvEscape(item.brand),
@@ -310,13 +312,13 @@ export default function Analytics() {
       cM.soldItems.map(item => {
         const { profitCents: profit, roiPercent: roi } =
           calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true);
-        const soldDate = item.soldDate || item.dateSold;
+        const soldDate = getSoldDate(item);
         return {
           ...item,
           profit,
           roi,
           daysOnMarket: soldDate && item.purchaseDate
-            ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
+            ? differenceInDays(soldDate, new Date(item.purchaseDate))
             : 0,
         };
       })
@@ -328,7 +330,7 @@ export default function Analytics() {
 
   // Calculate metrics (moved before loading check for hook consistency)
   const calculatedMetrics = useMemo(() => {
-    const soldItems = filteredInventory.filter((i) => i.status === "sold" && (i.soldDate || i.dateSold));
+    const soldItems = filteredInventory.filter((i) => i.status === "sold" && getSoldDate(i));
     const activeItems = filteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
@@ -342,13 +344,13 @@ export default function Analytics() {
     const profits = soldItems.map((item) => {
       const { profitCents: profit, roiPercent: roi } =
         calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true);
-      const soldDate = item.soldDate || item.dateSold;
+      const soldDate = getSoldDate(item);
       return {
         ...item,
         profit,
         roi,
         daysOnMarket: (soldDate && item.purchaseDate)
-          ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
+          ? differenceInDays(soldDate, new Date(item.purchaseDate))
           : 0,
       };
     });
@@ -368,7 +370,7 @@ export default function Analytics() {
   const compareMetrics = useMemo(() => {
     if (!compareMode) return null;
     
-    const soldItems = compareFilteredInventory.filter((i) => i.status === "sold" && (i.soldDate || i.dateSold));
+    const soldItems = compareFilteredInventory.filter((i) => i.status === "sold" && getSoldDate(i));
     const activeItems = compareFilteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
@@ -382,7 +384,7 @@ export default function Analytics() {
     let daysInPeriod = compareDateRange.daysInPeriod;
     if (daysInPeriod === 0 && soldItems.length > 0) {
       const dates = soldItems
-        .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+        .map(i => getSoldDate(i)!.getTime())
         .sort((a, b) => a - b);
       const earliest = new Date(dates[0]);
       daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
@@ -414,7 +416,7 @@ export default function Analytics() {
     let daysInPeriod = primaryDateRange.daysInPeriod;
     if (daysInPeriod === 0 && soldItems.length > 0) {
       const dates = soldItems
-        .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+        .map(i => getSoldDate(i)!.getTime())
         .sort((a, b) => a - b);
       const earliest = new Date(dates[0]);
       daysInPeriod = Math.max(1, differenceInDays(today, earliest) + 1);
@@ -485,7 +487,7 @@ export default function Analytics() {
 
   // All watches hold time
   const allWatchesWithHoldTime = (inventory || []).map((item) => {
-    const endDate = item.soldDate ? new Date(item.soldDate) : (item.dateSold ? new Date(item.dateSold) : today);
+    const endDate = getSoldDate(item) ?? today;
     const startDate = item.dateReceived ? new Date(item.dateReceived) : null;
     return {
       ...item,

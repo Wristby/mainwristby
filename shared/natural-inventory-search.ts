@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Client, InventoryItem } from "./schema";
+import { getSoldDate } from "./sold-date";
 
 export const naturalInventoryFiltersSchema = z.object({
   brand: z.string().trim().min(1).max(80).optional(),
@@ -200,8 +201,7 @@ export function findNaturalInventoryMatches<T extends InventoryItem>(
     if (filters.minYear !== undefined && (watch.year == null || watch.year < filters.minYear)) return false;
     if (filters.maxYear !== undefined && (watch.year == null || watch.year > filters.maxYear)) return false;
     if (filters.soldYear !== undefined) {
-      const soldDate = watch.soldDate || watch.dateSold;
-      const soldTimestamp = soldDate ? new Date(soldDate).getTime() : Number.NaN;
+      const soldTimestamp = getSoldDate(watch)?.getTime() ?? Number.NaN;
       if (watch.status !== "sold" || !Number.isFinite(soldTimestamp) || new Date(soldTimestamp).getUTCFullYear() !== filters.soldYear) return false;
     }
     if (filters.box !== undefined && watch.box !== filters.box) return false;

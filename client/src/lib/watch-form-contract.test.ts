@@ -117,7 +117,7 @@ describe("shared Add Watch and Edit Watch contract", () => {
     }, "servicing")).toBe("received");
   });
 
-  it("retains the edit form's legacy sale-date fallback only when marking a watch sold", () => {
+  it("sets both date aliases when marking a watch sold, without inventing a date after it is cleared", () => {
     const values = watchEditFormSchema.parse({
       ...watchEditFormDefaults,
       brand: "Rolex",
@@ -126,8 +126,11 @@ describe("shared Add Watch and Edit Watch contract", () => {
       purchasePrice: 1000,
       status: "sold",
     });
-    expect(buildWatchEditPayload(values, "in_stock", new Date("2026-11-16T10:00:00.000Z")).soldDate)
-      .toBe("2026-11-16T10:00:00.000Z");
+    const transitioned = buildWatchEditPayload(values, "in_stock", new Date("2026-11-16T10:00:00.000Z"));
+    expect(transitioned.soldDate).toBe("2026-11-16T10:00:00.000Z");
+    expect(transitioned.dateSold).toBe(transitioned.soldDate);
+    expect(buildWatchEditPayload(values, "sold").soldDate).toBeNull();
+    expect(buildWatchEditPayload(values, "in_stock", new Date("2026-11-16T10:00:00.000Z"), true).soldDate).toBeNull();
     expect(buildWatchEditPayload({ ...values, status: "in_stock" }, "sold").soldDate).toBeNull();
   });
 

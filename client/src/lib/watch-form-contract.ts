@@ -201,6 +201,7 @@ export function buildCommonWatchApiFields(
   options: CommonWatchApiOptions = {},
 ) {
   const status = resolveWatchFormStatus(values, options.originalStatus);
+  const saleDate = nullable(values.dateSold) ?? nullable(options.soldDateFallback);
   return {
     ...toWatchApiMoneyFields(values),
     condition: serializeWatchCondition(values.condition),
@@ -208,8 +209,8 @@ export function buildCommonWatchApiFields(
     dateReceived: nullable(values.dateReceived),
     purchaseDate: nullable(values.purchaseDate),
     dateListed: nullable(values.dateListed),
-    dateSold: nullable(values.dateSold),
-    soldDate: values.dateSold || options.soldDateFallback || null,
+    dateSold: saleDate,
+    soldDate: saleDate,
     dateSentToService: nullable(values.dateSentToService),
     dateReturnedFromService: nullable(values.dateReturnedFromService),
     serviceNotes: values.serviceNotes?.trim() || null,
@@ -224,13 +225,16 @@ export function buildWatchEditPayload(
   values: WatchEditFormValues,
   originalStatus: CommonWatchFormValues["status"],
   now = new Date(),
+  dateSoldWasEdited = false,
 ) {
   const status = resolveWatchFormStatus(values, originalStatus);
   return {
     ...values,
     ...buildCommonWatchApiFields(values, {
       originalStatus,
-      soldDateFallback: status === "sold" && !values.dateSold ? now.toISOString() : null,
+      soldDateFallback: status === "sold" && originalStatus !== "sold" && !values.dateSold && !dateSoldWasEdited
+        ? now.toISOString()
+        : null,
     }),
     chrono24FeeRate: values.chrono24FeeRate != null ? Math.round(values.chrono24FeeRate * 100) : null,
     serviceStartDate: nullable(values.serviceStartDate),

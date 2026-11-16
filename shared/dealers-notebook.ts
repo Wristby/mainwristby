@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { calculateWatchCostBreakdown, calculateSaleFinancials } from "./watch-financials";
+import { getSoldDate } from "./sold-date";
 
 export const notebookComparisonModeSchema = z.enum([
   "previous-month",
@@ -387,7 +388,7 @@ export function calculateNotebookPeriod(
   const monthSet = new Set(monthKeys);
   const matching = inventory.flatMap((watch) => {
     if (watch.status !== "sold") return [];
-    const soldAt = watch.soldDate ?? watch.dateSold;
+    const soldAt = getSoldDate(watch);
     const month = notebookMonthKey(soldAt);
     return month && monthSet.has(month) ? [{ watch, soldAt }] : [];
   });

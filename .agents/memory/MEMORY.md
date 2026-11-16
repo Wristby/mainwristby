@@ -12,3 +12,4 @@
 - [External live hosting](external-live-hosting.md) — live app and database are hosted through cPanel; Replit development checks do not verify that database
 - [Month-end inventory accuracy](month-end-inventory-accuracy.md) — use dated captures, never reconstruct actual historical stock from today's editable watches
 - [Financial refactor boundaries](financial-refactor-boundaries.md) — preserve VAT estimate treatment, fee snapshots, and intentional reporting scopes when sharing arithmetic
+- [Sale-date consistency](sale-date-consistency.md) — keep soldDate canonical, dateSold as a legacy fallback, and synchronize explicit edits without inventing history

@@ -1,6 +1,7 @@
 import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { useInventory } from "@/hooks/use-inventory";
 import { calculateWatchCostBreakdown } from "@shared/watch-financials";
+import { getSoldDate } from "@shared/sold-date";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -230,8 +231,8 @@ export default function Financials() {
       months[m] = { revenue: 0, expenses: 0, cogs: 0 };
     });
 
-    inventory.filter(i => i.status === 'sold' && (i.soldDate || i.dateSold)).forEach(item => {
-      const month = monthNames[new Date((item.soldDate || item.dateSold)!).getMonth()];
+    inventory.filter(i => i.status === 'sold' && getSoldDate(i)).forEach(item => {
+      const month = monthNames[getSoldDate(item)!.getMonth()];
       months[month].revenue += item.salePrice || 0;
       months[month].cogs += item.purchasePrice;
       const itemExpenses = calculateWatchCostBreakdown(item, settings.watch_register_fee).otherWatchCostsCents;
@@ -318,9 +319,9 @@ export default function Financials() {
     const filteredSoldItems = inventory.filter(item => {
       if (item.status !== 'sold') return false;
       if (monthFilter === "all" && yearFilter === "all") return true;
-      const soldDate = item.soldDate || item.dateSold;
+      const soldDate = getSoldDate(item);
       if (!soldDate) return false;
-      const date = new Date(soldDate);
+      const date = soldDate;
       const matchesMonth = monthFilter === "all" || getMonth(date).toString() === monthFilter;
       const matchesYear = yearFilter === "all" || getYear(date).toString() === yearFilter;
       return matchesMonth && matchesYear;
@@ -382,7 +383,7 @@ export default function Financials() {
       // All time - calculate from earliest to latest sale date or use 365 if no data
       if (filteredSoldItems.length > 0) {
         const dates = filteredSoldItems
-          .map(i => new Date(i.soldDate || i.dateSold!).getTime())
+          .map(i => getSoldDate(i)!.getTime())
           .sort((a, b) => a - b);
         const earliest = new Date(dates[0]);
         daysInPeriod = differenceInDays(today, earliest) + 1;

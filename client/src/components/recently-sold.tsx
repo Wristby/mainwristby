@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { ShoppingBag, Watch } from "lucide-react";
 import { Link } from "wouter";
 import type { InventoryItem } from "@shared/schema";
+import { getSoldDate } from "@shared/sold-date";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SoldReturnSummary } from "@/components/sold-return-summary";
@@ -14,8 +15,7 @@ type RecentlySoldProps = {
 };
 
 function saleTimestamp(item: InventoryItem) {
-  const timestamp = new Date(item.soldDate || item.dateSold || 0).getTime();
-  return Number.isFinite(timestamp) ? timestamp : 0;
+  return getSoldDate(item)?.getTime() ?? 0;
 }
 
 export function RecentlySold({ watches, now, calcProfit, formatCurrency }: RecentlySoldProps) {
@@ -40,7 +40,7 @@ export function RecentlySold({ watches, now, calcProfit, formatCurrency }: Recen
           <div className="text-center py-8 text-slate-400">No watches sold yet.</div>
         ) : recent.map((item) => {
           const profit = calcProfit(item);
-          const soldDate = item.soldDate || item.dateSold;
+          const soldDate = getSoldDate(item);
           return (
             <Link key={item.id} href={`/inventory/${item.id}`}
               className="block p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors">
@@ -50,7 +50,7 @@ export function RecentlySold({ watches, now, calcProfit, formatCurrency }: Recen
                   <div className="min-w-0">
                     <p className="font-medium text-slate-900 text-sm [overflow-wrap:anywhere]">{item.brand} {item.model}</p>
                     <p className="text-xs text-slate-500">
-                      {soldDate && !isNaN(new Date(soldDate).getTime()) ? format(new Date(soldDate), "d MMM yyyy") : "—"}
+                      {soldDate ? format(soldDate, "d MMM yyyy") : "—"}
                     </p>
                   </div>
                 </div>

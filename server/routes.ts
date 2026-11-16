@@ -28,6 +28,7 @@ import {
 import { prepareNotebookAnalysis } from "./dealers-notebook";
 import { personalCollectionValuationInputSchema } from "@shared/personal-collection";
 import { DEFAULT_WARRANTY_MONTHS, WARRANTY_TERM_OPTIONS } from "@shared/warranty";
+import { getSoldDate } from "@shared/sold-date";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -668,7 +669,7 @@ export async function registerRoutes(
       const comparisonMonthKeys = notebookComparisonMonthKeys(monthKey, comparisonMode);
       const allMonthKeys = new Set([monthKey, ...comparisonMonthKeys]);
       const relevantIds = inventoryData
-        .filter((watch) => watch.status === "sold" && allMonthKeys.has(notebookMonthKey(watch.soldDate ?? watch.dateSold) ?? ""))
+        .filter((watch) => watch.status === "sold" && allMonthKeys.has(notebookMonthKey(getSoldDate(watch)) ?? ""))
         .map((watch) => watch.id);
       const priceHistory = await storage.getNotebookPriceHistory(Array.from(new Set(relevantIds)));
       const snapshotEntries = await Promise.all([monthKey, ...comparisonMonthKeys]
@@ -847,7 +848,7 @@ Allowed priceField values: purchasePrice, listPrice, salePrice.
 Allowed aggregate values: count, asking_price_total. Omit aggregate for ordinary watch searches.
 Allowed groupBy values: brand, model, year, status, condition. Use "model" for model groupings and "year" for production-year groupings (not soldYear). For questions asking how many records by a supported field, use aggregate "count" and groupBy with that field. For asking/listed price totals by a supported field, use aggregate "asking_price_total" and groupBy with that field.
 Use count for questions asking how many records match. For questions asking total asking/listed value, use asking_price_total; this sums recorded listPrice values in application data. Grouped price totals also use recorded listPrice values, never calculate or infer missing prices.
-For a question about watches sold in a particular calendar year, set status to sold and soldYear to that year. "This year" means ${new Date().getFullYear()}. Sale year is matched against the saved soldDate or dateSold.
+For a question about watches sold in a particular calendar year, set status to sold and soldYear to that year. "This year" means ${new Date().getFullYear()}. The canonical sale date is soldDate; dateSold is used as a fallback for legacy records.
 Use a priceField only when the user asks about price. Default priceField to listPrice for asking/listed price wording; use purchasePrice for buying/acquisition cost; use salePrice for sold price. Prices are numeric euro amounts, not cents.
 Use only filters and aggregate types clearly supported by the request. Do not return calculated numbers. Do not invent values. For a request that asks for all inventory without criteria, return {"filters":{}}.
 User request: ${JSON.stringify(query)}`;

@@ -8,6 +8,7 @@ import {
   type NotebookPriceInput,
   type NotebookWatchInput,
 } from "@shared/dealers-notebook";
+import { getSoldDate } from "@shared/sold-date";
 
 const euro = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
 const monthLabel = (key: string) => {
@@ -44,14 +45,14 @@ export function prepareNotebookAnalysis(
   const currentStock = calculateNotebookCurrentStock(inventory, now);
   const selectedMonths = new Set([monthKey, ...comparisonMonthKeys]);
   const soldWatches = inventory
-    .filter((watch) => watch.status === "sold" && selectedMonths.has(notebookMonthKey(watch.soldDate ?? watch.dateSold) ?? ""))
-    .sort((a, b) => new Date(b.soldDate ?? b.dateSold ?? 0).getTime() - new Date(a.soldDate ?? a.dateSold ?? 0).getTime());
+    .filter((watch) => watch.status === "sold" && selectedMonths.has(notebookMonthKey(getSoldDate(watch)) ?? ""))
+    .sort((a, b) => (getSoldDate(b)?.getTime() ?? 0) - (getSoldDate(a)?.getTime() ?? 0));
   const watchLinks = new Map<string, { id: number; label: string }>();
 
   const saleSamples = soldWatches.slice(0, 24).map((watch, index) => {
     const code = `S${String(index + 1).padStart(2, "0")}`;
     const label = `${watch.brand} ${watch.model}`.trim();
-    const soldMonth = notebookMonthKey(watch.soldDate ?? watch.dateSold)!;
+    const soldMonth = notebookMonthKey(getSoldDate(watch))!;
     const oneSale = calculateNotebookPeriod([watch], priceHistory, [soldMonth], watchRegisterFeeCents, monthLabel(soldMonth));
     watchLinks.set(code, { id: watch.id, label });
     return {

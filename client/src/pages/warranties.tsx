@@ -6,6 +6,7 @@ import { useClients } from "@/hooks/use-clients";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { amsterdamToday, formatDeliveryDate } from "@shared/delivery";
 import { getManufacturerWarrantyCoverage, getStoreWarrantyCoverage } from "@shared/warranty";
+import { getSoldDate } from "@shared/sold-date";
 import type { InventoryItem } from "@shared/schema";
 
 type WarrantyFilter = "all" | "active" | "expiring" | "expired" | "awaiting" | "none";
@@ -224,7 +225,7 @@ export default function Warranties() {
                       <span>Ref. {item.referenceNumber}</span>
                       {item.serialNumber && <span>Serial {item.serialNumber}</span>}
                       {buyer && <span>Buyer {buyer}</span>}
-                      {item.soldDate && <span>Sold {new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(item.soldDate))}</span>}
+                      {getSoldDate(item) && <span>Sold {new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(getSoldDate(item)!)}</span>}
                     </p>
                   </div>
                   <Link href={`/inventory/${item.id}`} className="inline-flex min-h-9 shrink-0 items-center gap-1 self-start rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-emerald-300 hover:text-emerald-800">Open watch details <span aria-hidden="true">→</span></Link>

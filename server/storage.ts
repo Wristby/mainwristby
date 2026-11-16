@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { calculateWatchFinancials } from "@shared/watch-financials";
+import { getSoldDate, normalizeSoldDateFields } from "@shared/sold-date";
 import {
   clients, inventory, expenses, inventoryPriceHistory, personalCollectionWatches, personalCollectionValuations, settings, retentionAudit, transactionParties, dealerNotebookEntries,
   type Client, type InsertClient, type UpdateClientRequest,
@@ -442,7 +443,7 @@ export class DatabaseStorage implements IStorage {
       ? normalizeWarrantyMonths(await this.getSetting("default_warranty_months") ?? DEFAULT_WARRANTY_MONTHS)
       : insertItem.storeWarrantyMonths;
     const itemWithSnapshot = {
-      ...insertItem,
+      ...normalizeSoldDateFields(insertItem),
       storeWarrantyMonths: warrantyTerm,
       watchRegisterFeeSnapshot: currentFee,
       chrono24CertificationSentAt: insertItem.chrono24CertificationSent ? new Date() : null,
@@ -459,9 +460,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
+    const normalizedUpdates = normalizeSoldDateFields(updates);
     // Delivery-only confirmation never rewrites or corrects financial records.
     if (!saleBuyer && Object.keys(updates).every(key => key === "deliveredDate")) {
-      const [item] = await db.update(inventory).set(updates).where(eq(inventory.id, id)).returning();
+      const [item] = await db.update(inventory).set(normalizedUpdates).where(eq(inventory.id, id)).returning();
       if (!item) throw new Error("Item not found");
       return item;
     }
@@ -471,14 +473,14 @@ export class DatabaseStorage implements IStorage {
       const [current] = await tx.select().from(inventory).where(eq(inventory.id, id)).for("update");
       if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer, current.buyerId) : {};
-      const certificationDateUpdate = "chrono24CertificationSent" in updates
+      const certificationDateUpdate = "chrono24CertificationSent" in normalizedUpdates
         ? {
-            chrono24CertificationSentAt: updates.chrono24CertificationSent
+            chrono24CertificationSentAt: normalizedUpdates.chrono24CertificationSent
               ? (current.chrono24CertificationSent ? current.chrono24CertificationSentAt : new Date())
               : null,
           }
         : {};
-      const [item] = await tx.update(inventory).set({ ...updates, ...certificationDateUpdate, ...buyer })
+      const [item] = await tx.update(inventory).set({ ...normalizedUpdates, ...certificationDateUpdate, ...buyer })
         .where(eq(inventory.id, id)).returning();
       if (shouldRecordListedPrice(current.listPrice, updates.listPrice)) {
         await tx.insert(inventoryPriceHistory).values({ inventoryId: id, listPrice: updates.listPrice! });
@@ -784,7 +786,7 @@ export class DatabaseStorage implements IStorage {
     
     soldInventory.forEach(item => {
       const purchaseDate = item.purchaseDate;
-      const soldDate = item.dateSold || item.soldDate;
+      const soldDate = getSoldDate(item);
 
       if (soldDate && purchaseDate) {
         const diffTime = Math.abs(soldDate.getTime() - purchaseDate.getTime());

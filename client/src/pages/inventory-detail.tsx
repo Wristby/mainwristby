@@ -44,6 +44,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn, parsePriceInput } from "@/lib/utils";
 import { calculateWatchFinancials } from "@shared/watch-financials";
+import { getSoldDate } from "@shared/sold-date";
 import { calculateCogsMarginTargetPrice, COGS_MARGIN_TARGETS } from "@/lib/margin-presets";
 import { useSettings } from "@/hooks/use-settings";
 import { QuickEstimate } from "@/components/quick-estimate";
@@ -320,7 +321,7 @@ export default function InventoryDetail() {
 
   useEffect(() => {
     if (item) {
-      const hasSaleData = (item as any).salePrice > 0 || item.soldDate || (item as any).dateSold;
+      const hasSaleData = (item as any).salePrice > 0 || !!getSoldDate(item);
       const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).serviceStartDate || (item as any).dateReturnedFromService;
       const hasShippingData = item.shippingPartner || item.trackingNumber || item.chrono24CertificationSent;
       setShowSaleDetails(hasSaleData);
@@ -331,6 +332,7 @@ export default function InventoryDetail() {
 
   useEffect(() => {
     if (isEditOpen && item) {
+      const savedSoldDate = getSoldDate(item);
       setBuyerDraft({ ...emptySaleBuyer(), mode: item.buyerId ? "existing" : "new", clientId: item.buyerId || null, name: item.soldTo || "" });
       setBuyerDirty(false);
       setBuyerError("");
@@ -362,7 +364,7 @@ export default function InventoryDetail() {
         shippingFee: ((item as any).shippingFee || 0) / 100,
         insuranceFee: ((item as any).insuranceFee || 0) / 100,
         soldTo: (item as any).soldTo || "",
-        dateSold: (item.soldDate || (item as any).dateSold) ? new Date((item.soldDate || (item as any).dateSold)).toISOString() : "",
+        dateSold: savedSoldDate?.toISOString() || "",
         serviceStartDate: (item as any).serviceStartDate ? new Date((item as any).serviceStartDate).toISOString() : "",
         dateSentToService: (item as any).dateSentToService ? new Date((item as any).dateSentToService).toISOString() : "",
         dateReturnedFromService: (item as any).dateReturnedFromService ? new Date((item as any).dateReturnedFromService).toISOString() : "",
@@ -684,7 +686,7 @@ export default function InventoryDetail() {
       }
     }
     const submissionData = {
-      ...buildWatchEditPayload(data, item?.status || data.status),
+      ...buildWatchEditPayload(data, item?.status || data.status, new Date(), form.getFieldState("dateSold").isDirty),
       ...(saleBuyer ? { saleBuyer } : {}),
     };
     updateMutation.mutate(
@@ -738,10 +740,7 @@ export default function InventoryDetail() {
   } = calculateWatchFinancials(item, salePrice, settings.vat_rate, settings.watch_register_fee);
   
   const getEndDate = () => {
-    if (item.status === 'sold' && (item.soldDate || (item as any).dateSold || item.dateSold)) {
-      const soldDateStr = item.soldDate || (item as any).dateSold || item.dateSold;
-      return startOfDay(typeof soldDateStr === 'string' ? parseISO(soldDateStr) : new Date(soldDateStr));
-    }
+    if (item.status === "sold") return startOfDay(getSoldDate(item) ?? new Date());
     return startOfDay(new Date());
   };
   
@@ -765,10 +764,11 @@ export default function InventoryDetail() {
   const historicals = (allInventory || [])
     .filter((h) => h.referenceNumber === item.referenceNumber && h.status === "sold")
     .map((h) => {
-      const soldDateStr = (h as any).soldDate || (h as any).dateSold;
+      const soldAt = getSoldDate(h);
+      const soldDateStr = soldAt?.toISOString() ?? null;
       const daysToSell =
         soldDateStr && h.purchaseDate
-          ? Math.max(0, differenceInDays(new Date(soldDateStr), new Date(h.purchaseDate)))
+          ? Math.max(0, differenceInDays(soldAt!, new Date(h.purchaseDate)))
           : null;
       const { profitCents: histProfit, marginPercent: histMargin } =
         calculateWatchFinancials(h, h.salePrice || 0, 0, settings.watch_register_fee, true);
@@ -793,11 +793,11 @@ export default function InventoryDetail() {
     : 0;
   const totalFees = ((item as any).platformFees || 0) + ((item as any).shippingFee || 0) + ((item as any).insuranceFee || 0);
 
-  const _soldDateRaw = (item as any).dateSold || (item as any).soldDate;
+  const _soldDateRaw = getSoldDate(item);
   const daysListed = (item as any).dateListed
     ? Math.max(0, differenceInDays(
         item.status === "sold" && _soldDateRaw
-          ? startOfDay(typeof _soldDateRaw === 'string' ? parseISO(_soldDateRaw) : new Date(_soldDateRaw))
+          ? startOfDay(_soldDateRaw)
           : startOfDay(new Date()),
         startOfDay(typeof (item as any).dateListed === 'string' ? parseISO((item as any).dateListed) : new Date((item as any).dateListed))
       ))
@@ -1209,7 +1209,7 @@ export default function InventoryDetail() {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                            <Calendar mode="single" selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined} onSelect={(date) => { form.setValue("dateSold", date ? date.toISOString() : null); if (date) form.setValue("status", "sold"); setIsDateSoldOpen(false); }} initialFocus />
+                            <Calendar mode="single" selected={form.watch("dateSold") ? new Date(form.watch("dateSold")!) : undefined} onSelect={(date) => { form.setValue("dateSold", date ? date.toISOString() : null, { shouldDirty: true }); if (date) form.setValue("status", "sold", { shouldDirty: true }); setIsDateSoldOpen(false); }} initialFocus />
                           </PopoverContent>
                         </Popover>
                       </div>
@@ -2101,12 +2101,12 @@ export default function InventoryDetail() {
                   return null;
                 })()}
 
-                {(item.soldDate || (item as any).dateSold) && (
+                {getSoldDate(item) && (
                   <div>
                     <Label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Date Sold</Label>
                     <div className="flex items-center gap-2 mt-1 text-slate-600">
                       <Check className="w-4 h-4 text-emerald-500" />
-                      <span className="text-sm font-medium">{format(new Date(item.soldDate || (item as any).dateSold || ""), 'M/d/yyyy')}</span>
+                      <span className="text-sm font-medium">{format(getSoldDate(item)!, 'M/d/yyyy')}</span>
                     </div>
                   </div>
                 )}

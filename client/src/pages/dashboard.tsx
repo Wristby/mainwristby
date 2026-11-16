@@ -1,6 +1,7 @@
 import { WatchIntake } from "@/components/watch-intake/watch-intake";
 import { useMemo, useState, useEffect } from "react";
 import { calculateWatchFinancials } from "@shared/watch-financials";
+import { getSoldDate } from "@shared/sold-date";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -208,9 +209,8 @@ export default function Dashboard() {
 
     const filterByDateRange = (start: Date, end: Date) =>
       soldInventory.filter(item => {
-        const dateValue = item.soldDate || item.dateSold;
-        if (!dateValue) return false;
-        const d = new Date(dateValue);
+        const d = getSoldDate(item);
+        if (!d) return false;
         return d >= start && d <= end;
       });
 

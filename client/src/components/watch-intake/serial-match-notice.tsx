@@ -1,5 +1,6 @@
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import type { InventoryItem } from "@shared/schema";
+import { getSoldDate } from "@shared/sold-date";
 import type { WatchSerialField } from "@shared/serial-match";
 
 export type InventorySerialMatch = Pick<
@@ -51,7 +52,7 @@ export function SerialMatchNotice({
     </div>
     <ul className="space-y-2">
       {matches.map((watch) => {
-        const saleDate = formattedDate(watch.dateSold ?? watch.soldDate);
+        const saleDate = formattedDate(getSoldDate(watch));
         return <li key={watch.id} className="rounded-md border border-amber-200 bg-white/80 p-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>

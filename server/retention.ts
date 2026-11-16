@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Express } from "express";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { getSoldDate } from "@shared/sold-date";
 import { db } from "./db";
 import { isAuthenticated } from "./auth";
 import { clients, inventory, expenses, settings, retentionHolds, retentionAudit, retentionPolicies, transactionParties } from "@shared/schema";
@@ -48,7 +49,7 @@ export async function previewClient(id: number, connection: Connection = db): Pr
   if (holds.length) blockers.push("An active legal hold prevents cleanup.");
   if (client.profileClearedAt) blockers.push("Optional profile details have already been cleared.");
   const activityDates = [client.createdAt, client.profileUpdatedAt,
-    ...watches.flatMap(w => [w.purchaseDate, w.dateReceived, w.dateSold, w.soldDate, w.dateShipped, w.deliveredDate])];
+    ...watches.flatMap(w => [w.purchaseDate, w.dateReceived, getSoldDate(w), w.dateShipped, w.deliveredDate])];
   const validDates = activityDates.filter((d): d is Date | string => !!d && Number.isFinite(new Date(d).getTime()));
   const lastActivity = validDates.length ? new Date(Math.max(...validDates.map(d => new Date(d).getTime()))) : null;
   const profileExpiry = schedule ? expiry(lastActivity, schedule.rules.optional_profile.days) : null;
@@ -62,7 +63,7 @@ export async function previewClient(id: number, connection: Connection = db): Pr
   }];
   for (const category of ["financial", "warranty"] as const) {
     const dates = watches.map(w => category === "financial"
-      ? expiry(w.dateSold || w.soldDate || w.purchaseDate, schedule?.rules.financial.days ?? 0, true)
+      ? expiry(getSoldDate(w) || w.purchaseDate, schedule?.rules.financial.days ?? 0, true)
       : expiry(w.deliveredDate, schedule?.rules.warranty.days ?? 0));
     categoryDates.push({
       category, trigger: category === "financial" ? "financial_year_end" : "delivery",

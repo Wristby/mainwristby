@@ -1,5 +1,6 @@
 import { WatchIntake } from "@/components/watch-intake/watch-intake";
 import { calculateWatchFinancials } from "@shared/watch-financials";
+import { getSoldDate } from "@shared/sold-date";
 import { useInventory } from "@/hooks/use-inventory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,7 @@ import { Search, Plus, Loader2, Watch, Filter, AlertTriangle, Box, FileText, Pen
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import { compareSoldDates, getSoldDate } from "@/lib/sold-date";
+import { compareSoldDates } from "@/lib/sold-date";
 import { RowLink } from "@/components/row-link";
 import { differenceInDays, endOfDay, endOfMonth, format, startOfDay, startOfMonth, subMonths } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -181,7 +182,7 @@ export default function Inventory() {
   const getHoldTime = (item: any) => {
     const startDate = item.dateReceived ? new Date(item.dateReceived) : null;
     if (!startDate) return 0;
-    const endDate = item.status === "sold" && item.soldDate ? new Date(item.soldDate) : new Date();
+    const endDate = item.status === "sold" ? getSoldDate(item) ?? new Date() : new Date();
     return Math.max(0, differenceInDays(endDate, startDate));
   };
 
@@ -322,7 +323,7 @@ export default function Inventory() {
         polishFee,
         targetSellPrice,
         salePrice,
-        item.soldDate || item.dateSold ? format(new Date(item.soldDate || item.dateSold), "yyyy-MM-dd") : "",
+        getSoldDate(item) ? format(getSoldDate(item)!, "yyyy-MM-dd") : "",
         platformFees,
         shippingFee,
         insuranceFee,
