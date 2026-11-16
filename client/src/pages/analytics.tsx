@@ -43,7 +43,7 @@ import { SalesPatternsPreview } from "@/pages/sales-patterns";
 import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
-import { getChrono24CertificationWatches } from "@/lib/chrono24-certification";
+import { getChrono24CertificationStats, getChrono24CertificationWatches } from "@/lib/chrono24-certification";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -483,6 +483,12 @@ export default function Analytics() {
     ? (inventory || []).reduce((sum, item) => sum + item.purchasePrice, 0) / (inventory?.length ?? 1)
     : 0;
   const chrono24CertificationWatches = getChrono24CertificationWatches(inventory);
+  const chrono24CertificationStats = getChrono24CertificationStats(inventory);
+  const certificationMonthLabel = (monthKey: string) => new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${monthKey}-01T00:00:00Z`));
   const chrono24CertificationSentCount = chrono24CertificationWatches.length;
 
   // All watches hold time
@@ -1018,9 +1024,9 @@ export default function Analytics() {
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wide">Chrono24 Certification Sent</p>
                   <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums" data-testid="metric-chrono24-certification-sent">
-                    {chrono24CertificationSentCount}
+                    {chrono24CertificationStats.allTime}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">All-time flagged watches · View list</p>
+                  <p className="text-xs text-slate-400 mt-1">All-time sent · View list</p>
                 </div>
                 <div className="p-2 bg-emerald-50 rounded-full">
                   <BadgeCheck className="h-5 w-5 text-emerald-600" />
@@ -1114,6 +1120,29 @@ export default function Analytics() {
           </Card>
         </div>
       </div>
+      <Card className="bg-white border-slate-200" data-testid="card-chrono24-certification-monthly">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg text-slate-700">Chrono24 Certification by Month</CardTitle>
+          <p className="text-sm text-slate-500">Counts use the recorded sent date. Existing checked watches without a date remain undated.</p>
+        </CardHeader>
+        <CardContent>
+          {chrono24CertificationStats.byMonth.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {chrono24CertificationStats.byMonth.map(({ monthKey, count }) => (
+                <div key={monthKey} className="flex items-center justify-between py-2.5 text-sm">
+                  <span className="text-slate-700">{certificationMonthLabel(monthKey)}</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{count}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="py-2 text-sm text-slate-500">No dated certification records yet.</p>
+          )}
+          <p className="mt-3 border-t border-slate-100 pt-3 text-sm text-slate-500" data-testid="text-chrono24-certification-undated">
+            Undated: <span className="font-semibold tabular-nums text-slate-700">{chrono24CertificationStats.undated}</span>
+          </p>
+        </CardContent>
+      </Card>
       {/* Top Performers and Underperformers */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="bg-white border-slate-200">

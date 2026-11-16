@@ -1425,7 +1425,7 @@ export default function InventoryDetail() {
                         />
                         <div className="space-y-1">
                           <Label htmlFor="edit-chrono24-certification-sent" className="cursor-pointer">Sent for Chrono24 Certification</Label>
-                          <p className="text-xs text-slate-500">Tracking only. No fee or other certification details are required.</p>
+                          <p className="text-xs text-slate-500">The sent date is recorded automatically when checked. Older checked watches without a date remain undated.</p>
                         </div>
                       </div>
                     </div>

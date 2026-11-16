@@ -186,6 +186,7 @@ export const inventory = pgTable("inventory", {
   shippingPartner: text("shipping_partner"),
   trackingNumber: text("tracking_number"),
   chrono24CertificationSent: boolean("chrono24_certification_sent").default(false).notNull(),
+  chrono24CertificationSentAt: timestamp("chrono24_certification_sent_at", { withTimezone: true }),
   dateShipped: timestamp("date_shipped"),
   // Customer delivery is a calendar date, not a timezone-dependent timestamp.
   deliveredDate: date("delivered_date", { mode: "string" }),
@@ -267,7 +268,11 @@ export const insertPersonalCollectionWatchSchema = createInsertSchema(personalCo
 export type PersonalCollectionWatch = typeof personalCollectionWatches.$inferSelect;
 export type InsertPersonalCollectionWatch = z.infer<typeof insertPersonalCollectionWatchSchema>;
 
-export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, archivedAt: true });
+export const insertInventorySchema = createInsertSchema(inventory).omit({
+  id: true,
+  archivedAt: true,
+  chrono24CertificationSentAt: true,
+});
 export type InventoryItem = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type InventoryPriceHistory = typeof inventoryPriceHistory.$inferSelect;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { api } from "@shared/routes";
-import { countChrono24CertificationSent, getChrono24CertificationWatches } from "./chrono24-certification";
+import { getChrono24CertificationStats, getChrono24CertificationWatches } from "./chrono24-certification";
 
 describe("Chrono24 Certification tracking", () => {
   it("accepts the certification flag independently of shipping and fee fields", () => {
@@ -8,17 +8,26 @@ describe("Chrono24 Certification tracking", () => {
       .toEqual({ chrono24CertificationSent: true });
     expect(api.inventory.update.input.parse({ chrono24CertificationSent: false }))
       .toEqual({ chrono24CertificationSent: false });
+    expect(api.inventory.update.input.parse({
+      chrono24CertificationSent: true,
+      chrono24CertificationSentAt: "2025-12-20T10:00:00.000Z",
+    })).toEqual({ chrono24CertificationSent: true });
   });
 
   it("counts only explicitly marked watches, including sold and archived records", () => {
-    expect(countChrono24CertificationSent([
+    expect(getChrono24CertificationStats([
       { chrono24CertificationSent: true },
-      { chrono24CertificationSent: true },
+      { chrono24CertificationSent: true, chrono24CertificationSentAt: "2025-12-20T10:00:00.000Z" },
       { chrono24CertificationSent: false },
       {},
-      { chrono24CertificationSent: null },
-    ])).toBe(2);
-    expect(countChrono24CertificationSent(undefined)).toBe(0);
+      { chrono24CertificationSent: true, chrono24CertificationSentAt: null },
+      { chrono24CertificationSent: true, chrono24CertificationSentAt: "invalid" },
+    ])).toEqual({
+      allTime: 4,
+      undated: 3,
+      byMonth: [{ monthKey: "2025-12", count: 1 }],
+    });
+    expect(getChrono24CertificationStats(undefined)).toEqual({ allTime: 0, undated: 0, byMonth: [] });
   });
 
   it("returns the exact marked set for analytics drill-downs", () => {

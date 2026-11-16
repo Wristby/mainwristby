@@ -432,7 +432,11 @@ export class DatabaseStorage implements IStorage {
     // Snapshot the current watch_register_fee so future admin-panel changes
     // don't retroactively affect this item's cost calculations.
     const currentFee = await this.getSetting("watch_register_fee") || 600;
-    const itemWithSnapshot = { ...insertItem, watchRegisterFeeSnapshot: currentFee };
+    const itemWithSnapshot = {
+      ...insertItem,
+      watchRegisterFeeSnapshot: currentFee,
+      chrono24CertificationSentAt: insertItem.chrono24CertificationSent ? new Date() : null,
+    };
     return db.transaction(async tx => {
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer) : {};
       const [item] = await tx.insert(inventory).values({ ...itemWithSnapshot, ...buyer }).returning();
@@ -457,7 +461,14 @@ export class DatabaseStorage implements IStorage {
       const [current] = await tx.select().from(inventory).where(eq(inventory.id, id)).for("update");
       if (!current) throw new SaleBuyerSaveError("Watch not found.", 404);
       const buyer = saleBuyer ? await resolveSaleBuyer(tx, saleBuyer, current.buyerId) : {};
-      const [item] = await tx.update(inventory).set({ ...updates, ...buyer })
+      const certificationDateUpdate = "chrono24CertificationSent" in updates
+        ? {
+            chrono24CertificationSentAt: updates.chrono24CertificationSent
+              ? (current.chrono24CertificationSent ? current.chrono24CertificationSentAt : new Date())
+              : null,
+          }
+        : {};
+      const [item] = await tx.update(inventory).set({ ...updates, ...certificationDateUpdate, ...buyer })
         .where(eq(inventory.id, id)).returning();
       if (shouldRecordListedPrice(current.listPrice, updates.listPrice)) {
         await tx.insert(inventoryPriceHistory).values({ inventoryId: id, listPrice: updates.listPrice! });
