@@ -202,6 +202,60 @@ export const inventoryPriceHistory = pgTable("inventory_price_history", {
   recordedAt: timestamp("recorded_at").defaultNow().notNull(),
 }, (table) => [index("inventory_price_history_watch_date_idx").on(table.inventoryId, table.recordedAt)]);
 
+export type PersonalCollectionFee = {
+  label: string;
+  amount: number;
+};
+
+export type PersonalCollectionTechnicalDetails = Record<string, string>;
+
+// Personal watches are intentionally separate from dealer inventory, sales,
+// clients, and business expenses. Each record belongs to its signed-in owner.
+export const personalCollectionWatches = pgTable("personal_collection_watches", {
+  id: serial("id").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  dateBought: date("date_bought", { mode: "string" }),
+  referenceNumber: text("reference_number").notNull(),
+  manufacturer: text("manufacturer").notNull(),
+  model: text("model"),
+  subModel: text("sub_model"),
+  condition: text("condition").notNull().default("Pre-owned"),
+  conditionGrade: text("condition_grade").notNull().default("Not graded"),
+  year: integer("year"),
+  serialNumber: text("serial_number"),
+  linkCount: text("link_count"),
+  bracelet: text("bracelet"),
+  bezel: text("bezel"),
+  dial: text("dial"),
+  box: boolean("box").notNull().default(false),
+  boxForWholesale: boolean("box_for_wholesale").notNull().default(false),
+  papers: boolean("papers").notNull().default(false),
+  warrantyCardDate: date("warranty_card_date", { mode: "string" }),
+  warrantyExpiration: date("warranty_expiration", { mode: "string" }),
+  conditionNotes: text("condition_notes"),
+  contentsNotes: text("contents_notes"),
+  acquisitionPlatform: text("acquisition_platform"),
+  tradeIn: boolean("trade_in").notNull().default(false),
+  boughtFrom: text("bought_from"),
+  purchasePrice: integer("purchase_price"),
+  estimatedValue: integer("estimated_value"),
+  msrp: integer("msrp"),
+  intakeFees: jsonb("intake_fees").$type<PersonalCollectionFee[]>().notNull().default([]),
+  notes: text("notes"),
+  technicalDetails: jsonb("technical_details").$type<PersonalCollectionTechnicalDetails>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("personal_collection_owner_idx").on(table.ownerId),
+  index("personal_collection_owner_bought_idx").on(table.ownerId, table.dateBought),
+]);
+
+export const insertPersonalCollectionWatchSchema = createInsertSchema(personalCollectionWatches).omit({
+  id: true, ownerId: true, createdAt: true, updatedAt: true,
+});
+export type PersonalCollectionWatch = typeof personalCollectionWatches.$inferSelect;
+export type InsertPersonalCollectionWatch = z.infer<typeof insertPersonalCollectionWatchSchema>;
+
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true, archivedAt: true });
 export type InventoryItem = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;

@@ -1,9 +1,10 @@
 import { db } from "./db";
 import {
-  clients, inventory, expenses, inventoryPriceHistory, settings, retentionAudit, transactionParties, dealerNotebookEntries,
+  clients, inventory, expenses, inventoryPriceHistory, personalCollectionWatches, settings, retentionAudit, transactionParties, dealerNotebookEntries,
   type Client, type InsertClient, type UpdateClientRequest,
   type InventoryItem, type InsertInventory, type UpdateInventoryRequest, type InventoryPriceHistory,
   type Expense, type InsertExpense, type DealerNotebookEntry,
+  type PersonalCollectionWatch, type InsertPersonalCollectionWatch,
   type DashboardStats, type Setting
 } from "@shared/schema";
 import { eq, desc, sql, and, isNull, isNotNull, inArray, or, ne } from "drizzle-orm";
@@ -76,6 +77,13 @@ export interface IStorage {
   archiveInventoryItem(id: number): Promise<InventoryItem>;
   restoreInventoryItem(id: number): Promise<InventoryItem>;
   deleteInventoryItem(id: number): Promise<void>;
+
+  // Private personal collection, always scoped to its authenticated owner
+  getPersonalCollectionWatches(ownerId: string): Promise<PersonalCollectionWatch[]>;
+  getPersonalCollectionWatch(ownerId: string, id: number): Promise<PersonalCollectionWatch | undefined>;
+  createPersonalCollectionWatch(ownerId: string, item: InsertPersonalCollectionWatch): Promise<PersonalCollectionWatch>;
+  updatePersonalCollectionWatch(ownerId: string, id: number, updates: Partial<InsertPersonalCollectionWatch>): Promise<PersonalCollectionWatch | undefined>;
+  deletePersonalCollectionWatch(ownerId: string, id: number): Promise<boolean>;
 
   // Expenses
   getExpenses(): Promise<Expense[]>;
@@ -468,6 +476,50 @@ export class DatabaseStorage implements IStorage {
       await tx.update(inventoryPriceHistory).set({ inventoryId: null }).where(eq(inventoryPriceHistory.inventoryId, id));
       await tx.delete(inventory).where(eq(inventory.id, id));
     });
+  }
+
+  async getPersonalCollectionWatches(ownerId: string): Promise<PersonalCollectionWatch[]> {
+    return db.select().from(personalCollectionWatches)
+      .where(eq(personalCollectionWatches.ownerId, ownerId))
+      .orderBy(desc(personalCollectionWatches.dateBought), desc(personalCollectionWatches.createdAt));
+  }
+
+  async getPersonalCollectionWatch(ownerId: string, id: number): Promise<PersonalCollectionWatch | undefined> {
+    const [watch] = await db.select().from(personalCollectionWatches).where(and(
+      eq(personalCollectionWatches.ownerId, ownerId),
+      eq(personalCollectionWatches.id, id),
+    ));
+    return watch;
+  }
+
+  async createPersonalCollectionWatch(ownerId: string, item: InsertPersonalCollectionWatch): Promise<PersonalCollectionWatch> {
+    const [watch] = await db.insert(personalCollectionWatches).values({ ...item, ownerId }).returning();
+    return watch;
+  }
+
+  async updatePersonalCollectionWatch(
+    ownerId: string,
+    id: number,
+    updates: Partial<InsertPersonalCollectionWatch>,
+  ): Promise<PersonalCollectionWatch | undefined> {
+    const [watch] = await db.update(personalCollectionWatches)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(
+        eq(personalCollectionWatches.ownerId, ownerId),
+        eq(personalCollectionWatches.id, id),
+      ))
+      .returning();
+    return watch;
+  }
+
+  async deletePersonalCollectionWatch(ownerId: string, id: number): Promise<boolean> {
+    const [deleted] = await db.delete(personalCollectionWatches)
+      .where(and(
+        eq(personalCollectionWatches.ownerId, ownerId),
+        eq(personalCollectionWatches.id, id),
+      ))
+      .returning({ id: personalCollectionWatches.id });
+    return Boolean(deleted);
   }
 
   // Expenses

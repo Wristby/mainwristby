@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses, inventoryPriceHistory, type InventoryItem } from './schema';
 import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
+import { personalCollectionInputSchema } from './personal-collection';
+import { personalCollectionWatches, type PersonalCollectionWatch } from './schema';
 
 // Helper to transform date strings to Date objects or null
 const dateStringToDate = z.union([
@@ -194,6 +196,45 @@ export const api = {
         204: z.void(),
         404: errorSchemas.notFound,
       },
+    },
+  },
+  personalCollection: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/personal-collection',
+      responses: { 200: z.array(z.custom<PersonalCollectionWatch>()) },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/personal-collection/:id',
+      responses: {
+        200: z.custom<PersonalCollectionWatch>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/personal-collection',
+      input: personalCollectionInputSchema,
+      responses: {
+        201: z.custom<PersonalCollectionWatch>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/personal-collection/:id',
+      input: personalCollectionInputSchema.partial(),
+      responses: {
+        200: z.custom<PersonalCollectionWatch>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/personal-collection/:id',
+      responses: { 204: z.void(), 404: errorSchemas.notFound },
     },
   },
   expenses: {

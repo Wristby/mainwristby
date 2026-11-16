@@ -378,6 +378,56 @@ export async function registerRoutes(
     }
   });
 
+  // Private personal collection -- never joins or mutates business inventory.
+  app.get(api.personalCollection.list.path, isAuthenticated, async (req, res) => {
+    res.json(await storage.getPersonalCollectionWatches(req.session.userId!));
+  });
+
+  app.get(api.personalCollection.get.path, isAuthenticated, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: "Invalid collection watch ID." });
+    const watch = await storage.getPersonalCollectionWatch(req.session.userId!, id);
+    if (!watch) return res.status(404).json({ message: "Collection watch not found." });
+    res.json(watch);
+  });
+
+  app.post(api.personalCollection.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.personalCollection.create.input.parse(req.body);
+      const watch = await storage.createPersonalCollectionWatch(req.session.userId!, input);
+      res.status(201).json(watch);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the collection watch details." });
+      }
+      res.status(500).json({ message: "Could not add this collection watch. Please try again." });
+    }
+  });
+
+  app.put(api.personalCollection.update.path, isAuthenticated, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: "Invalid collection watch ID." });
+    try {
+      const input = api.personalCollection.update.input.parse(req.body);
+      const watch = await storage.updatePersonalCollectionWatch(req.session.userId!, id, input);
+      if (!watch) return res.status(404).json({ message: "Collection watch not found." });
+      res.json(watch);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the collection watch details." });
+      }
+      res.status(500).json({ message: "Could not save this collection watch. Please try again." });
+    }
+  });
+
+  app.delete(api.personalCollection.delete.path, isAuthenticated, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ message: "Invalid collection watch ID." });
+    const deleted = await storage.deletePersonalCollectionWatch(req.session.userId!, id);
+    if (!deleted) return res.status(404).json({ message: "Collection watch not found." });
+    res.sendStatus(204);
+  });
+
   // Expenses
   app.get(api.expenses.list.path, isAuthenticated, async (req, res) => {
     const expenses = await storage.getExpenses();
