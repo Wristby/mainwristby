@@ -7,11 +7,13 @@ import { requestMetadataLogger, safeErrorHandler, securityHeaders } from "./secu
 import { startNotebookSnapshotScheduler } from "./notebook-snapshot-scheduler";
 import { storage } from "./storage";
 import { runWithOwner } from "./tenant";
+import { registerStripeWebhook } from "./billing";
 
 const app = express();
 const httpServer = createServer(app);
 app.disable("x-powered-by");
 app.use(securityHeaders);
+registerStripeWebhook(app);
 
 declare module "http" {
   interface IncomingMessage {

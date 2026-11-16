@@ -26,12 +26,13 @@ async function saveSubscription(subscription: Stripe.Subscription) {
   const customerId = typeof subscription.customer === "string"
     ? subscription.customer : subscription.customer.id;
   const userId = subscription.metadata?.userId;
+  const currentPeriodEnd = (subscription as unknown as { current_period_end?: number }).current_period_end;
   const update = {
     stripeCustomerId: customerId,
     stripeSubscriptionId: subscription.id,
     subscriptionStatus: subscription.status,
-    stripeCurrentPeriodEnd: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000)
+    stripeCurrentPeriodEnd: currentPeriodEnd
+      ? new Date(currentPeriodEnd * 1000)
       : null,
     updatedAt: new Date(),
   };

@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
+import { ownerIt as it } from "./owner-test";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 const fixture = vi.hoisted(() => ({
@@ -124,9 +125,10 @@ describe("personal collection", () => {
     expect(fixture.lastTable).toBeTruthy();
     expect(whereParams()).toContain("owner-a");
 
-    await storage.getPersonalCollectionWatch("owner-b", 7);
-    expect(whereParams()).toContain("owner-b");
+    await storage.getPersonalCollectionWatch("owner-a", 7);
+    expect(whereParams()).toContain("owner-a");
     expect(whereParams()).toContain(7);
+    await expect(storage.getPersonalCollectionWatch("owner-b", 7)).rejects.toThrow("authenticated owner");
   });
 
   it("keeps create, update, and delete inside the owning collection", async () => {
@@ -137,19 +139,19 @@ describe("personal collection", () => {
     expect(fixture.lastValues).toMatchObject({ ownerId: "owner-a", manufacturer: "Rolex" });
     expect(created.ownerId).toBe("owner-a");
 
-    await storage.updatePersonalCollectionWatch("owner-b", 7, { notes: "Personal note" });
+    await storage.updatePersonalCollectionWatch("owner-a", 7, { notes: "Personal note" });
     expect(fixture.lastValues).toMatchObject({ notes: "Personal note" });
     expect(fixture.lastValues.updatedAt).toBeInstanceOf(Date);
-    expect(whereParams()).toContain("owner-b");
+    expect(whereParams()).toContain("owner-a");
     expect(whereParams()).toContain(7);
+    await expect(storage.updatePersonalCollectionWatch("owner-b", 7, { notes: "Cross-account" })).rejects.toThrow("authenticated owner");
 
     expect(await storage.deletePersonalCollectionWatch("owner-a", 7)).toBe(true);
     expect(whereParams()).toContain("owner-a");
     expect(whereParams()).toContain(7);
 
     fixture.deleted = false;
-    expect(await storage.deletePersonalCollectionWatch("owner-b", 7)).toBe(false);
-    expect(whereParams()).toContain("owner-b");
+    await expect(storage.deletePersonalCollectionWatch("owner-b", 7)).rejects.toThrow("authenticated owner");
   });
 
   it("scopes valuation history to its watch owner and syncs the latest dated estimate", async () => {
@@ -160,15 +162,15 @@ describe("personal collection", () => {
       valuationDate: "2025-06-01",
       estimatedValue: 1_450_000,
     }];
-    const history = await storage.getPersonalCollectionValuations("owner-b", 7);
+    const history = await storage.getPersonalCollectionValuations("owner-a", 7);
     expect(history).toHaveLength(1);
     const ownerCheck = fixture.conditions.find((condition) => {
       const params = dialect.sqlToQuery(condition).params;
-      return params.includes("owner-b") && params.includes(7);
+      return params.includes("owner-a") && params.includes(7);
     });
     expect(ownerCheck).toBeTruthy();
     fixture.rows = [];
-    expect(await storage.getPersonalCollectionValuations("owner-b", 7)).toBeUndefined();
+    expect(await storage.getPersonalCollectionValuations("owner-a", 7)).toBeUndefined();
     fixture.rows = [watch];
 
     fixture.valuationRows = [

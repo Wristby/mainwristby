@@ -5,6 +5,7 @@ import { db } from "./db";
 import { isAuthenticated } from "./auth";
 import { clients, inventory } from "@shared/schema";
 import { requireOwnerId } from "./tenant";
+import { storage } from "./storage";
 import {
   buyerReviewPath, buyerReviewSchema, buyerSyncPath, planLegacyBuyers,
   type BuyerReviewInput, type BuyerSyncReport,
@@ -29,6 +30,10 @@ export async function syncHistoricalBuyers(): Promise<BuyerSyncReport> {
     await tx.execute(sql`select pg_advisory_xact_lock(73284077)`);
     const contacts = await tx.select().from(clients).where(eq(clients.ownerId, ownerId));
     const { ready, pending } = planLegacyBuyers(watches, contacts);
+    const access = await storage.getWorkspaceAccess();
+    if (!access.isPro && access.clientCount + ready.length > 25) {
+      throw new BuyerBackfillError("The Free plan includes up to 25 clients. Upgrade before creating these historical client records.", 402);
+    }
     for (const { watch, name } of ready) {
       const [client] = await tx.insert(clients).values({ ownerId, name, type: "client" }).returning();
       // Keep the historical name snapshot, seller, fees, and all other watch data intact.
@@ -62,6 +67,10 @@ export async function resolveHistoricalBuyer(input: BuyerReviewInput) {
       if (!client) throw new BuyerBackfillError("This Client no longer exists. Choose another Client.", 409);
       clientId = client.id;
     } else {
+      const access = await storage.getWorkspaceAccess();
+      if (!access.isPro && access.clientCount >= 25) {
+        throw new BuyerBackfillError("The Free plan includes up to 25 clients. Upgrade before creating another client.", 402);
+      }
       const [client] = await tx.insert(clients).values({ ownerId, name: input.expectedName, type: "client" }).returning();
       clientId = client.id;
     }

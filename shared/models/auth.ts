@@ -31,6 +31,9 @@ export const users = pgTable("users", {
   emailVerificationExpiresAt: timestamp("email_verification_expires_at", { withTimezone: true }),
   passwordResetTokenHash: varchar("password_reset_token_hash", { length: 64 }),
   passwordResetExpiresAt: timestamp("password_reset_expires_at", { withTimezone: true }),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  termsVersion: varchar("terms_version", { length: 40 }),
+  privacyNoticeVersion: varchar("privacy_notice_version", { length: 40 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

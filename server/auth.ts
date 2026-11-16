@@ -3,7 +3,7 @@ import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import type { Express, RequestHandler } from "express";
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, or } from "drizzle-orm";
+import { and, eq, gt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, pool } from "./db";
 import { users } from "@shared/models/auth";
@@ -50,8 +50,11 @@ const signupSchema = z.object({
   firstName: z.string().trim().max(80).optional().default(""),
   lastName: z.string().trim().max(80).optional().default(""),
   password: z.string().min(12).max(128),
+  termsAccepted: z.literal(true),
+  plan: z.enum(["free", "pro"]).default("free"),
 }).strict();
 
+const POLICY_VERSION = "draft-2026-11-16";
 const tokenSchema = z.object({ token: z.string().min(32).max(128) }).strict();
 const resetPasswordSchema = z.object({
   token: z.string().min(32).max(128),
@@ -66,6 +69,9 @@ const requiredAccountColumns = [
   "users.email_verification_expires_at",
   "users.password_reset_token_hash",
   "users.password_reset_expires_at",
+  "users.terms_accepted_at",
+  "users.terms_version",
+  "users.privacy_notice_version",
   "clients.owner_id",
   "inventory.owner_id",
   "expenses.owner_id",
@@ -131,14 +137,15 @@ export async function setupAuth(
   app.post("/api/register", loginAttemptLimit, async (req, res) => {
     const parsed = signupSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Enter a valid username, email, and password of at least 12 characters." });
-    if (!isMailConfigured() || !(await publicAccountSchemaReady())) {
+    if (process.env.PUBLIC_REGISTRATION_ENABLED !== "true" ||
+        !isMailConfigured() || !(await publicAccountSchemaReady())) {
       return res.status(503).json({ message: "Account registration is not available on this host yet." });
     }
     const input = { ...parsed.data, email: parsed.data.email.toLowerCase() };
     try {
       const [existing] = await db.select({ id: users.id }).from(users).where(or(
-        eq(users.username, input.username),
-        eq(users.email, input.email),
+        sql`lower(${users.username}) = ${input.username.toLowerCase()}`,
+        sql`lower(${users.email}) = ${input.email.toLowerCase()}`,
       )).limit(1);
       if (existing) {
         // Do not disclose whether a username or an email is already registered.
@@ -147,16 +154,19 @@ export async function setupAuth(
 
       const token = randomBytes(32).toString("base64url");
       const [user] = await db.insert(users).values({
-        username: input.username,
-        email: input.email,
+        username: input.username.toLowerCase(),
+        email: input.email.toLowerCase(),
         password: await bcrypt.hash(input.password, 12),
         firstName: input.firstName || null,
         lastName: input.lastName || null,
         emailVerificationTokenHash: hashToken(token),
         emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        termsAcceptedAt: new Date(),
+        termsVersion: POLICY_VERSION,
+        privacyNoticeVersion: POLICY_VERSION,
       }).returning();
       await options.onAccountCreated?.(user.id);
-      await sendVerificationEmail(user.email!, user.firstName, token);
+      await sendVerificationEmail(user.email!, user.firstName, token, input.plan);
       return res.status(202).json({ message: "If the details can be used, a verification email will arrive shortly." });
     } catch {
       console.error("Account registration could not be completed.");
@@ -190,7 +200,7 @@ export async function setupAuth(
       return res.status(202).json({ message: "If the account needs verification, a message will arrive shortly." });
     }
     try {
-      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      const [user] = await db.select().from(users).where(sql`lower(${users.email}) = ${email.toLowerCase()}`).limit(1);
       if (user && !user.emailVerifiedAt && user.accountRole !== "owner") {
         const token = randomBytes(32).toString("base64url");
         await db.update(users).set({
@@ -210,7 +220,7 @@ export async function setupAuth(
     const generic = { message: "If the account exists, a password reset link will arrive shortly." };
     if (!z.string().email().safeParse(email).success || !isMailConfigured()) return res.status(202).json(generic);
     try {
-      const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      const [user] = await db.select().from(users).where(sql`lower(${users.email}) = ${email.toLowerCase()}`).limit(1);
       if (user?.emailVerifiedAt) {
         const token = randomBytes(32).toString("base64url");
         await db.update(users).set({
@@ -258,7 +268,7 @@ export async function setupAuth(
       }
 
       const [user] = await db.select().from(users).where(or(
-        eq(users.username, loginId),
+        sql`lower(${users.username}) = ${loginId.toLowerCase()}`,
         eq(users.email, loginId.toLowerCase()),
       )).limit(1);
       if (!user) {
@@ -304,13 +314,13 @@ export async function setupAuth(
   // Get current user
   app.get("/api/auth/user", async (req, res) => {
     if (!req.session.userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.json(null);
     }
 
     const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
     if (!user) {
       req.session.destroy(() => {});
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.json(null);
     }
 
     res.json(publicUser(user));
@@ -354,7 +364,7 @@ export const requirePro: RequestHandler = async (req, res, next) => {
       return;
     }
     if (user.accountRole !== "owner" && !["active", "trialing"].includes(user.subscriptionStatus)) {
-      res.status(402).json({ message: "AI features are included with WRISTBY Pro." });
+      res.status(402).json({ message: "AI features are included with WRISTBY Pro. Upgrade from Account & plan." });
       return;
     }
     next();

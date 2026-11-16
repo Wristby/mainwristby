@@ -30,6 +30,7 @@ import { personalCollectionValuationInputSchema } from "@shared/personal-collect
 import { DEFAULT_WARRANTY_MONTHS, WARRANTY_TERM_OPTIONS } from "@shared/warranty";
 import { getSoldDate } from "@shared/sold-date";
 import { runWithOwner } from "./tenant";
+import { registerBillingRoutes } from "./billing";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -194,6 +195,7 @@ export async function registerRoutes(
     onAccountCreated: (userId) => runWithOwner(userId, seedSettings),
   });
   registerRetentionRoutes(app);
+  registerBillingRoutes(app);
 
   // === API ROUTES ===
 
@@ -219,6 +221,7 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.issues[0].message });
       }
+      if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       throw err;
     }
   });
@@ -376,6 +379,7 @@ export async function registerRoutes(
       const item = await storage.archiveInventoryItem(Number(req.params.id));
       res.json(item);
     } catch (err) {
+      if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof Error && err.message === "Item not found") return res.status(404).json({ message: "Item not found" });
       res.status(500).json({ message: "Could not archive this watch. Please try again." });
     }
@@ -649,7 +653,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/dealers-notebook/analyze", isAuthenticated, async (req, res) => {
+  app.post("/api/dealers-notebook/analyze", isAuthenticated, requirePro, async (req, res) => {
     const parsed = analyzeNotebookSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Choose a valid month and comparison period." });
@@ -794,7 +798,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
     }
   });
 
-  app.get("/api/ai/models", isAuthenticated, async (req, res) => {
+  app.get("/api/ai/models", isAuthenticated, requirePro, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.json({ models: [] });
@@ -830,7 +834,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
   });
 
   // AI — Generate Listing Description
-  app.post("/api/ai/inventory-search", isAuthenticated, async (req, res) => {
+  app.post("/api/ai/inventory-search", isAuthenticated, requirePro, async (req, res) => {
     const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
     if (!query || query.length > 300) {
       return res.status(400).json({ message: "Enter a search question of up to 300 characters." });
@@ -870,7 +874,7 @@ User request: ${JSON.stringify(query)}`;
     }
   });
 
-  app.post("/api/ai/generate-description", isAuthenticated, async (req, res) => {
+  app.post("/api/ai/generate-description", isAuthenticated, requirePro, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(503).json({ message: "AI generation is not configured. Please add your GEMINI_API_KEY." });
@@ -915,7 +919,7 @@ Papers/Cards: {{papers}}`;
   });
 
   // AI — Movement Specs Lookup
-  app.post("/api/ai/movement-specs", isAuthenticated, async (req, res) => {
+  app.post("/api/ai/movement-specs", isAuthenticated, requirePro, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(503).json({ message: "AI is not configured. Please add your GEMINI_API_KEY." });
@@ -971,7 +975,7 @@ Papers/Cards: {{papers}}`;
   });
 
   // AI — Generate Instagram Caption
-  app.post("/api/ai/generate-caption", isAuthenticated, async (req, res) => {
+  app.post("/api/ai/generate-caption", isAuthenticated, requirePro, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(503).json({ message: "AI generation is not configured. Please add your GEMINI_API_KEY." });

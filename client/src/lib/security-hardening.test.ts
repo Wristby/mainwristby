@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, vi } from "vitest";
+import { ownerIt as it } from "./owner-test";
 import express from "express";
 import { createServer, type Server } from "node:http";
 
@@ -14,6 +15,7 @@ vi.mock("../../../server/db", () => ({
         where: () => ({
           limit: async () => fixture.userExists ? [{
             id: "test-user", username: "test-account", password: "test-hash",
+            accountRole: "owner", emailVerifiedAt: new Date("2026-11-16T00:00:00Z"),
           }] : [],
         }),
       }),
@@ -34,6 +36,8 @@ vi.mock("../../../server/storage", () => ({
     status = 409;
   },
   storage: {
+    getAccountIds: async () => [],
+    getWorkspaceAccess: async () => ({ isPro: true, plan: "pro", aiEnabled: true, activeWatchCount: 0, clientCount: 0, limits: null }),
     getSetting: async () => undefined,
     getClients: async () => [{ id: 1 }],
     getAllSettings: async () => ({}),

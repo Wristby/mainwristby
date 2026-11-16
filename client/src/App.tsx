@@ -8,7 +8,13 @@ import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
 const NotFound = lazy(() => import("@/pages/not-found"));
-const Landing = lazy(() => import("@/pages/landing"));
+const Login = lazy(() => import("@/pages/login"));
+const PublicLanding = lazy(() => import("@/pages/public-landing"));
+const SignUp = lazy(() => import("@/pages/signup"));
+const VerifyEmail = lazy(() => import("@/pages/verify-email"));
+const ResetPassword = lazy(() => import("@/pages/reset-password"));
+const Account = lazy(() => import("@/pages/account"));
+const LegalInfo = lazy(() => import("@/pages/legal-info"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Inventory = lazy(() => import("@/pages/inventory"));
 const InventoryDetail = lazy(() => import("@/pages/inventory-detail"));
@@ -85,7 +91,16 @@ function Router() {
   return (
     <Suspense fallback={<RouteLoading fullScreen />}>
     <Switch>
-      <Route path="/landing" component={Landing} />
+      <Route path="/landing" component={PublicLanding} />
+      <Route path="/login" component={Login} />
+      <Route path="/signup" component={SignUp} />
+      <Route path="/verify-email" component={VerifyEmail} />
+      <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/privacy" component={LegalInfo} />
+      <Route path="/terms" component={LegalInfo} />
+      <Route path="/account">
+        <ProtectedRoute component={Account} />
+      </Route>
       <Route path="/">
         <ProtectedRoute component={Dashboard} />
       </Route>

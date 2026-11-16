@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
+import { ownerIt as it } from "./owner-test";
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -8,6 +9,9 @@ const fixture = vi.hoisted(() => ({
 }));
 vi.mock("../../../server/db", () => ({ db: fixture.db }));
 vi.mock("../../../server/auth", () => ({ isAuthenticated: fixture.auth }));
+vi.mock("../../../server/storage", () => ({
+  storage: { getWorkspaceAccess: async () => ({ isPro: true, clientCount: 0 }) },
+}));
 import { registerClientBackfillRoutes, resolveHistoricalBuyer, syncHistoricalBuyers } from "../../../server/client-backfill";
 import { buyerReviewPath, buyerSyncPath } from "@shared/client-backfill";
 
@@ -23,10 +27,21 @@ function connection(snapshot: typeof state) {
       const matches = (row: any) => {
         if (!condition) return true;
         const { sql, params } = dialect.sqlToQuery(condition);
-        const column = sql.match(/"[^"]+"\."([^"]+)"/)?.[1];
-        const field = Object.entries(getTableColumns(table)).find(([, value]: any) => value.name === column)?.[0];
-        if (!field) throw new Error("Unsupported fixture condition");
-        return sql.includes("is null") ? row[field] == null : row[field] === params[0];
+        const columns = Object.entries(getTableColumns(table));
+        const fieldFor = (column: string) => columns.find(([, value]: any) => value.name === column)?.[0];
+        const equalities = [...sql.matchAll(/"[^"]+"\."([^"]+)"\s*=\s*\$(\d+)/g)];
+        const nullChecks = [...sql.matchAll(/"[^"]+"\."([^"]+)"\s+is null/gi)];
+        for (const [, column, index] of equalities) {
+          const field = fieldFor(column);
+          if (!field) throw new Error("Unsupported fixture condition");
+          if (row[field] !== params[Number(index) - 1]) return false;
+        }
+        for (const [, column] of nullChecks) {
+          const field = fieldFor(column);
+          if (!field) throw new Error("Unsupported fixture condition");
+          if (row[field] != null) return false;
+        }
+        return true;
       };
       if (kind === "select") return rows.filter(matches).map(row => ({ ...row }));
       if (fixture.fail === `${kind}:${name}`) throw new Error("Fixture failure");
@@ -57,12 +72,12 @@ function connection(snapshot: typeof state) {
 beforeEach(() => {
   fixture.fail = ""; fixture.operations = [];
   state = {
-    clients: [{ id: 4, name: "Existing Person", email: "saved@example.invalid", phone: "+31 1234", country: "Netherlands", profileClearedAt: null }],
+    clients: [{ id: 4, ownerId: "owner-a", name: "Existing Person", email: "saved@example.invalid", phone: "+31 1234", country: "Netherlands", profileClearedAt: null }],
     inventory: [
-      { id: 1, brand: "Cartier", model: "Tank", referenceNumber: "TEST", soldTo: "  Unique Buyer  ", buyerId: null, clientId: 4, salePrice: 10000, notes: "Keep", status: "sold" },
-      { id: 2, soldTo: "EXISTING PERSON", buyerId: null, clientId: 4 },
-      { id: 3, soldTo: "Repeated Buyer", buyerId: null },
-      { id: 5, soldTo: "Repeated Buyer", buyerId: null },
+      { id: 1, ownerId: "owner-a", brand: "Cartier", model: "Tank", referenceNumber: "TEST", soldTo: "  Unique Buyer  ", buyerId: null, clientId: 4, salePrice: 10000, notes: "Keep", status: "sold" },
+      { id: 2, ownerId: "owner-a", soldTo: "EXISTING PERSON", buyerId: null, clientId: 4 },
+      { id: 3, ownerId: "owner-a", soldTo: "Repeated Buyer", buyerId: null },
+      { id: 5, ownerId: "owner-a", soldTo: "Repeated Buyer", buyerId: null },
     ],
     expenses: [{ id: 99, inventoryId: 1, amount: 500 }],
   };

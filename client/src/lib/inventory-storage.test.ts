@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
+import { ownerIt as it } from "./owner-test";
 import type { Client, Expense, InventoryItem } from "@shared/schema";
 
 vi.mock("../../../server/db", () => ({ db: { select: vi.fn() } }));
@@ -91,7 +92,8 @@ describe("inventory storage seller joins", () => {
       where: vi.fn().mockResolvedValue([{ value: 600 }]),
     };
     const inventoryBuilder = {
-      from: vi.fn().mockResolvedValue([
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([
         {
           status: "in_stock",
           archivedAt: null,

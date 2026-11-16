@@ -58,15 +58,6 @@ export const retentionHolds = pgTable("retention_holds", {
 
 // An identity belongs to a transaction, not to its optional CRM profile.
 // Populated on profile cleanup without copying contact details or CRM notes.
-export const transactionParties = pgTable("transaction_parties", {
-  id: serial("id").primaryKey(),
-  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  inventoryId: integer("inventory_id"),
-  role: text("role", { enum: ["buyer", "seller"] }).notNull(),
-  name: text("name").notNull(),
-  retainedAt: timestamp("retained_at").defaultNow().notNull(),
-});
-
 // No names, contacts, hold reasons or approval references in the audit trail.
 export const retentionAudit = pgTable("retention_audit", {
   id: serial("id").primaryKey(),
@@ -238,6 +229,21 @@ export const inventory = pgTable("inventory", {
   }),
 ]);
 
+export const transactionParties = pgTable("transaction_parties", {
+  id: serial("id").primaryKey(),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  inventoryId: integer("inventory_id"),
+  role: text("role", { enum: ["buyer", "seller"] }).notNull(),
+  name: text("name").notNull(),
+  retainedAt: timestamp("retained_at").defaultNow().notNull(),
+}, (table) => [
+  foreignKey({
+    columns: [table.ownerId, table.inventoryId],
+    foreignColumns: [inventory.ownerId, inventory.id],
+    name: "transaction_parties_owner_inventory_fk",
+  }),
+]);
+
 export const inventoryPriceHistory = pgTable("inventory_price_history", {
   id: serial("id").primaryKey(),
   ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -318,7 +324,7 @@ export const personalCollectionValuations = pgTable("personal_collection_valuati
     columns: [table.ownerId, table.watchId],
     foreignColumns: [personalCollectionWatches.ownerId, personalCollectionWatches.id],
     name: "personal_collection_valuation_owner_watch_fk",
-  }),
+  }).onDelete("cascade"),
 ]);
 
 export const insertPersonalCollectionWatchSchema = createInsertSchema(personalCollectionWatches).omit({

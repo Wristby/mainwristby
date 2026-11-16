@@ -21,7 +21,7 @@ async function logoutFn(): Promise<void> {
 }
 
 interface LoginCredentials {
-  username: string;
+  identifier: string;
   password: string;
 }
 
@@ -35,7 +35,21 @@ async function loginFn(credentials: LoginCredentials): Promise<User> {
   return response.json();
 }
 
-async function registerFn(credentials: LoginCredentials): Promise<User> {
+export interface SignupCredentials {
+  username: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+  termsAccepted: boolean;
+  plan: "free" | "pro";
+}
+
+interface AuthMessage {
+  message: string;
+}
+
+async function registerFn(credentials: SignupCredentials): Promise<AuthMessage> {
   const response = await apiFetch("/api/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -66,15 +80,13 @@ export function useAuth() {
     mutationFn: loginFn,
     onSuccess: (data) => {
       queryClient.setQueryData(["/api/auth/user"], data);
-      window.location.href = "/";
     },
   });
 
   const registerMutation = useMutation({
     mutationFn: registerFn,
     onSuccess: (data) => {
-      queryClient.setQueryData(["/api/auth/user"], data);
-      window.location.href = "/";
+      return data;
     },
   });
 

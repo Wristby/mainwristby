@@ -12,7 +12,10 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email_verification_token_hash varchar(64),
   ADD COLUMN IF NOT EXISTS email_verification_expires_at timestamptz,
   ADD COLUMN IF NOT EXISTS password_reset_token_hash varchar(64),
-  ADD COLUMN IF NOT EXISTS password_reset_expires_at timestamptz;
+  ADD COLUMN IF NOT EXISTS password_reset_expires_at timestamptz,
+  ADD COLUMN IF NOT EXISTS terms_accepted_at timestamptz,
+  ADD COLUMN IF NOT EXISTS terms_version varchar(40),
+  ADD COLUMN IF NOT EXISTS privacy_notice_version varchar(40);
 
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS owner_id varchar;
 ALTER TABLE inventory ADD COLUMN IF NOT EXISTS owner_id varchar;
@@ -100,6 +103,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_stripe_customer_id_uq
   ON users (stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_stripe_subscription_id_uq
   ON users (stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique_idx
+  ON users (lower(email)) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_unique_idx
+  ON users (lower(username)) WHERE username IS NOT NULL;
 
 ALTER TABLE clients ADD CONSTRAINT clients_owner_user_fk
   FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE;

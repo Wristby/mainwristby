@@ -33,10 +33,12 @@ async function sendActionLink(
   token: string,
   subject: string,
   action: string,
+  plan?: "free" | "pro",
 ) {
   const config = requiredMailConfig();
   const link = new URL(path, config.appUrl);
   link.searchParams.set("token", token);
+  if (plan === "pro") link.searchParams.set("plan", "pro");
   const transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,
@@ -53,8 +55,8 @@ async function sendActionLink(
   });
 }
 
-export function sendVerificationEmail(to: string, name: string | null | undefined, token: string) {
-  return sendActionLink(to, name, "/verify-email", token, "Verify your WRISTBY account", "Verify your email");
+export function sendVerificationEmail(to: string, name: string | null | undefined, token: string, plan?: "free" | "pro") {
+  return sendActionLink(to, name, "/verify-email", token, "Verify your WRISTBY account", "Verify your email", plan);
 }
 
 export function sendPasswordResetEmail(to: string, name: string | null | undefined, token: string) {

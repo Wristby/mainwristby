@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
+import { ownerIt as it } from "./owner-test";
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -24,10 +25,19 @@ function connection(getState: () => State) {
       const matches = (row: any) => {
         if (!condition) return true;
         const { sql, params } = dialect.sqlToQuery(condition);
-        const columnName = sql.match(/"[^"]+"\."([^"]+)"\s*=\s*\$1/)?.[1];
-        const field = Object.entries(getTableColumns(table)).find(([, col]: any) => col.name === columnName)?.[0];
-        const equal = field ? row[field] === params[0] : true;
-        return equal && (!sql.includes("LIKE") || row.description.startsWith(String(params[1]).replace(/%$/, "")));
+        const columns = Object.entries(getTableColumns(table));
+        const fieldFor = (column: string) => columns.find(([, col]: any) => col.name === column)?.[0];
+        const equalities = [...sql.matchAll(/"[^"]+"\."([^"]+)"\s*=\s*\$(\d+)/g)];
+        const nullChecks = [...sql.matchAll(/"[^"]+"\."([^"]+)"\s+is null/gi)];
+        for (const [, column, index] of equalities) {
+          const field = fieldFor(column);
+          if (!field || row[field] !== params[Number(index) - 1]) return false;
+        }
+        for (const [, column] of nullChecks) {
+          const field = fieldFor(column);
+          if (!field || row[field] != null) return false;
+        }
+        return !sql.includes("LIKE") || row.description.startsWith(String(params.at(-1)).replace(/%$/, ""));
       };
       if (kind === "select") return rows.filter(matches).map(row => ({ ...row }));
       if ((fixture.failure === "watch" && name === "inventory" && (kind === "update" || kind === "insert"))
@@ -67,9 +77,10 @@ function connection(getState: () => State) {
 beforeEach(() => {
   fixture.failure = ""; fixture.operations = [];
   state = {
-    clients: [{ id: 91, name: "Existing dealer", type: "dealer", email: "saved@example.invalid", phone: "+31 (6) 1234", country: "Netherlands", notes: "Preserve notes", isVip: true }],
-    inventory: [{ id: 11, brand: "Rolex", model: "Fixture", referenceNumber: "TEST", status: "sold",
-      purchasePrice: 100000, salePrice: 120000, clientId: 91, buyerId: null, soldTo: "Historical name", watchRegisterFeeSnapshot: 600 }],
+    users: [{ id: "owner-a", accountRole: "owner", subscriptionStatus: null }],
+    clients: [{ id: 91, ownerId: "owner-a", name: "Existing dealer", type: "dealer", email: "saved@example.invalid", phone: "+31 (6) 1234", country: "Netherlands", notes: "Preserve notes", isVip: true }],
+    inventory: [{ id: 11, ownerId: "owner-a", brand: "Rolex", model: "Fixture", referenceNumber: "TEST", status: "sold",
+      purchasePrice: 100000, salePrice: 120000, serviceFee: 500, clientId: 91, buyerId: null, soldTo: "Historical name", watchRegisterFeeSnapshot: 600 }],
     expenses: [], settings: [],
   };
   Object.assign(fixture.db, connection(() => state));
@@ -210,7 +221,7 @@ describe("atomic watch buyer persistence", () => {
   it("retains a sold watch's original expense when its fee is edited to zero", async () => {
     state.inventory[0].serviceFee = 500;
     state.expenses.push({
-      id: 42, inventoryId: 11, description: "Service Fee - Original invoice",
+      id: 42, ownerId: "owner-a", inventoryId: 11, description: "Service Fee - Original invoice",
       amount: 500, date: new Date("2020-01-01Z"), category: "service", isRecurring: false,
     });
     const original = structuredClone(state.expenses[0]);
@@ -234,7 +245,7 @@ describe("atomic watch buyer persistence", () => {
   });
   it("rolls back the watch fee change if its correction cannot be recorded", async () => {
     state.inventory[0].serviceFee = 500;
-    state.expenses.push({ id: 42, inventoryId: 11, description: "Service Fee - Original", amount: 500 });
+    state.expenses.push({ id: 42, ownerId: "owner-a", inventoryId: 11, description: "Service Fee - Original", amount: 500 });
     const before = structuredClone(state);
     fixture.failure = "expenses";
     await expect(storage.updateInventoryItem(11, { serviceFee: 0 })).rejects.toThrow("Fixture failure");
