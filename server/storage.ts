@@ -14,6 +14,7 @@ import { getMatchingSerialFields, normalizeWatchSerial } from "@shared/serial-ma
 import { shouldRecordListedPrice } from "@shared/price-history";
 import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
+import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
 import {
   canCaptureNotebookInventory,
   calculateNotebookInventorySnapshot,
@@ -436,8 +437,12 @@ export class DatabaseStorage implements IStorage {
     // Snapshot the current watch_register_fee so future admin-panel changes
     // don't retroactively affect this item's cost calculations.
     const currentFee = await this.getSetting("watch_register_fee") || 600;
+    const warrantyTerm = insertItem.storeWarrantyMonths === undefined
+      ? normalizeWarrantyMonths(await this.getSetting("default_warranty_months") ?? DEFAULT_WARRANTY_MONTHS)
+      : insertItem.storeWarrantyMonths;
     const itemWithSnapshot = {
       ...insertItem,
+      storeWarrantyMonths: warrantyTerm,
       watchRegisterFeeSnapshot: currentFee,
       chrono24CertificationSentAt: insertItem.chrono24CertificationSent ? new Date() : null,
     };

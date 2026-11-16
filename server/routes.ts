@@ -27,6 +27,7 @@ import {
 } from "@shared/dealers-notebook";
 import { prepareNotebookAnalysis } from "./dealers-notebook";
 import { personalCollectionValuationInputSchema } from "@shared/personal-collection";
+import { DEFAULT_WARRANTY_MONTHS, WARRANTY_TERM_OPTIONS } from "@shared/warranty";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -565,6 +566,9 @@ export async function registerRoutes(
     const { value } = req.body;
     if (value === undefined) {
       return res.status(400).json({ message: "Value is required" });
+    }
+    if (key === "default_warranty_months" && !WARRANTY_TERM_OPTIONS.some(months => months === value)) {
+      return res.status(400).json({ message: "Choose a supported default warranty term." });
     }
     let settingValue = value;
     if (key === "quick_estimate_platform_fees") {
@@ -1141,6 +1145,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   default_margin_rate: 12.5,
   monthly_profit_goal: 200000,
   aging_threshold_days: 60,
+  default_warranty_months: DEFAULT_WARRANTY_MONTHS,
   watch_brands: [
     "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
     "Cartier", "Girard Perregaux", "Glashutte Original", "Grand Seiko",

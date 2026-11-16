@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
 
 export type QuickEstimatePlatformFee = {
   id: string;
@@ -19,6 +20,7 @@ export interface AppSettings {
   default_margin_rate: number;
   monthly_profit_goal: number;
   aging_threshold_days: number;
+  default_warranty_months: number;
   watch_brands: string[];
   sales_platforms: string[];
   shipping_partners: string[];
@@ -46,6 +48,7 @@ const DEFAULTS: AppSettings = {
   default_margin_rate: 12.5,
   monthly_profit_goal: 200000,
   aging_threshold_days: 60,
+  default_warranty_months: DEFAULT_WARRANTY_MONTHS,
   watch_brands: [
     "Audemars Piguet", "Bell and Ross", "Blancpain", "Breguet", "Breitling",
     "Cartier", "Girard Perregaux", "Glashutte Original", "Grand Seiko",
@@ -180,6 +183,7 @@ export function useSettings() {
     quick_estimate_platform_fees: normalizedPlatformFees.length > 0 ? normalizedPlatformFees : fallbackPlatformFees,
     vat_rate: normalizedVatRate,
     paid_with_methods: normalizedPaidWith,
+    default_warranty_months: normalizeWarrantyMonths(rawMerged.default_warranty_months),
   };
 
   return {

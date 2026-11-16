@@ -11,6 +11,9 @@ const labels: Record<keyof WatchIntakeValues, string> = {
   status: "Resulting status", dateReceived: "Date received", dateListed: "Date listed", dateSold: "Date sold", soldTo: "Buyer",
   salePrice: "Sale price", soldPlatform: "Sales platform", platformFees: "Platform fees", shippingFee: "Shipping cost",
   insuranceFee: "Insurance", shippingPartner: "Shipping partner", trackingNumber: "Tracking number", dateShipped: "Date shipped",
+  storeWarrantyMonths: "Store warranty (months)", manufacturerPurchaseDate: "Manufacturer purchase date",
+  manufacturerWarrantyExpires: "Manufacturer warranty ends", manufacturerWarrantyCardPresent: "Warranty card present",
+  manufacturerWarrantyDetails: "Manufacturer warranty details",
   targetSellPrice: "Target sell price", notes: "Notes",
 };
 const sectionTitles = ["Watch", "Purchase", "Preparation", "Listing & Sale"];
@@ -36,6 +39,7 @@ export function IntakeReview({ values, clients, edit, buyer }: {
           if (typeof value === "boolean") text = value ? "Yes" : "No";
           if ((watchIntakeMoneyFields as readonly string[]).includes(key)) text = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(Number(value));
           if (key === "clientId") text = clients.find(client => client.id === Number(value))?.name || "No seller selected";
+          if (key === "storeWarrantyMonths") text = value === 0 ? "No warranty" : `${value} months`;
           if (key === "status") text = value === "in_stock" ? "Listed" : text.charAt(0).toUpperCase() + text.slice(1);
           return <div key={key} className="min-w-0 border-b border-slate-100 pb-2">
             <dt className="text-xs text-slate-500">{labels[key]}</dt><dd className="mt-0.5 break-words whitespace-pre-wrap text-sm">{text}</dd>

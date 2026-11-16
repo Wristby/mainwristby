@@ -114,6 +114,11 @@ CREATE TABLE IF NOT EXISTS inventory (
     chrono24_certification_sent BOOLEAN NOT NULL DEFAULT FALSE,
     chrono24_certification_sent_at TIMESTAMPTZ,
     sold_platform TEXT,
+    store_warranty_months INTEGER,
+    manufacturer_purchase_date DATE,
+    manufacturer_warranty_expires DATE,
+    manufacturer_warranty_card_present BOOLEAN NOT NULL DEFAULT FALSE,
+    manufacturer_warranty_details TEXT,
     
     -- Foreign Keys
     client_id INTEGER REFERENCES clients(id),

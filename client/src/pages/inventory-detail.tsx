@@ -1,7 +1,7 @@
 import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory, useArchiveInventory, useInventorySerialMatches, useInventoryPriceHistory, useUpdateInventoryPriceHistory } from "@/hooks/use-inventory";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
-import { insertClientSchema, insertExpenseSchema } from "@shared/schema";
+import { insertClientSchema, insertExpenseSchema, type InventoryItem } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,8 @@ import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuye
 import { COUNTRIES } from "@/lib/countries";
 import { normalizeWatchSerial } from "@shared/serial-match";
 import { SerialMatchNotice } from "@/components/watch-intake/serial-match-notice";
+import { getManufacturerWarrantyCoverage, getStoreWarrantyCoverage, storeWarrantyMonthsSchema } from "@shared/warranty";
+import { formatDeliveryDate } from "@shared/delivery";
 import { PriceHistoryCard } from "@/components/price-history-card";
 import { normalizeWatchCondition, serializeWatchCondition, WATCH_DETAIL_CONDITIONS } from "@/lib/watch-condition";
 
@@ -120,10 +122,24 @@ const editFormSchema = z.object({
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
   chrono24CertificationSent: z.boolean().default(false),
+  storeWarrantyMonths: storeWarrantyMonthsSchema,
+  manufacturerPurchaseDate: z.string().optional().nullable(),
+  manufacturerWarrantyExpires: z.string().optional().nullable(),
+  manufacturerWarrantyCardPresent: z.boolean().default(false),
+  manufacturerWarrantyDetails: z.string().max(2000).optional().nullable(),
   targetSellPrice: z.coerce.number().optional().default(0),
   listPrice: z.coerce.number().optional().nullable(),
   linkCount: z.coerce.number().int().optional().nullable(),
   notes: z.string().optional().nullable(),
+}).superRefine((data, context) => {
+  if (data.manufacturerPurchaseDate && data.manufacturerWarrantyExpires
+    && data.manufacturerPurchaseDate > data.manufacturerWarrantyExpires) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["manufacturerWarrantyExpires"],
+      message: "The manufacturer warranty end date must be on or after the original purchase date.",
+    });
+  }
 });
 
 type EditFormValues = z.infer<typeof editFormSchema>;
@@ -133,6 +149,56 @@ const expenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number().min(0.01, "Amount is required"),
   date: z.coerce.date(),
 });
+
+function WatchWarrantySummary({ item }: { item: InventoryItem }) {
+  const store = getStoreWarrantyCoverage(item.storeWarrantyMonths, item.deliveredDate);
+  const manufacturer = getManufacturerWarrantyCoverage(
+    item.manufacturerPurchaseDate,
+    item.manufacturerWarrantyExpires,
+    item.manufacturerWarrantyCardPresent,
+    item.manufacturerWarrantyDetails,
+  );
+  const term = item.storeWarrantyMonths == null
+    ? "Term not recorded"
+    : item.storeWarrantyMonths === 0
+      ? "No store warranty"
+      : `${item.storeWarrantyMonths} months`;
+  const storeStatus = {
+    not_recorded: "Not recorded",
+    none: "No warranty",
+    awaiting_delivery: "Awaiting delivery",
+    active: "Active",
+    expiring: "Expiring soon",
+    expired: "Expired",
+  }[store.status];
+  const manufacturerStatus = {
+    not_recorded: "Not recorded",
+    end_date_unknown: "End date not recorded",
+    active: "Active",
+    expiring: "Expiring soon",
+    expired: "Expired",
+  }[manufacturer.status];
+  const remaining = (days: number | null) => days == null ? "" : days < 0
+    ? ` · expired ${Math.abs(days)} days ago`
+    : days === 0 ? " · expires today" : ` · ${days} days remaining`;
+
+  return (
+    <section className="mt-4 border-t border-slate-100 pt-4" data-testid="watch-warranty-summary">
+      <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-700">Warranty Coverage</h4>
+      <div className="space-y-2 text-sm">
+        <p className="flex flex-wrap justify-between gap-x-4 gap-y-1"><span className="text-slate-500">Store warranty</span><strong>{term} · {storeStatus}{remaining(store.daysRemaining)}</strong></p>
+        {store.startDate && <p className="text-xs text-slate-500">Delivery {formatDeliveryDate(store.startDate)} · Ends {formatDeliveryDate(store.endDate!)}</p>}
+        {store.status === "awaiting_delivery" && <p className="text-xs text-slate-500">Countdown begins when the customer delivery date is recorded.</p>}
+        <Separator className="my-2"/>
+        <p className="flex flex-wrap justify-between gap-x-4 gap-y-1"><span className="text-slate-500">Manufacturer</span><strong>{manufacturerStatus}{remaining(manufacturer.daysRemaining)}</strong></p>
+        {item.manufacturerPurchaseDate && <p className="text-xs text-slate-500">Original purchase {formatDeliveryDate(item.manufacturerPurchaseDate)}</p>}
+        {item.manufacturerWarrantyExpires && <p className="text-xs text-slate-500">Coverage ends {formatDeliveryDate(item.manufacturerWarrantyExpires)}</p>}
+        {item.manufacturerWarrantyCardPresent && <p className="text-xs text-emerald-800">Warranty card marked as present</p>}
+        {item.manufacturerWarrantyDetails && <p className="whitespace-pre-wrap text-xs text-slate-600">{item.manufacturerWarrantyDetails}</p>}
+      </div>
+    </section>
+  );
+}
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
@@ -279,6 +345,11 @@ export default function InventoryDetail() {
       shippingPartner: "",
       trackingNumber: "",
       chrono24CertificationSent: false,
+      storeWarrantyMonths: null,
+      manufacturerPurchaseDate: "",
+      manufacturerWarrantyExpires: "",
+      manufacturerWarrantyCardPresent: false,
+      manufacturerWarrantyDetails: "",
       targetSellPrice: 0,
       listPrice: null,
       notes: "",
@@ -403,6 +474,11 @@ export default function InventoryDetail() {
         shippingPartner: item.shippingPartner || "",
         trackingNumber: item.trackingNumber || "",
         chrono24CertificationSent: item.chrono24CertificationSent ?? false,
+        storeWarrantyMonths: item.storeWarrantyMonths ?? null,
+        manufacturerPurchaseDate: item.manufacturerPurchaseDate || "",
+        manufacturerWarrantyExpires: item.manufacturerWarrantyExpires || "",
+        manufacturerWarrantyCardPresent: item.manufacturerWarrantyCardPresent ?? false,
+        manufacturerWarrantyDetails: item.manufacturerWarrantyDetails || "",
         targetSellPrice: (item.targetSellPrice || 0) / 100,
         listPrice: item.listPrice ? item.listPrice / 100 : null,
         linkCount: (item as any).linkCount ?? null,
@@ -748,6 +824,9 @@ export default function InventoryDetail() {
       dateSentToService: data.dateSentToService || null,
       dateReturnedFromService: data.dateReturnedFromService || null,
       serviceNotes: data.serviceNotes || null,
+      manufacturerPurchaseDate: data.manufacturerPurchaseDate || null,
+      manufacturerWarrantyExpires: data.manufacturerWarrantyExpires || null,
+      manufacturerWarrantyDetails: data.manufacturerWarrantyDetails?.trim() || null,
     };
     updateMutation.mutate(
       { id, ...submissionData as any },
@@ -1303,6 +1382,47 @@ export default function InventoryDetail() {
                 </div>
 
                 <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Warranty Coverage</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Store Warranty Term</Label>
+                      <Select
+                        value={form.watch("storeWarrantyMonths") == null ? "not-recorded" : String(form.watch("storeWarrantyMonths"))}
+                        onValueChange={value => form.setValue("storeWarrantyMonths", value === "not-recorded" ? null : Number(value) as EditFormValues["storeWarrantyMonths"], { shouldDirty: true })}
+                      >
+                        <SelectTrigger className="bg-white border-slate-200"><SelectValue /></SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 text-slate-900">
+                          <SelectItem value="not-recorded">Not recorded</SelectItem>
+                          <SelectItem value="0">No warranty</SelectItem>
+                          <SelectItem value="6">6 months</SelectItem>
+                          <SelectItem value="12">1 year</SelectItem>
+                          <SelectItem value="24">2 years</SelectItem>
+                          <SelectItem value="36">3 years</SelectItem>
+                          <SelectItem value="60">5 years</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-500">For sold watches, the term starts on the recorded delivery date.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-manufacturer-purchase-date">Manufacturer Purchase Date</Label>
+                      <Input id="edit-manufacturer-purchase-date" type="date" {...form.register("manufacturerPurchaseDate")} className="bg-white border-slate-200"/>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-manufacturer-warranty-expires">Manufacturer Warranty Ends</Label>
+                      <Input id="edit-manufacturer-warranty-expires" type="date" {...form.register("manufacturerWarrantyExpires")} className="bg-white border-slate-200"/>
+                    </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <Checkbox id="edit-manufacturer-card" checked={form.watch("manufacturerWarrantyCardPresent")} onCheckedChange={checked => form.setValue("manufacturerWarrantyCardPresent", !!checked, { shouldDirty: true })}/>
+                      <Label htmlFor="edit-manufacturer-card" className="cursor-pointer">Manufacturer warranty card is present</Label>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="edit-manufacturer-warranty-details">Warranty card / coverage details</Label>
+                      <Textarea id="edit-manufacturer-warranty-details" {...form.register("manufacturerWarrantyDetails")} maxLength={2000} className="min-h-20 bg-white border-slate-200" placeholder="Optional warranty-card or coverage notes"/>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                     <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service & Maintenance</h3>
                     <div className="flex items-center space-x-2">
@@ -1797,6 +1917,7 @@ export default function InventoryDetail() {
                         </div>
                       )}
                       <DeliveryStatus key={id} id={id} deliveredDate={item.deliveredDate} />
+                      <WatchWarrantySummary item={item} />
                     </div>
                   </div>
                 )}

@@ -191,6 +191,13 @@ export const inventory = pgTable("inventory", {
   // Customer delivery is a calendar date, not a timezone-dependent timestamp.
   deliveredDate: date("delivered_date", { mode: "string" }),
   soldPlatform: text("sold_platform"),
+  // The store warranty term is captured per watch so later setting changes do
+  // not alter existing sales. Null means not recorded; zero means no warranty.
+  storeWarrantyMonths: integer("store_warranty_months"),
+  manufacturerPurchaseDate: date("manufacturer_purchase_date", { mode: "string" }),
+  manufacturerWarrantyExpires: date("manufacturer_warranty_expires", { mode: "string" }),
+  manufacturerWarrantyCardPresent: boolean("manufacturer_warranty_card_present").default(false).notNull(),
+  manufacturerWarrantyDetails: text("manufacturer_warranty_details"),
   
   // Fee snapshot — captures the watch_register_fee at the time of item creation
   // so that admin-panel changes only affect future items, not existing ones.

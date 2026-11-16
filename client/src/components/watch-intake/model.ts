@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { buildSaleBuyerInput, type SaleBuyerDraft } from "@shared/sale-buyer";
+import { storeWarrantyMonthsSchema } from "@shared/warranty";
+
+const storeWarrantyMonthsInput = z.preprocess(
+  value => value === "" || value == null ? null : Number(value),
+  storeWarrantyMonthsSchema,
+);
 
 export const watchIntakeConditions = ["Good", "Very Good", "Excellent", "Like New"] as const;
 
@@ -38,6 +44,11 @@ export const watchIntakeSchema = z.object({
   shippingPartner: z.string().optional().nullable(),
   trackingNumber: z.string().optional().nullable(),
   dateShipped: z.string().optional().nullable(),
+  storeWarrantyMonths: storeWarrantyMonthsInput,
+  manufacturerPurchaseDate: z.string().optional().nullable(),
+  manufacturerWarrantyExpires: z.string().optional().nullable(),
+  manufacturerWarrantyCardPresent: z.boolean().default(false),
+  manufacturerWarrantyDetails: z.string().max(2000).optional().nullable(),
   soldPlatform: z.string().optional().nullable(),
   dateSentToService: z.string().optional().nullable(),
   dateReturnedFromService: z.string().optional().nullable(),
@@ -45,6 +56,13 @@ export const watchIntakeSchema = z.object({
 }).superRefine((data, context) => {
   if (data.purchasedFrom === "Dealer" && !data.clientId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["clientId"], message: "Select a dealer seller" });
+  }
+  if (data.manufacturerPurchaseDate && data.manufacturerWarrantyExpires && data.manufacturerPurchaseDate > data.manufacturerWarrantyExpires) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["manufacturerWarrantyExpires"],
+      message: "The manufacturer warranty end date must be on or after the original purchase date.",
+    });
   }
 });
 
@@ -55,14 +73,17 @@ export const watchIntakeDefaults: WatchIntakeValues = {
   serviceFee: 0, polishFee: 0, salePrice: 0, soldTo: "", platformFees: 0, shippingFee: 0, insuranceFee: 0,
   dateReceived: null, purchaseDate: null, dateListed: null, dateSold: null, targetSellPrice: 0, status: "incoming",
   condition: "Good", box: false, papers: false, gdriveLink: "", notes: "", shippingPartner: "", trackingNumber: "",
-  dateShipped: null, soldPlatform: "", dateSentToService: null, dateReturnedFromService: null, serviceNotes: "",
+  dateShipped: null, storeWarrantyMonths: 12, manufacturerPurchaseDate: null, manufacturerWarrantyExpires: null,
+  manufacturerWarrantyCardPresent: false, manufacturerWarrantyDetails: "", soldPlatform: "",
+  dateSentToService: null, dateReturnedFromService: null, serviceNotes: "",
 };
 export const watchIntakeFieldTab: Record<keyof WatchIntakeValues, number> = {
   brand: 0, model: 0, referenceNumber: 0, serialNumber: 0, internalSerial: 0, year: 0, linkCount: 0, condition: 0,
   box: 0, papers: 0, gdriveLink: 0, purchasedFrom: 1, paidWith: 1, clientId: 1, purchasePrice: 1,
   importFee: 1, watchRegister: 1, purchaseDate: 1, serviceFee: 2, polishFee: 2, dateSentToService: 2,
   dateReturnedFromService: 2, serviceNotes: 2, status: 3, dateReceived: 3, dateListed: 3, dateSold: 3,
-  soldTo: 3, salePrice: 3, soldPlatform: 3, platformFees: 3, shippingFee: 3, insuranceFee: 3,
+  soldTo: 3, salePrice: 3, soldPlatform: 3, platformFees: 3, shippingFee: 3, insuranceFee: 3, storeWarrantyMonths: 3,
+  manufacturerPurchaseDate: 1, manufacturerWarrantyExpires: 1, manufacturerWarrantyCardPresent: 1, manufacturerWarrantyDetails: 1,
   shippingPartner: 3, trackingNumber: 3, dateShipped: 3, targetSellPrice: 3, notes: 3,
 };
 export const watchIntakeMoneyFields = [
@@ -88,6 +109,9 @@ export function buildWatchIntakePayload(data: WatchIntakeValues, buyer?: SaleBuy
     dateSold: data.dateSold || null,
     soldDate: data.dateSold || null,
     dateShipped: data.dateShipped || null,
+    manufacturerPurchaseDate: data.manufacturerPurchaseDate || null,
+    manufacturerWarrantyExpires: data.manufacturerWarrantyExpires || null,
+    manufacturerWarrantyDetails: data.manufacturerWarrantyDetails?.trim() || null,
     dateSentToService: data.dateSentToService || null,
     dateReturnedFromService: data.dateReturnedFromService || null,
     serviceNotes: data.serviceNotes || null,

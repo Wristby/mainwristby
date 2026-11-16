@@ -4,6 +4,8 @@ import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
 import { personalCollectionInputSchema, personalCollectionValuationInputSchema } from './personal-collection';
 import { personalCollectionValuations, personalCollectionWatches, type PersonalCollectionWatch } from './schema';
+import { isCalendarDate } from './delivery';
+import { storeWarrantyMonthsSchema } from './warranty';
 
 // Helper to transform date strings to Date objects or null
 const dateStringToDate = z.union([
@@ -30,7 +32,32 @@ const inventoryInputSchema = insertInventorySchema.extend({
     const message = deliveryDateError(value);
     if (message) context.addIssue({ code: z.ZodIssueCode.custom, message });
   }).nullable().optional(),
+  storeWarrantyMonths: storeWarrantyMonthsSchema,
+  manufacturerPurchaseDate: z.string().nullable().optional().refine(
+    value => value == null || isCalendarDate(value),
+    "Enter a valid manufacturer purchase date.",
+  ),
+  manufacturerWarrantyExpires: z.string().nullable().optional().refine(
+    value => value == null || isCalendarDate(value),
+    "Enter a valid manufacturer warranty end date.",
+  ),
+  manufacturerWarrantyCardPresent: z.boolean().optional(),
+  manufacturerWarrantyDetails: z.string().max(2000).nullable().optional(),
 });
+
+const validateManufacturerWarrantyDates = (
+  value: { manufacturerPurchaseDate?: string | null; manufacturerWarrantyExpires?: string | null },
+  context: z.RefinementCtx,
+) => {
+  if (value.manufacturerPurchaseDate && value.manufacturerWarrantyExpires
+    && value.manufacturerPurchaseDate > value.manufacturerWarrantyExpires) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["manufacturerWarrantyExpires"],
+      message: "The manufacturer warranty end date must be on or after the original purchase date.",
+    });
+  }
+};
 
 // Extended expense schema that properly handles date strings from JSON
 const expenseInputSchema = insertExpenseSchema.extend({
@@ -171,7 +198,7 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/inventory',
-      input: inventoryInputSchema.extend({ saleBuyer: saleBuyerSchema.optional() }),
+      input: inventoryInputSchema.extend({ saleBuyer: saleBuyerSchema.optional() }).superRefine(validateManufacturerWarrantyDates),
       responses: {
         201: z.custom<typeof inventory.$inferSelect>(),
         400: errorSchemas.validation,
@@ -181,7 +208,7 @@ export const api = {
     update: {
       method: 'PUT' as const,
       path: '/api/inventory/:id',
-      input: inventoryInputSchema.partial().extend({ saleBuyer: saleBuyerSchema.optional() }),
+      input: inventoryInputSchema.partial().extend({ saleBuyer: saleBuyerSchema.optional() }).superRefine(validateManufacturerWarrantyDates),
       responses: {
         200: z.custom<typeof inventory.$inferSelect>(),
         400: errorSchemas.validation,

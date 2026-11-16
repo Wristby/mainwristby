@@ -108,6 +108,11 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
       form.setValue("platformFees", Math.round(Number(values.salePrice) * settings.chrono24_commission) / 100);
     }
   }, [values.soldPlatform, values.salePrice, settings.chrono24_commission, form]);
+  useEffect(() => {
+    if (open && !form.formState.isDirty) {
+      form.reset({ ...watchIntakeDefaults, storeWarrantyMonths: settings.default_warranty_months });
+    }
+  }, [open, settings.default_warranty_months, form.formState.isDirty, form]);
 
   const close = (next: boolean) => {
     if (submitting.current || createClient.isPending) return;
@@ -206,6 +211,23 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
               <Money name="purchasePrice" label="Purchase cost (€)" /><Money name="importFee" label="Import / duty (€)"/>
               <div className="sm:col-span-2"><CheckRow name="watchRegister" label={`Watch Register (${euro(settings.watch_register_fee / 100)})`}/></div>
             </div><p className="mt-4 text-xs text-slate-500">Costs are entered in euros and stored accurately in cents.</p></Card>
+            <Card title="Manufacturer warranty"><div className="grid gap-4 sm:grid-cols-2">
+              <DateField name="manufacturerPurchaseDate" label="Original purchase date"/>
+              <DateField name="manufacturerWarrantyExpires" label="Manufacturer warranty ends"/>
+            </div>
+              <label className="mt-4 flex min-h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm">
+                <Checkbox
+                  aria-label="Manufacturer warranty card present"
+                  checked={values.manufacturerWarrantyCardPresent}
+                  onCheckedChange={checked => form.setValue("manufacturerWarrantyCardPresent", !!checked, { shouldDirty: true })}
+                />
+                Warranty card is present
+              </label>
+              <div className="mt-4 space-y-1.5">
+                <Label htmlFor="intake-manufacturerWarrantyDetails">Card / coverage details</Label>
+                <Textarea id="intake-manufacturerWarrantyDetails" {...form.register("manufacturerWarrantyDetails")} className="min-h-20 border-slate-300 bg-white" placeholder="Optional notes, such as coverage terms or card information"/>
+              </div>
+            </Card>
           </div>}
           {tab===2 && <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Service & polishing"><div className="mb-4 flex items-center justify-between gap-3"><p className="text-sm text-slate-600">Add service work only when relevant.</p><button type="button" onClick={()=>setShowService(!showService)} className="text-sm font-semibold text-emerald-800">{showService?"Hide details":"Add details"}</button></div>
@@ -219,6 +241,19 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
             <div className="grid gap-4 lg:grid-cols-2"><Card title="Inventory status"><div className="grid gap-4 sm:grid-cols-2">
               <Field name="status" label="Status" options={["incoming","received","servicing","in_stock","sold"]}/>
               <DateField name="dateReceived" label="Date received"/><DateField name="dateListed" label="Date listed"/><Money name="targetSellPrice" label="Target sell price (€)"/>
+            </div></Card>
+            <Card title="Store warranty"><div className="space-y-2">
+              <Label htmlFor="intake-storeWarrantyMonths">Warranty term</Label>
+              <select id="intake-storeWarrantyMonths" {...form.register("storeWarrantyMonths", { setValueAs: value => value === "" ? null : Number(value) })} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700/30 sm:text-sm">
+                <option value="">Not recorded</option>
+                <option value="0">No warranty</option>
+                <option value="6">6 months</option>
+                <option value="12">1 year</option>
+                <option value="24">2 years</option>
+                <option value="36">3 years</option>
+                <option value="60">5 years</option>
+              </select>
+              <p className="text-xs leading-5 text-slate-500">Your default is {settings.default_warranty_months} months. For sold watches, the warranty countdown starts when delivery is recorded.</p>
             </div></Card>
             <Card title="Optional sale details"><div className="mb-4 flex items-center justify-between gap-3"><p className="text-sm text-slate-600">Add sale information if already sold.</p><button type="button" onClick={()=>setShowSale(!showSale)} className="text-sm font-semibold text-emerald-800">{showSale?"Hide details":"Add details"}</button></div>
               {showSale && <div className="grid gap-4 sm:grid-cols-2"><Money name="salePrice" label="Sale price (€)"/><Field name="soldPlatform" label="Sales platform" options={settings.sales_platforms}/><DateField name="dateSold" label="Date sold"/><Money name="platformFees" label="Platform fees (€)"/><Money name="shippingFee" label="Shipping cost (€)"/><Money name="insuranceFee" label="Insurance (€)"/></div>}

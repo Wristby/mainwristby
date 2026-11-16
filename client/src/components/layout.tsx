@@ -14,6 +14,7 @@ import {
   Orbit,
   BookOpenText,
   Watch,
+  ShieldCheck,
 } from "lucide-react";
 import logoPng from "@assets/WRISTBY-login-logo_1770424094780.png";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
   { icon: BookOpenText, label: "Dealer's Notebook", href: "/dealers-notebook" },
   { icon: Watch, label: "Personal Collection", href: "/personal-collection" },
+  { icon: ShieldCheck, label: "Warranties", href: "/warranties" },
   { icon: CalendarDays, label: "Sales Patterns", href: "/sales-patterns" },
   { icon: Orbit, label: "Watch Universe", href: "/watch-universe" },
   { icon: Settings, label: "Admin", href: "/admin" },

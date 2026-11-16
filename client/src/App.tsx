@@ -18,6 +18,7 @@ import WatchUniverse from "@/pages/watch-universe";
 import SalesPatterns from "@/pages/sales-patterns";
 import DealersNotebook from "@/pages/dealers-notebook";
 import PersonalCollection, { PersonalCollectionDetailPage, PersonalCollectionFormPage, PersonalCollectionInsuranceReportPage } from "@/pages/personal-collection";
+import Warranties from "@/pages/warranties";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -91,6 +92,9 @@ function Router() {
       </Route>
       <Route path="/personal-collection/:id">
         <ProtectedRoute component={PersonalCollectionDetailPage} />
+      </Route>
+      <Route path="/warranties">
+        <ProtectedRoute component={Warranties} />
       </Route>
       <Route path="/watch-universe">
         <ProtectedRoute component={WatchUniverse} />

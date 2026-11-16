@@ -751,6 +751,28 @@ export default function Admin() {
           />
         </CollapsibleSection>
 
+        <CollapsibleSection title="Warranties" icon={Clock}>
+          <div className="max-w-xl space-y-2">
+            <Label htmlFor="default-warranty-months">Default store warranty term</Label>
+            <select
+              id="default-warranty-months"
+              data-testid="select-default-warranty-months"
+              value={settings.default_warranty_months}
+              onChange={event => saveSetting("default_warranty_months", Number(event.target.value))}
+              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900"
+            >
+              <option value="6">6 months</option>
+              <option value="12">1 year</option>
+              <option value="24">2 years</option>
+              <option value="36">3 years</option>
+              <option value="60">5 years</option>
+            </select>
+            <p className="text-xs leading-5 text-slate-500">
+              This is the default for newly added watches. Each watch keeps its own selected term. Its warranty starts when you record the customer delivery date.
+            </p>
+          </div>
+        </CollapsibleSection>
+
         <CollapsibleSection title="Aging Inventory Threshold" icon={Clock}>
           <NumberSetting
             label="Days before flagging as aging"
