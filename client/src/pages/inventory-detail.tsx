@@ -53,10 +53,16 @@ import { buildSaleBuyerInput, emptySaleBuyer, type SaleBuyerDraft, type SaleBuye
 import { COUNTRIES } from "@/lib/countries";
 import { normalizeWatchSerial } from "@shared/serial-match";
 import { SerialMatchNotice } from "@/components/watch-intake/serial-match-notice";
-import { getManufacturerWarrantyCoverage, getStoreWarrantyCoverage, storeWarrantyMonthsSchema } from "@shared/warranty";
+import { getManufacturerWarrantyCoverage, getStoreWarrantyCoverage } from "@shared/warranty";
 import { formatDeliveryDate } from "@shared/delivery";
 import { PriceHistoryCard } from "@/components/price-history-card";
-import { normalizeWatchCondition, serializeWatchCondition, WATCH_DETAIL_CONDITIONS } from "@/lib/watch-condition";
+import { normalizeWatchCondition, WATCH_DETAIL_CONDITIONS } from "@/lib/watch-condition";
+import {
+  buildWatchEditPayload,
+  watchEditFormDefaults,
+  watchEditFormSchema,
+  type WatchEditFormValues,
+} from "@/lib/watch-form-contract";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -79,70 +85,8 @@ const formatCurrency = (val: number) => {
   }).format(val / 100);
 };
 
-const editFormSchema = z.object({
-  brand: z.string().min(1, "Brand is required"),
-  model: z.string().min(1, "Model is required"),
-  referenceNumber: z.string().min(1, "Reference number is required"),
-  serialNumber: z.string().optional().nullable(),
-  internalSerial: z.string().optional().nullable(),
-  year: z.coerce.number().optional().nullable(),
-  condition: z.enum(WATCH_DETAIL_CONDITIONS).optional(),
-  box: z.boolean().default(false),
-  papers: z.boolean().default(false),
-  gdriveLink: z.string().optional().nullable(),
-  
-  purchasedFrom: z.string().optional().nullable(),
-  paidWith: z.string().optional().nullable(),
-  clientId: z.coerce.number().optional().nullable(),
-  purchasePrice: z.coerce.number().min(1, "COGS is required"),
-  importFee: z.coerce.number().optional().default(0),
-  watchRegister: z.boolean().default(false),
-  purchaseDate: z.string().optional().nullable(),
-  
-  status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"]),
-  dateReceived: z.string().optional().nullable(),
-  dateListed: z.string().optional().nullable(),
-  
-  salePrice: z.coerce.number().optional().default(0),
-  platformFees: z.coerce.number().optional().default(0),
-  soldPlatform: z.string().optional().nullable(),
-  chrono24FeeRate: z.coerce.number().min(0, "Chrono24 fee rate cannot be negative").max(100, "Chrono24 fee rate cannot exceed 100%").optional().nullable(),
-  shippingFee: z.coerce.number().optional().default(0),
-  insuranceFee: z.coerce.number().optional().default(0),
-  soldTo: z.string().optional().nullable(),
-  dateSold: z.string().optional().nullable(),
-  
-  serviceStartDate: z.string().optional().nullable(),
-  dateSentToService: z.string().optional().nullable(),
-  dateReturnedFromService: z.string().optional().nullable(),
-  serviceFee: z.coerce.number().optional().default(0),
-  polishFee: z.coerce.number().optional().default(0),
-  serviceNotes: z.string().optional().nullable(),
-  
-  shippingPartner: z.string().optional().nullable(),
-  trackingNumber: z.string().optional().nullable(),
-  chrono24CertificationSent: z.boolean().default(false),
-  storeWarrantyMonths: storeWarrantyMonthsSchema,
-  manufacturerPurchaseDate: z.string().optional().nullable(),
-  manufacturerWarrantyExpires: z.string().optional().nullable(),
-  manufacturerWarrantyCardPresent: z.boolean().default(false),
-  manufacturerWarrantyDetails: z.string().max(2000).optional().nullable(),
-  targetSellPrice: z.coerce.number().optional().default(0),
-  listPrice: z.coerce.number().optional().nullable(),
-  linkCount: z.coerce.number().int().optional().nullable(),
-  notes: z.string().optional().nullable(),
-}).superRefine((data, context) => {
-  if (data.manufacturerPurchaseDate && data.manufacturerWarrantyExpires
-    && data.manufacturerPurchaseDate > data.manufacturerWarrantyExpires) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["manufacturerWarrantyExpires"],
-      message: "The manufacturer warranty end date must be on or after the original purchase date.",
-    });
-  }
-});
-
-type EditFormValues = z.infer<typeof editFormSchema>;
+const editFormSchema = watchEditFormSchema;
+type EditFormValues = WatchEditFormValues;
 
 
 const expenseFormSchema = insertExpenseSchema.extend({
@@ -307,53 +251,7 @@ export default function InventoryDetail() {
 
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editFormSchema),
-    defaultValues: {
-      brand: "",
-      model: "",
-      referenceNumber: "",
-      serialNumber: "",
-      internalSerial: "",
-      year: undefined,
-      condition: "Good",
-      box: false,
-      papers: false,
-      gdriveLink: "",
-      purchasedFrom: "",
-      paidWith: "",
-      clientId: undefined,
-      purchasePrice: 0,
-      importFee: 0,
-      watchRegister: false,
-      purchaseDate: "",
-      status: "in_stock",
-      dateReceived: "",
-      dateListed: "",
-      salePrice: 0,
-      platformFees: 0,
-      soldPlatform: "",
-      chrono24FeeRate: undefined,
-      shippingFee: 0,
-      insuranceFee: 0,
-      soldTo: "",
-      dateSold: "",
-      serviceStartDate: "",
-      dateSentToService: "",
-      dateReturnedFromService: "",
-      serviceFee: 0,
-      polishFee: 0,
-      serviceNotes: "",
-      shippingPartner: "",
-      trackingNumber: "",
-      chrono24CertificationSent: false,
-      storeWarrantyMonths: null,
-      manufacturerPurchaseDate: "",
-      manufacturerWarrantyExpires: "",
-      manufacturerWarrantyCardPresent: false,
-      manufacturerWarrantyDetails: "",
-      targetSellPrice: 0,
-      listPrice: null,
-      notes: "",
-    },
+    defaultValues: watchEditFormDefaults,
   });
 
   const watchedStatus = form.watch("status");
@@ -449,7 +347,7 @@ export default function InventoryDetail() {
         gdriveLink: item.gdriveLink || "",
         purchasedFrom: (item as any).purchasedFrom || "",
         paidWith: (item as any).paidWith || "",
-        clientId: item.clientId || undefined,
+        clientId: item.clientId ?? null,
         purchasePrice: item.purchasePrice / 100,
         importFee: ((item as any).importFee || 0) / 100,
         watchRegister: !!(item as any).watchRegister,
@@ -785,48 +683,9 @@ export default function InventoryDetail() {
         return;
       }
     }
-    const userChangedStatus = data.status !== item?.status;
-    let finalStatus = data.status;
-    if (!userChangedStatus) {
-      if (data.dateSold) {
-        finalStatus = "sold";
-      } else if (data.dateReturnedFromService && finalStatus === "servicing") {
-        finalStatus = "received";
-      } else if (data.dateListed && finalStatus !== "sold" && finalStatus !== "servicing") {
-        finalStatus = "in_stock";
-      } else if (data.dateReceived && finalStatus === "incoming") {
-        finalStatus = "received";
-      }
-    }
-    
     const submissionData = {
-      ...data,
+      ...buildWatchEditPayload(data, item?.status || data.status),
       ...(saleBuyer ? { saleBuyer } : {}),
-      condition: serializeWatchCondition(data.condition),
-      status: finalStatus,
-      purchasePrice: Math.round(Number(data.purchasePrice) * 100),
-      importFee: Math.round(Number(data.importFee) * 100),
-      serviceFee: Math.round(Number(data.serviceFee) * 100),
-      polishFee: Math.round(Number(data.polishFee) * 100),
-      salePrice: Math.round(Number(data.salePrice) * 100),
-      platformFees: Math.round(Number(data.platformFees) * 100),
-      chrono24FeeRate: data.chrono24FeeRate != null ? Math.round(Number(data.chrono24FeeRate) * 100) : null,
-      shippingFee: Math.round(Number(data.shippingFee) * 100),
-      insuranceFee: Math.round(Number(data.insuranceFee) * 100),
-      targetSellPrice: Math.round(Number(data.targetSellPrice) * 100),
-      listPrice: data.listPrice != null && !isNaN(Number(data.listPrice)) && Number(data.listPrice) > 0 ? Math.round(Number(data.listPrice) * 100) : null,
-      linkCount: data.linkCount != null && !isNaN(Number(data.linkCount)) && Number(data.linkCount) > 0 ? Math.round(Number(data.linkCount)) : null,
-      dateReceived: data.dateReceived || null,
-      purchaseDate: data.purchaseDate || null,
-      dateListed: data.dateListed || null,
-      soldDate: data.dateSold || (finalStatus === 'sold' ? new Date().toISOString() : null),
-      serviceStartDate: data.serviceStartDate || null,
-      dateSentToService: data.dateSentToService || null,
-      dateReturnedFromService: data.dateReturnedFromService || null,
-      serviceNotes: data.serviceNotes || null,
-      manufacturerPurchaseDate: data.manufacturerPurchaseDate || null,
-      manufacturerWarrantyExpires: data.manufacturerWarrantyExpires || null,
-      manufacturerWarrantyDetails: data.manufacturerWarrantyDetails?.trim() || null,
     };
     updateMutation.mutate(
       { id, ...submissionData as any },

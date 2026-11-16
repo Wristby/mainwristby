@@ -1,81 +1,35 @@
 import { z } from "zod";
 import { buildSaleBuyerInput, type SaleBuyerDraft } from "@shared/sale-buyer";
-import { storeWarrantyMonthsSchema } from "@shared/warranty";
+import { WATCH_DETAIL_CONDITIONS } from "@/lib/watch-condition";
+import {
+  buildCommonWatchApiFields,
+  commonWatchFormDefaults,
+  commonWatchFormSchema,
+  validateManufacturerWarrantyDates,
+  WATCH_FORM_EURO_FIELDS,
+} from "@/lib/watch-form-contract";
 
-const storeWarrantyMonthsInput = z.preprocess(
-  value => value === "" || value == null ? null : Number(value),
-  storeWarrantyMonthsSchema,
-);
+export const watchIntakeConditions = WATCH_DETAIL_CONDITIONS;
 
-export const watchIntakeConditions = ["Good", "Very Good", "Excellent", "Like New"] as const;
-
-export const watchIntakeSchema = z.object({
-  brand: z.string().min(1, "Brand is required"),
-  model: z.string().min(1, "Model is required"),
-  referenceNumber: z.string().min(1, "Reference number is required"),
-  serialNumber: z.string().optional().nullable(),
-  internalSerial: z.string().optional().nullable(),
-  year: z.preprocess(value => value === "" ? null : value, z.coerce.number().int().optional().nullable()),
-  linkCount: z.preprocess(value => value === "" ? null : value, z.coerce.number().int().optional().nullable()),
+export const watchIntakeSchema = commonWatchFormSchema.extend({
   purchasedFrom: z.string().min(1, "Purchase channel is required"),
   paidWith: z.string().min(1, "Paid with is required"),
-  clientId: z.preprocess(value => value === "" || value === undefined ? null : value, z.coerce.number().optional().nullable()),
-  purchasePrice: z.coerce.number().min(1, "Purchase cost is required"),
-  importFee: z.coerce.number().optional().default(0),
-  watchRegister: z.boolean().default(false),
-  serviceFee: z.coerce.number().optional().default(0),
-  polishFee: z.coerce.number().optional().default(0),
-  salePrice: z.coerce.number().optional().default(0),
-  soldTo: z.string().optional().nullable(),
-  platformFees: z.coerce.number().optional().default(0),
-  shippingFee: z.coerce.number().optional().default(0),
-  insuranceFee: z.coerce.number().optional().default(0),
-  dateReceived: z.string().optional().nullable(),
-  purchaseDate: z.string().optional().nullable(),
-  dateListed: z.string().optional().nullable(),
-  dateSold: z.string().optional().nullable(),
-  targetSellPrice: z.coerce.number().optional().default(0),
-  status: z.enum(["in_stock", "sold", "incoming", "servicing", "received"], { required_error: "Status is required" }),
-  condition: z.enum(watchIntakeConditions).default("Good"),
-  box: z.boolean().default(false),
-  papers: z.boolean().default(false),
-  gdriveLink: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
-  shippingPartner: z.string().optional().nullable(),
-  trackingNumber: z.string().optional().nullable(),
   dateShipped: z.string().optional().nullable(),
-  storeWarrantyMonths: storeWarrantyMonthsInput,
-  manufacturerPurchaseDate: z.string().optional().nullable(),
-  manufacturerWarrantyExpires: z.string().optional().nullable(),
-  manufacturerWarrantyCardPresent: z.boolean().default(false),
-  manufacturerWarrantyDetails: z.string().max(2000).optional().nullable(),
-  soldPlatform: z.string().optional().nullable(),
-  dateSentToService: z.string().optional().nullable(),
-  dateReturnedFromService: z.string().optional().nullable(),
-  serviceNotes: z.string().optional().nullable(),
 }).superRefine((data, context) => {
+  validateManufacturerWarrantyDates(data, context);
   if (data.purchasedFrom === "Dealer" && !data.clientId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["clientId"], message: "Select a dealer seller" });
-  }
-  if (data.manufacturerPurchaseDate && data.manufacturerWarrantyExpires && data.manufacturerPurchaseDate > data.manufacturerWarrantyExpires) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["manufacturerWarrantyExpires"],
-      message: "The manufacturer warranty end date must be on or after the original purchase date.",
-    });
   }
 });
 
 export type WatchIntakeValues = z.infer<typeof watchIntakeSchema>;
 export const watchIntakeDefaults: WatchIntakeValues = {
-  brand: "", model: "", referenceNumber: "", serialNumber: "", internalSerial: "", year: null, linkCount: null,
-  purchasedFrom: "", paidWith: "", clientId: undefined, purchasePrice: 0, importFee: 0, watchRegister: false,
-  serviceFee: 0, polishFee: 0, salePrice: 0, soldTo: "", platformFees: 0, shippingFee: 0, insuranceFee: 0,
-  dateReceived: null, purchaseDate: null, dateListed: null, dateSold: null, targetSellPrice: 0, status: "incoming",
-  condition: "Good", box: false, papers: false, gdriveLink: "", notes: "", shippingPartner: "", trackingNumber: "",
-  dateShipped: null, storeWarrantyMonths: 12, manufacturerPurchaseDate: null, manufacturerWarrantyExpires: null,
-  manufacturerWarrantyCardPresent: false, manufacturerWarrantyDetails: "", soldPlatform: "",
-  dateSentToService: null, dateReturnedFromService: null, serviceNotes: "",
+  ...commonWatchFormDefaults,
+  purchasedFrom: "",
+  paidWith: "",
+  status: "incoming",
+  storeWarrantyMonths: 12,
+  dateShipped: "",
 };
 export const watchIntakeFieldTab: Record<keyof WatchIntakeValues, number> = {
   brand: 0, model: 0, referenceNumber: 0, serialNumber: 0, internalSerial: 0, year: 0, linkCount: 0, condition: 0,
@@ -86,34 +40,14 @@ export const watchIntakeFieldTab: Record<keyof WatchIntakeValues, number> = {
   manufacturerPurchaseDate: 1, manufacturerWarrantyExpires: 1, manufacturerWarrantyCardPresent: 1, manufacturerWarrantyDetails: 1,
   shippingPartner: 3, trackingNumber: 3, dateShipped: 3, targetSellPrice: 3, notes: 3,
 };
-export const watchIntakeMoneyFields = [
-  "purchasePrice", "importFee", "serviceFee", "polishFee", "salePrice",
-  "platformFees", "shippingFee", "insuranceFee", "targetSellPrice",
-] as const;
-const cents = (amount: unknown) => Math.round((Number(amount) || 0) * 100);
+export const watchIntakeMoneyFields = WATCH_FORM_EURO_FIELDS;
 
 /** Converts euro form values to API cents while preserving the existing date/status rules. */
 export function buildWatchIntakePayload(data: WatchIntakeValues, buyer?: SaleBuyerDraft) {
-  let status = data.status;
-  if (data.dateSold) status = "sold";
-  else if (data.dateReturnedFromService && status === "servicing") status = "received";
-  else if (data.dateListed && status !== "sold" && status !== "servicing") status = "in_stock";
-  else if (data.dateReceived && status === "incoming") status = "received";
   return {
-    ...data, status,
+    ...data,
+    ...buildCommonWatchApiFields(data),
     ...(buyer ? { saleBuyer: buildSaleBuyerInput(buyer) } : {}),
-    ...Object.fromEntries(watchIntakeMoneyFields.map(key => [key, cents(data[key])])),
-    dateReceived: data.dateReceived || null,
-    purchaseDate: data.purchaseDate || null,
-    dateListed: data.dateListed || null,
-    dateSold: data.dateSold || null,
-    soldDate: data.dateSold || null,
     dateShipped: data.dateShipped || null,
-    manufacturerPurchaseDate: data.manufacturerPurchaseDate || null,
-    manufacturerWarrantyExpires: data.manufacturerWarrantyExpires || null,
-    manufacturerWarrantyDetails: data.manufacturerWarrantyDetails?.trim() || null,
-    dateSentToService: data.dateSentToService || null,
-    dateReturnedFromService: data.dateReturnedFromService || null,
-    serviceNotes: data.serviceNotes || null,
   };
 }
