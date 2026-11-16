@@ -103,6 +103,16 @@ async function publicAccountSchemaReady(): Promise<boolean> {
   }
 }
 
+async function publicRegistrationReady(): Promise<boolean> {
+  if (process.env.PUBLIC_REGISTRATION_ENABLED !== "true" ||
+      process.env.PUBLIC_LEGAL_DOCUMENTS_APPROVED !== "true" ||
+      POLICY_VERSION.startsWith("draft-") ||
+      !isMailConfigured()) {
+    return false;
+  }
+  return publicAccountSchemaReady();
+}
+
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -132,13 +142,17 @@ export async function setupAuth(
   app.use("/api", sameOriginWrites);
   app.use(getSession());
 
-  // Registration stays closed until the manual tenant migration and SMTP
-  // configuration are both present on the host.
+  // Registration stays closed until the manual tenant migration, SMTP
+  // configuration, and explicit legal-document approval are present.
+  app.get("/api/public/registration-status", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ enabled: await publicRegistrationReady() });
+  });
+
   app.post("/api/register", loginAttemptLimit, async (req, res) => {
     const parsed = signupSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Enter a valid username, email, and password of at least 12 characters." });
-    if (process.env.PUBLIC_REGISTRATION_ENABLED !== "true" ||
-        !isMailConfigured() || !(await publicAccountSchemaReady())) {
+    if (!(await publicRegistrationReady())) {
       return res.status(503).json({ message: "Account registration is not available on this host yet." });
     }
     const input = { ...parsed.data, email: parsed.data.email.toLowerCase() };

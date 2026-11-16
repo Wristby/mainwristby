@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,24 @@ export default function SignUpPage() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
   const wantsPro = new URLSearchParams(window.location.search).get("plan") === "pro";
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/public/registration-status", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error("Could not check account availability.");
+        return response.json() as Promise<{ enabled: boolean }>;
+      })
+      .then(status => {
+        if (!cancelled) setRegistrationOpen(status.enabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setRegistrationOpen(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,6 +72,11 @@ export default function SignUpPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="wb-auth-form">
+            {registrationOpen === false && (
+              <div className="wb-registration-closed" role="status">
+                Account creation is currently closed while privacy, hosting, and billing setup is being finalized. Your details will not be submitted.
+              </div>
+            )}
             <div>
               <Label htmlFor="username">Username</Label>
               <Input id="username" name="username" autoComplete="username" minLength={3} maxLength={50} value={username} onChange={(event) => setUsername(event.target.value)} required />
@@ -77,8 +99,8 @@ export default function SignUpPage() {
               <span>I accept the <Link href="/terms">Terms</Link> and confirm I have read the <Link href="/privacy">Privacy Notice</Link>.</span>
             </label>
             {error && <p className="wb-auth-error" role="alert">{error}</p>}
-            <Button type="submit" className="wb-auth-submit" disabled={isRegistering || !termsAccepted}>
-              {isRegistering ? "Creating your account…" : "Create account"}
+            <Button type="submit" className="wb-auth-submit" disabled={isRegistering || !termsAccepted || registrationOpen !== true}>
+              {isRegistering ? "Creating your account…" : registrationOpen === null ? "Checking availability…" : registrationOpen ? "Create account" : "Registration closed"}
             </Button>
           </form>
         )}

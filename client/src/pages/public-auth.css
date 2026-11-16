@@ -50,6 +50,9 @@
 .wb-auth-submit:hover { background: #315344 !important; }
 .wb-auth-error { color: #a33d36; font-size: 12px; margin: 0; }
 .wb-auth-success { background: #edf2e9; border: 1px solid #d0dccd; color: #304b3b; font-size: 13px; line-height: 1.65; padding: 14px; }
+.wb-legal-disclaimer { background: #fbf3df; border: 1px solid #e5d5aa; color: #695627; font-size: 13px; line-height: 1.65; margin: 22px 0 28px; padding: 14px 16px; }
+.wb-legal-disclaimer strong { display: block; margin-bottom: 3px; }
+.wb-registration-closed { background: #fbf3df; border: 1px solid #e5d5aa; color: #695627; font-size: 12px; line-height: 1.6; padding: 12px 14px; }
 .wb-auth-switch { color: #68716c; font-size: 12px; margin: 22px 0 0; text-align: center; }
 .wb-auth-switch a,
 .wb-auth-back { color: #305947; text-decoration: underline; text-underline-offset: 3px; }

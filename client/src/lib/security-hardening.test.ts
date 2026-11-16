@@ -100,6 +100,29 @@ describe("private app access", () => {
     expect(fixture.query).not.toHaveBeenCalled();
   });
 
+  it("keeps registration closed until legal documents are explicitly approved", async () => {
+    vi.stubEnv("PUBLIC_REGISTRATION_ENABLED", "true");
+    vi.stubEnv("PUBLIC_LEGAL_DOCUMENTS_APPROVED", "false");
+    const url = await authApp();
+    const status = await fetch(`${url}/api/public/registration-status`);
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ enabled: false });
+
+    const response = await fetch(`${url}/api/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "new-account",
+        email: "new-account@example.invalid",
+        password: "valid-test-password-123",
+        termsAccepted: true,
+        plan: "free",
+      }),
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ message: "Account registration is not available on this host yet." });
+  });
+
   it("keeps existing-account login working and regenerates its session cookie", async () => {
     const url = await authApp();
     const bad = await fetch(`${url}/api/login`, {

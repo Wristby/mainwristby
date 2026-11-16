@@ -103,6 +103,11 @@ export default function AccountPage() {
             </div>
           </>
         )}
+        <div className="wb-plan-summary" aria-labelledby="privacy-request-heading">
+          <p><strong id="privacy-request-heading">Privacy and account data</strong></p>
+          <p>Request access, correction, export, or deletion of your account information by email. Full workspace export and account closure are currently handled manually; legal or warranty records may need to be retained.</p>
+          <p><a className="wb-auth-inline-link" href="mailto:contact@wristby.com?subject=WRISTBY%20privacy%20request">Contact the privacy email</a> · <Link className="wb-auth-inline-link" href="/privacy">Read the Privacy Notice</Link></p>
+        </div>
         {error && <p className="wb-auth-error" role="alert">{error}</p>}
         <Link className="wb-auth-back" href="/">← Back to your workspace</Link>
       </section>

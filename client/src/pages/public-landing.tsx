@@ -124,7 +124,7 @@ export default function PublicLanding() {
       <footer className="wb-footer">
         <a className="wb-brand" href="#top"><img src="/images/wristby-logo.png" alt="" /> WRISTBY</a>
         <span>Private workspace for independent watch dealers</span>
-        <div><Link href="/login">Sign in</Link><Link href="/signup">Get started</Link></div>
+        <div><a href="mailto:contact@wristby.com">Contact</a><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/login">Sign in</Link><Link href="/signup">Get started</Link></div>
       </footer>
     </main>
   );
