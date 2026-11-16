@@ -8,6 +8,8 @@ export const modules: ModuleMap = {
   "./components/mockups/wristby-light/WorkspaceRecentlySold.tsx": () => import("../components/mockups/wristby-light/WorkspaceRecentlySold.tsx"),
   "./components/mockups/wristby-public/CurrentSignIn.tsx": () => import("../components/mockups/wristby-public/CurrentSignIn.tsx"),
   "./components/mockups/wristby-public/PublicLanding.tsx": () => import("../components/mockups/wristby-public/PublicLanding.tsx"),
+  "./components/mockups/wristby-public/PublicLandingCurrent.tsx": () => import("../components/mockups/wristby-public/PublicLandingCurrent.tsx"),
+  "./components/mockups/wristby-public/PublicLandingRedesign.tsx": () => import("../components/mockups/wristby-public/PublicLandingRedesign.tsx"),
   "./components/mockups/wristby-public/SignIn.tsx": () => import("../components/mockups/wristby-public/SignIn.tsx"),
   "./components/mockups/wristby-public/SignUp.tsx": () => import("../components/mockups/wristby-public/SignUp.tsx")
 };
