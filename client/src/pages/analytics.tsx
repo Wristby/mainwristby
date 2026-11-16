@@ -19,9 +19,18 @@ import {
   ArrowDownRight,
   GitCompare,
   Download,
-  BadgeCheck
+  BadgeCheck,
+  ChevronRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Select, 
   SelectContent, 
@@ -34,7 +43,7 @@ import { SalesPatternsPreview } from "@/pages/sales-patterns";
 import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
-import { countChrono24CertificationSent } from "@/lib/chrono24-certification";
+import { getChrono24CertificationWatches } from "@/lib/chrono24-certification";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -166,6 +175,7 @@ export default function Analytics() {
   const [compareYearFilter, setCompareYearFilter] = useState<string>("all");
   const [quarterYear, setQuarterYear] = useState<string>(getYear(new Date()).toString());
   const [compareQuarterYear, setCompareQuarterYear] = useState<string>(getYear(new Date()).toString());
+  const [isCertificationDialogOpen, setIsCertificationDialogOpen] = useState(false);
 
   const { data: inventory, isLoading: inventoryLoading } = useInventory(undefined, true);
 
@@ -472,7 +482,8 @@ export default function Analytics() {
   const avgWatchCost = (inventory?.length ?? 0) > 0
     ? (inventory || []).reduce((sum, item) => sum + item.purchasePrice, 0) / (inventory?.length ?? 1)
     : 0;
-  const chrono24CertificationSentCount = countChrono24CertificationSent(inventory);
+  const chrono24CertificationWatches = getChrono24CertificationWatches(inventory);
+  const chrono24CertificationSentCount = chrono24CertificationWatches.length;
 
   // All watches hold time
   const allWatchesWithHoldTime = (inventory || []).map((item) => {
@@ -987,7 +998,21 @@ export default function Analytics() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white border-slate-200">
+          <Card
+            className="bg-white border-slate-200 cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+            role="button"
+            tabIndex={0}
+            aria-haspopup="dialog"
+            aria-label={`View ${chrono24CertificationSentCount} watches sent for Chrono24 Certification`}
+            onClick={() => setIsCertificationDialogOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setIsCertificationDialogOpen(true);
+              }
+            }}
+            data-testid="metric-chrono24-certification-card"
+          >
             <CardContent className="pt-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -995,7 +1020,7 @@ export default function Analytics() {
                   <p className="text-3xl font-bold text-emerald-600 mt-1 tabular-nums" data-testid="metric-chrono24-certification-sent">
                     {chrono24CertificationSentCount}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">All-time flagged watches</p>
+                  <p className="text-xs text-slate-400 mt-1">All-time flagged watches · View list</p>
                 </div>
                 <div className="p-2 bg-emerald-50 rounded-full">
                   <BadgeCheck className="h-5 w-5 text-emerald-600" />
@@ -1003,6 +1028,56 @@ export default function Analytics() {
               </div>
             </CardContent>
           </Card>
+
+          <Dialog open={isCertificationDialogOpen} onOpenChange={setIsCertificationDialogOpen}>
+            <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden">
+              <DialogHeader>
+                <DialogTitle>Watches sent for Chrono24 Certification</DialogTitle>
+                <DialogDescription>
+                  All-time list · {chrono24CertificationWatches.length} {chrono24CertificationWatches.length === 1 ? "watch" : "watches"}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 space-y-2 overflow-y-auto pr-1">
+                {chrono24CertificationWatches.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                    No watches are currently marked as sent for certification.
+                  </p>
+                ) : chrono24CertificationWatches.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/inventory/${item.id}`}
+                    className="group flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-3 transition-colors hover:border-emerald-300 hover:bg-emerald-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                    data-testid={`certification-watch-${item.id}`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-slate-900">
+                        {item.brand} {item.model}
+                      </span>
+                      <span className="mt-1 block truncate text-xs text-slate-500">
+                        {[
+                          item.referenceNumber ? `Ref. ${item.referenceNumber}` : null,
+                          item.internalSerial ? `Serial ${item.internalSerial}` : null,
+                        ].filter(Boolean).join(" · ") || "No reference or serial recorded"}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="flex flex-col items-end gap-1">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                          {item.status.replace(/_/g, " ")}
+                        </span>
+                        {item.archivedAt && (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                            Archived
+                          </span>
+                        )}
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-700" />
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Card className="bg-white border-slate-200">
             <CardContent className="pt-5">
