@@ -1,5 +1,6 @@
 import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { useInventory } from "@/hooks/use-inventory";
+import { calculateWatchCostBreakdown } from "@shared/watch-financials";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -233,14 +234,7 @@ export default function Financials() {
       const month = monthNames[new Date((item.soldDate || item.dateSold)!).getMonth()];
       months[month].revenue += item.salePrice || 0;
       months[month].cogs += item.purchasePrice;
-      const mWrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-      const itemExpenses = (item.serviceFee || 0) + 
-                          (item.polishFee || 0) + 
-                          (item.platformFees || 0) + 
-                          (item.shippingFee || 0) + 
-                          (item.insuranceFee || 0) +
-                          (item.watchRegister ? mWrFee : 0) +
-                          (item.importFee || 0);
+      const itemExpenses = calculateWatchCostBreakdown(item, settings.watch_register_fee).otherWatchCostsCents;
       months[month].expenses += itemExpenses;
     });
 
@@ -253,7 +247,7 @@ export default function Financials() {
       month,
       profit: (months[month].revenue - months[month].cogs - months[month].expenses) / 100,
     }));
-  }, [inventory, expenses]);
+  }, [inventory, expenses, settings.watch_register_fee]);
 
   const getCategoryLabel = (category: string) => {
     return EXPENSE_CATEGORIES.find(c => c.value === category)?.label || category;
@@ -343,11 +337,8 @@ export default function Financials() {
     // Calculate filtered net profit
     const filteredRevenue = filteredSoldItems.reduce((sum, item) => sum + (item.salePrice || 0), 0);
     const filteredCogs = filteredSoldItems.reduce((sum, item) => sum + item.purchasePrice, 0);
-    const filteredWatchFees = filteredSoldItems.reduce((sum, item) => {
-      const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-      return sum + (item.serviceFee || 0) + (item.polishFee || 0) + (item.platformFees || 0) + 
-        (item.shippingFee || 0) + (item.insuranceFee || 0) + (item.watchRegister ? wrFee : 0) + (item.importFee || 0);
-    }, 0);
+    const filteredWatchFees = filteredSoldItems.reduce((sum, item) =>
+      sum + calculateWatchCostBreakdown(item, settings.watch_register_fee).otherWatchCostsCents, 0);
     const filteredExpenseTotal = filteredExpensesForPeriod.reduce((sum, e) => sum + e.amount, 0);
     
     const filteredGrossProfit = filteredRevenue - filteredCogs - filteredWatchFees;
@@ -356,18 +347,9 @@ export default function Financials() {
     // VAT: period-filtered (same logic as all-time metrics, but scoped to filteredSoldItems)
     const filteredVatAgg = aggregateVat(
       filteredSoldItems.map((item) => {
-        const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-        const itemFees =
-          (item.serviceFee || 0) +
-          (item.polishFee || 0) +
-          (item.platformFees || 0) +
-          (item.shippingFee || 0) +
-          (item.insuranceFee || 0) +
-          (item.watchRegister ? wrFee : 0) +
-          (item.importFee || 0);
         return {
           salePrice: item.salePrice || 0,
-          totalCosts: item.purchasePrice + itemFees,
+          totalCosts: calculateWatchCostBreakdown(item, settings.watch_register_fee).totalCostsCents,
           vatRate: settings.vat_rate,
         };
       })

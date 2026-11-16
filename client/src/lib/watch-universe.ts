@@ -1,5 +1,6 @@
 import { differenceInCalendarDays, startOfDay } from "date-fns";
 import type { InventoryItem } from "@shared/schema";
+import { calculateWatchCostBreakdown, calculateSaleFinancials, calculateSaleFeeCents } from "@shared/watch-financials";
 
 export type WatchUniverseSource = Omit<
   Pick<
@@ -60,10 +61,6 @@ function validDate(value: Date | string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function safeCost(value: number | null | undefined): number {
-  return Number.isFinite(value) && value != null && value > 0 ? value : 0;
-}
-
 function safeFeePercent(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 6.5;
 }
@@ -79,27 +76,18 @@ export function calculateWatchUniverse(
     const listPriceCents = watch.listPrice;
     if (!listedAt || !listPriceCents || listPriceCents <= 0 || watch.purchasePrice <= 0) return [];
 
-    const watchRegisterFee = watch.watchRegister
-      ? watch.watchRegisterFeeSnapshot ?? settings.watchRegisterFeeCents
-      : 0;
-    const costBasisCents =
-      watch.purchasePrice +
-      safeCost(watch.importFee) +
-      safeCost(watch.serviceFee) +
-      safeCost(watch.polishFee) +
-      safeCost(watch.platformFees) +
-      safeCost(watch.shippingFee) +
-      safeCost(watch.insuranceFee) +
-      safeCost(watchRegisterFee);
+    const costBasisCents = calculateWatchCostBreakdown(watch, settings.watchRegisterFeeCents).totalCostsCents;
 
     const chrono24FeePercent = safeFeePercent(
       watch.chrono24FeeRate == null
         ? settings.chrono24CommissionPercent
         : watch.chrono24FeeRate / 100,
     );
-    const estimatedFeeCents = Math.round(listPriceCents * chrono24FeePercent / 100);
-    const estimatedProfitCents = listPriceCents - estimatedFeeCents - costBasisCents;
-    const estimatedMarginPercent = estimatedProfitCents / listPriceCents * 100;
+    const estimatedFeeCents = calculateSaleFeeCents(listPriceCents, chrono24FeePercent);
+    const { profitCents: estimatedProfitCents, marginPercent: estimatedMarginPercent } = calculateSaleFinancials({
+      salePriceCents: listPriceCents,
+      totalCostsCents: costBasisCents + estimatedFeeCents,
+    });
 
     return [{
       id: watch.id,

@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calculator, TrendingUp, Percent, Wallet } from "lucide-react";
 import { useSettings, type QuickEstimatePlatformFee } from "@/hooks/use-settings";
-import { computeVat } from "@/lib/vat-calculations";
+import { calculateWatchFinancials, calculateSaleFeeCents } from "@shared/watch-financials";
 
 type QuickEstimateProps = {
   /** Optional saved COGS value in cents, used to prefill the estimate's Buy Price. */
@@ -34,29 +34,30 @@ export function calculateQuickEstimate({
   watchRegisterFeeCents,
   vatRate,
 }: QuickEstimateCalculationInput) {
-  let platformFee = 0;
+  const salePriceCents = Math.round(salePrice * 100);
+  let platformFeeCents = 0;
   if (selectedPlatform) {
-    platformFee = selectedPlatform.type === "percentage"
-      ? salePrice * (selectedPlatform.amount / 100)
-      : selectedPlatform.amount / 100;
+    platformFeeCents = selectedPlatform.type === "percentage"
+      ? calculateSaleFeeCents(salePriceCents, selectedPlatform.amount)
+      : Math.round(selectedPlatform.amount);
   }
 
-  const watchRegisterFee = watchRegister ? watchRegisterFeeCents / 100 : 0;
-  const totalCost = buyPrice + serviceCost + platformFee + shipping + watchRegisterFee;
-  const vatResult = computeVat({
-    salePrice: Math.round(salePrice * 100),
-    totalCosts: Math.round(totalCost * 100),
-    vatRate,
-  });
-  const profitBeforeVat = vatResult.profit / 100;
+  const financials = calculateWatchFinancials({
+    purchasePrice: Math.round(buyPrice * 100),
+    serviceFee: Math.round(serviceCost * 100),
+    shippingFee: Math.round(shipping * 100),
+    platformFees: platformFeeCents,
+    watchRegister,
+    watchRegisterFeeSnapshot: watchRegisterFeeCents,
+  }, salePriceCents, vatRate);
 
   return {
-    profitBeforeVat,
-    vatAmount: vatResult.vatAmount / 100,
-    netAfterVat: vatResult.netAfterVat / 100,
-    margin: salePrice > 0 ? (profitBeforeVat / salePrice) * 100 : 0,
-    roi: buyPrice > 0 ? (profitBeforeVat / buyPrice) * 100 : 0,
-    platformFee,
+    profitBeforeVat: financials.profitCents / 100,
+    vatAmount: financials.vatAmountCents / 100,
+    netAfterVat: financials.netAfterVatCents / 100,
+    margin: financials.marginPercent,
+    roi: financials.roiPercent,
+    platformFee: platformFeeCents / 100,
   };
 }
 

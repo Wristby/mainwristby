@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { calculateWatchCostBreakdown, calculateSaleFinancials } from "./watch-financials";
 
 export const notebookComparisonModeSchema = z.enum([
   "previous-month",
@@ -262,16 +263,8 @@ export function notebookComparisonMonthKeys(
   });
 }
 
-function safeCost(value: number | null | undefined): number {
-  return Number.isFinite(value) && value! > 0 ? value! : 0;
-}
-
 function watchCostBasis(watch: NotebookWatchInput, watchRegisterFeeCents: number): number {
-  return safeCost(watch.purchasePrice) + safeCost(watch.importFee)
-    + safeCost(watch.serviceFee) + safeCost(watch.polishFee)
-    + (watch.watchRegister
-      ? safeCost(watch.watchRegisterFeeSnapshot ?? watchRegisterFeeCents)
-      : 0);
+  return calculateWatchCostBreakdown(watch, watchRegisterFeeCents).acquisitionCostsCents;
 }
 
 /** The scheduled capture is one second before midnight in Europe/Amsterdam. */
@@ -401,15 +394,12 @@ export function calculateNotebookPeriod(
   const priced = matching.flatMap(({ watch, soldAt }) => {
     const revenue = saleAmount(watch);
     if (revenue == null) return [];
-    const registerFee = watch.watchRegister
-      ? safeCost(watch.watchRegisterFeeSnapshot ?? watchRegisterFeeCents)
-      : 0;
-    const costs = safeCost(watch.purchasePrice) + safeCost(watch.importFee)
-      + safeCost(watch.serviceFee) + safeCost(watch.polishFee)
-      + safeCost(watch.platformFees) + safeCost(watch.shippingFee)
-      + safeCost(watch.insuranceFee) + registerFee;
+    const costs = calculateWatchCostBreakdown(watch, watchRegisterFeeCents).totalCostsCents;
+    const { profitCents: netProfit } = calculateSaleFinancials({
+      salePriceCents: revenue, totalCostsCents: costs, recordedSale: true,
+    });
     const days = daysListedUntilSale(watch.dateListed, soldAt);
-    return [{ watch, revenue, netProfit: revenue - costs, days }];
+    return [{ watch, revenue, netProfit, days }];
   });
   const revenueCents = priced.reduce((sum, sale) => sum + sale.revenue, 0);
   const netProfitCents = priced.reduce((sum, sale) => sum + sale.netProfit, 0);

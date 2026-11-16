@@ -1,5 +1,6 @@
 import { WatchIntake } from "@/components/watch-intake/watch-intake";
 import { useMemo, useState, useEffect } from "react";
+import { calculateWatchFinancials } from "@shared/watch-financials";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -192,23 +193,11 @@ export default function Dashboard() {
   const soldInventory = inventory?.filter((item) => item.status === "sold") || [];
 
   const calcProfit = (item: InventoryItem) => {
-    const revenue = item.salePrice || 0;
-    const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-    const totalCost = item.purchasePrice + 
-                      (item.importFee || 0) + 
-                      (item.serviceFee || 0) + 
-                      (item.polishFee || 0) + 
-                      (item.platformFees || 0) + 
-                      (item.shippingFee || 0) + 
-                      (item.insuranceFee || 0) +
-                      (item.watchRegister ? wrFee : 0);
-    return revenue - totalCost;
+    return calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true).profitCents;
   };
 
   const calcMargin = (item: InventoryItem) => {
-    const revenue = item.salePrice || 0;
-    const profit = calcProfit(item);
-    return revenue > 0 ? (profit / revenue) * 100 : 0;
+    return calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true).marginPercent;
   };
 
   const { currentMonthProfit, ytdProfit, monthMargin, ytdMargin, monthSoldCount, ytdSoldCount } = useMemo(() => {
@@ -244,7 +233,7 @@ export default function Dashboard() {
       monthSoldCount: monthSales.length,
       ytdSoldCount: ytdSales.length,
     };
-  }, [soldInventory]);
+  }, [soldInventory, settings.watch_register_fee]);
 
   const displayedProfit = kpiView === "month" ? currentMonthProfit : ytdProfit;
   const displayedMargin = kpiView === "month" ? monthMargin : ytdMargin;

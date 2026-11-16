@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { calculateWatchFinancials } from "@shared/watch-financials";
 import {
   clients, inventory, expenses, inventoryPriceHistory, personalCollectionWatches, personalCollectionValuations, settings, retentionAudit, transactionParties, dealerNotebookEntries,
   type Client, type InsertClient, type UpdateClientRequest,
@@ -774,18 +775,7 @@ export class DatabaseStorage implements IStorage {
       const sold = item.salePrice || 0;
       if (sold === 0) return sum;
 
-      const bought = item.purchasePrice || 0;
-      const importFee = item.importFee || 0;
-      const serviceFee = (item as any).serviceFee || 0;
-      const polishFee = (item as any).polishFee || 0;
-      const wrFee = (item as any).watchRegisterFeeSnapshot ?? currentWrFee;
-      const watchRegisterFee = item.watchRegister ? wrFee : 0;
-      const platformFees = item.platformFees || 0;
-      const shippingFee = item.shippingFee || 0;
-      const insuranceFee = item.insuranceFee || 0;
-
-      const totalCosts = bought + importFee + serviceFee + polishFee + watchRegisterFee + platformFees + shippingFee + insuranceFee;
-      return sum + (sold - totalCosts);
+      return sum + calculateWatchFinancials(item, sold, 0, currentWrFee).profitCents;
     }, 0);
 
     // Turn rate calculation (simplified: avg days held for sold items)

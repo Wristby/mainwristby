@@ -43,7 +43,7 @@ import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cn, parsePriceInput } from "@/lib/utils";
-import { computeVat } from "@/lib/vat-calculations";
+import { calculateWatchFinancials } from "@shared/watch-financials";
 import { calculateCogsMarginTargetPrice, COGS_MARGIN_TARGETS } from "@/lib/margin-presets";
 import { useSettings } from "@/hooks/use-settings";
 import { QuickEstimate } from "@/components/quick-estimate";
@@ -869,22 +869,14 @@ export default function InventoryDetail() {
   // the current admin-panel value only for old items that have no snapshot.
   const effectiveWrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
 
-  const totalCosts = item.purchasePrice + 
-    ((item as any).importFee || 0) + 
-    ((item as any).serviceFee || 0) + 
-    ((item as any).polishFee || 0) +
-    ((item as any).platformFees || 0) + 
-    ((item as any).shippingFee || 0) + 
-    ((item as any).insuranceFee || 0) +
-    ((item as any).watchRegister ? effectiveWrFee : 0);
-  
   const salePrice = (item as any).salePrice || 0;
-  const margin = salePrice > 0 ? ((salePrice - totalCosts) / salePrice) * 100 : 0;
-  const { profit, vatAmount, netAfterVat } = computeVat({
-    salePrice,
-    totalCosts,
-    vatRate: settings.vat_rate,
-  });
+  const {
+    totalCostsCents: totalCosts,
+    marginPercent: margin,
+    profitCents: profit,
+    vatAmountCents: vatAmount,
+    netAfterVatCents: netAfterVat,
+  } = calculateWatchFinancials(item, salePrice, settings.vat_rate, settings.watch_register_fee);
   
   const getEndDate = () => {
     if (item.status === 'sold' && (item.soldDate || (item as any).dateSold || item.dateSold)) {
@@ -911,20 +903,6 @@ export default function InventoryDetail() {
       : startOfDay(new Date());
     return Math.max(0, differenceInDays(end, start));
   })();
-  const calcHistoricalProfit = (h: any) => {
-    const revenue = h.salePrice || 0;
-    const hWrFee = h.watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-    const cost = h.purchasePrice +
-      (h.importFee || 0) +
-      (h.serviceFee || 0) +
-      (h.polishFee || 0) +
-      (h.platformFees || 0) +
-      (h.shippingFee || 0) +
-      (h.insuranceFee || 0) +
-      (h.watchRegister ? hWrFee : 0);
-    return revenue - cost;
-  };
-
   const historicals = (allInventory || [])
     .filter((h) => h.referenceNumber === item.referenceNumber && h.status === "sold")
     .map((h) => {
@@ -933,9 +911,8 @@ export default function InventoryDetail() {
         soldDateStr && h.purchaseDate
           ? Math.max(0, differenceInDays(new Date(soldDateStr), new Date(h.purchaseDate)))
           : null;
-      const histProfit = calcHistoricalProfit(h);
-      const histRevenue = (h as any).salePrice || 0;
-      const histMargin = histRevenue > 0 ? (histProfit / histRevenue) * 100 : 0;
+      const { profitCents: histProfit, marginPercent: histMargin } =
+        calculateWatchFinancials(h, h.salePrice || 0, 0, settings.watch_register_fee, true);
       return { ...h, soldDateStr, daysToSell, histProfit, histMargin };
     })
     .sort((a, b) => {

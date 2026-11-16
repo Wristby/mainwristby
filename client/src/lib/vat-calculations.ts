@@ -1,3 +1,5 @@
+import { calculateSaleFinancials } from "@shared/watch-financials";
+
 /**
  * VAT and profit calculations for a watch inventory item.
  *
@@ -26,10 +28,12 @@ export interface VatResult {
 }
 
 export function computeVat({ salePrice, totalCosts, vatRate }: WatchFinancials): VatResult {
-  const profit = salePrice > 0 ? salePrice - totalCosts : 0;
-  const vatAmount = profit > 0 ? Math.round(profit * (vatRate / 100)) : 0;
-  const netAfterVat = profit - vatAmount;
-  return { profit, vatAmount, netAfterVat };
+  const result = calculateSaleFinancials({
+    salePriceCents: salePrice,
+    totalCostsCents: totalCosts,
+    vatRatePercent: vatRate,
+  });
+  return { profit: result.profitCents, vatAmount: result.vatAmountCents, netAfterVat: result.netAfterVatCents };
 }
 
 /**

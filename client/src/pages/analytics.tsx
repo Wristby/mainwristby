@@ -1,4 +1,5 @@
 import { useSettings } from "@/hooks/use-settings";
+import { calculateWatchCostBreakdown, calculateWatchFinancials } from "@shared/watch-financials";
 import { useInventory } from "@/hooks/use-inventory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -215,13 +216,7 @@ export default function Analytics() {
 
   // Helper to calculate total fees for an item
   const getItemFees = (item: InventoryItem) => {
-    const wrFee = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-    return (item.serviceFee || 0) + 
-           (item.polishFee || 0) + 
-           (item.platformFees || 0) + 
-           (item.shippingFee || 0) + 
-           (item.insuranceFee || 0) +
-           (item.watchRegister ? wrFee : 0);
+    return calculateWatchCostBreakdown(item, settings.watch_register_fee).otherWatchCostsCents;
   };
 
   const triggerDownload = (filename: string, csvContent: string) => {
@@ -254,9 +249,8 @@ export default function Analytics() {
     const rows = items.map(item => {
       const revenue = (item.salePrice || 0);
       const fees = getItemFees(item);
-      const profit = revenue - item.purchasePrice - fees;
-      const margin = revenue > 0 ? ((profit / revenue) * 100) : 0;
-      const roi = item.purchasePrice > 0 ? ((profit / item.purchasePrice) * 100) : 0;
+      const { profitCents: profit, marginPercent: margin, roiPercent: roi } =
+        calculateWatchFinancials(item, revenue, 0, settings.watch_register_fee, true);
       const soldDate = item.soldDate || item.dateSold;
       const daysHeld = soldDate && item.purchaseDate
         ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
@@ -314,14 +308,13 @@ export default function Analytics() {
     const primaryWatchSection = `--- Period: ${primaryDateRange.label} ---\n${buildWatchRows(calculatedMetrics.profits)}`;
     const compareWatchSection = `--- Period: ${compareDateRange.label} ---\n${buildWatchRows(
       cM.soldItems.map(item => {
-        const revenue = item.salePrice || 0;
-        const fees = getItemFees(item);
-        const profit = revenue - item.purchasePrice - fees;
+        const { profitCents: profit, roiPercent: roi } =
+          calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true);
         const soldDate = item.soldDate || item.dateSold;
         return {
           ...item,
           profit,
-          roi: item.purchasePrice > 0 ? (profit / item.purchasePrice) * 100 : 0,
+          roi,
           daysOnMarket: soldDate && item.purchaseDate
             ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
             : 0,
@@ -347,14 +340,13 @@ export default function Analytics() {
     const averageMargin = totalRevenue > 0 ? ((totalNetIncome / totalRevenue) * 100) : 0;
 
     const profits = soldItems.map((item) => {
-      const revenue = item.salePrice || 0;
-      const fees = getItemFees(item);
-      const profit = revenue - item.purchasePrice - fees;
+      const { profitCents: profit, roiPercent: roi } =
+        calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee, true);
       const soldDate = item.soldDate || item.dateSold;
       return {
         ...item,
         profit,
-        roi: item.purchasePrice > 0 ? (profit / item.purchasePrice) * 100 : 0,
+        roi,
         daysOnMarket: (soldDate && item.purchaseDate)
           ? differenceInDays(new Date(soldDate), new Date(item.purchaseDate))
           : 0,
@@ -365,7 +357,7 @@ export default function Analytics() {
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
     return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed };
-  }, [filteredInventory]);
+  }, [filteredInventory, settings.watch_register_fee]);
 
   const compareFilteredInventory = useMemo(() => {
     if (!inventory || !compareMode) return [];
@@ -414,7 +406,7 @@ export default function Analytics() {
       periodLabel: compareDateRange.label,
       watchesSold: soldItems.length
     };
-  }, [compareMode, compareFilteredInventory, compareDateRange, comparePeriodPreset]);
+  }, [compareMode, compareFilteredInventory, compareDateRange, comparePeriodPreset, settings.watch_register_fee]);
 
   const profitPerDayData = useMemo(() => {
     const { soldItems, today, totalNetIncome } = calculatedMetrics;

@@ -2,6 +2,7 @@ import { differenceInCalendarDays } from "date-fns";
 import type { InventoryItem } from "@shared/schema";
 import { getSaleAmount } from "@/lib/sale-amount";
 import { getSoldDate } from "@/lib/sold-date";
+import { calculateWatchFinancials } from "@shared/watch-financials";
 
 export const SALES_PATTERN_MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -81,10 +82,6 @@ function validDate(value: DateInput | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function safeCost(value: number | null | undefined): number {
-  return Number.isFinite(value) && value != null && value > 0 ? value : 0;
-}
-
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -104,15 +101,7 @@ function toRecord(item: SalesPatternSource, watchRegisterFeeCents: number): Sale
     ? saleAmount
     : null;
   const hasMarginInputs = salePriceCents != null && item.purchasePrice > 0;
-  const effectiveRegisterFee = item.watchRegisterFeeSnapshot ?? watchRegisterFeeCents;
-  const totalCostCents = item.purchasePrice
-    + safeCost(item.importFee)
-    + safeCost(item.serviceFee)
-    + safeCost(item.polishFee)
-    + safeCost(item.platformFees)
-    + safeCost(item.shippingFee)
-    + safeCost(item.insuranceFee)
-    + (item.watchRegister ? safeCost(effectiveRegisterFee) : 0);
+  const financials = calculateWatchFinancials(item, salePriceCents ?? 0, 0, watchRegisterFeeCents);
   const listedDate = validDate(item.dateListed);
   const daysToSell = listedDate
     ? differenceInCalendarDays(saleDate, listedDate)
@@ -127,10 +116,8 @@ function toRecord(item: SalesPatternSource, watchRegisterFeeCents: number): Sale
     year: saleDate.getFullYear(),
     month: saleDate.getMonth(),
     salePriceCents,
-    profitCents: hasMarginInputs ? salePriceCents! - totalCostCents : null,
-    marginPercent: hasMarginInputs
-      ? ((salePriceCents! - totalCostCents) / salePriceCents!) * 100
-      : null,
+    profitCents: hasMarginInputs ? financials.profitCents : null,
+    marginPercent: hasMarginInputs ? financials.marginPercent : null,
     daysToSell: daysToSell != null && daysToSell >= 0 ? daysToSell : null,
   };
 }

@@ -1,3 +1,5 @@
+import { calculateTargetSalePriceCents } from "@shared/watch-financials";
+
 export const COGS_MARGIN_TARGETS = [10, 15, 20] as const;
 
 /**
@@ -10,15 +12,5 @@ export function calculateCogsMarginTargetPrice(
   targetMarginPercent: number,
   platformFeePercent = 0,
 ): number | null {
-  if (!Number.isFinite(cogsCents) || cogsCents <= 0) return null;
-  if (!Number.isFinite(targetMarginPercent) || targetMarginPercent < 0 || targetMarginPercent >= 100) {
-    return null;
-  }
-  if (!Number.isFinite(platformFeePercent) || platformFeePercent < 0) return null;
-
-  const remainingRate = 1 - (targetMarginPercent + platformFeePercent) / 100;
-  if (remainingRate <= 0) return null;
-
-  // Round up so cent rounding does not put the realized margin below target.
-  return Math.ceil(cogsCents / remainingRate);
+  return calculateTargetSalePriceCents(cogsCents, targetMarginPercent, platformFeePercent);
 }

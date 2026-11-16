@@ -37,6 +37,8 @@ export interface SaleFinancialInput {
   totalCostsCents: number;
   purchasePriceCents?: number;
   vatRatePercent?: number;
+  /** Set for an explicitly recorded zero-value sale, rather than an empty estimate. */
+  recordedSale?: boolean;
 }
 
 export interface SaleFinancialResult {
@@ -94,12 +96,13 @@ export function calculateSaleFinancials({
   totalCostsCents: rawTotalCosts,
   purchasePriceCents: rawPurchasePrice = 0,
   vatRatePercent: rawVatRate = 0,
+  recordedSale,
 }: SaleFinancialInput): SaleFinancialResult {
   const salePriceCents = cents(rawSalePrice);
   const totalCostsCents = cents(rawTotalCosts);
   const purchasePriceCents = cents(rawPurchasePrice);
-  const vatRatePercent = cents(rawVatRate);
-  const profitCents = salePriceCents > 0 ? salePriceCents - totalCostsCents : 0;
+  const vatRatePercent = Number.isFinite(rawVatRate) ? Math.max(0, rawVatRate) : 0;
+  const profitCents = (recordedSale ?? salePriceCents > 0) ? salePriceCents - totalCostsCents : 0;
   const marginPercent = salePriceCents > 0 ? (profitCents / salePriceCents) * 100 : 0;
   const roiPercent = purchasePriceCents > 0 ? (profitCents / purchasePriceCents) * 100 : 0;
   const vatAmountCents = profitCents > 0
@@ -121,6 +124,7 @@ export function calculateWatchFinancials(
   salePriceCents: number,
   vatRatePercent = 0,
   defaultWatchRegisterFeeCents = 0,
+  recordedSale?: boolean,
 ) {
   const costs = calculateWatchCostBreakdown(watch, defaultWatchRegisterFeeCents);
   return {
@@ -130,6 +134,7 @@ export function calculateWatchFinancials(
       totalCostsCents: costs.totalCostsCents,
       purchasePriceCents: costs.purchasePriceCents,
       vatRatePercent,
+      recordedSale,
     }),
   };
 }

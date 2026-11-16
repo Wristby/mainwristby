@@ -1,4 +1,5 @@
 import { WatchIntake } from "@/components/watch-intake/watch-intake";
+import { calculateWatchFinancials } from "@shared/watch-financials";
 import { useInventory } from "@/hooks/use-inventory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -295,12 +296,9 @@ export default function Inventory() {
       const shippingFee = item.shippingFee ? item.shippingFee / 100 : 0;
       const insuranceFee = item.insuranceFee ? item.insuranceFee / 100 : 0;
       const targetSellPrice = item.targetSellPrice ? item.targetSellPrice / 100 : 0;
-      const wrFeeSnapshot = (item as any).watchRegisterFeeSnapshot ?? settings.watch_register_fee;
-      const watchRegisterCost = item.watchRegister ? wrFeeSnapshot / 100 : 0;
-      
-      const totalCosts = purchasePrice + importFee + serviceFee + polishFee + watchRegisterCost + platformFees + shippingFee + insuranceFee;
-      const profit = salePrice > 0 ? salePrice - totalCosts : 0;
-      const margin = salePrice > 0 && totalCosts > 0 ? ((salePrice - totalCosts) / totalCosts * 100).toFixed(1) : "";
+      const financials = calculateWatchFinancials(item, item.salePrice || 0, 0, settings.watch_register_fee);
+      const profit = financials.profitCents / 100;
+      const margin = salePrice > 0 ? financials.marginPercent.toFixed(1) : "";
       const holdTime = getHoldTime(item);
       
       const allValues = [
