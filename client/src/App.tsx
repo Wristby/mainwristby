@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Login = lazy(() => import("@/pages/login"));
-const PublicLanding = lazy(() => import("@/pages/public-landing-redesign"));
+const PublicLanding = lazy(() => import("@/pages/public-landing"));
 const SignUp = lazy(() => import("@/pages/signup"));
 const VerifyEmail = lazy(() => import("@/pages/verify-email"));
 const ResetPassword = lazy(() => import("@/pages/reset-password"));
