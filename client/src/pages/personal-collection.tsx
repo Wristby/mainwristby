@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { ArrowLeft, ArrowRight, Watch, Plus, Search, ShieldCheck, Trash2, Pencil, LockKeyhole, X, Check, Printer, TrendingUp } from "lucide-react";
 import { usePersonalCollection, usePersonalCollectionWatch, useCreatePersonalCollectionWatch, useUpdatePersonalCollectionWatch, useDeletePersonalCollectionWatch, usePersonalCollectionValuations, useCreatePersonalCollectionValuation, useUpdatePersonalCollectionValuation } from "@/hooks/use-personal-collection";
+import { useSettings } from "@/hooks/use-settings";
 import { parsePriceInput } from "@/lib/utils";
 import { buildPersonalInsuranceReportRows } from "@/lib/personal-insurance-report";
 import type { PersonalCollectionInput } from "@shared/personal-collection";
@@ -151,6 +152,7 @@ function toPayload(v:FormValues):PersonalCollectionInput {
 
 function Field({label,children,full=false,hint,required=false}:{label:string;children:React.ReactNode;full?:boolean;hint?:string;required?:boolean}) { return <div className={`pc-field${full?" full":""}`}><label>{label}{required&&<span className="pc-required"> *</span>}{children}</label>{hint&&<small>{hint}</small>}</div>; }
 export function PersonalCollectionFormPage({edit=false}:{edit?:boolean}) {
+  const { settings } = useSettings();
  const params=useParams<{id:string}>(); const id=Number(params.id);
  const detail=usePersonalCollectionWatch(id); const create=useCreatePersonalCollectionWatch(); const update=useUpdatePersonalCollectionWatch(id);
  const valuationHistory=usePersonalCollectionValuations(edit?id:0);
@@ -170,11 +172,11 @@ export function PersonalCollectionFormPage({edit=false}:{edit?:boolean}) {
   <div className="pc-form-head"><div><div className="pc-eyebrow">{edit?"Personal record":"A watch you keep"}</div><h1>{edit?"Edit watch":"Add to your collection"}</h1><p className="pc-intro">This record is private to you. It will never be counted as store stock or used in a sales workflow.</p></div><div className="pc-private-note"><LockKeyhole/> Private personal record</div></div>
   <form onSubmit={submit} noValidate>
    <section className="pc-form-section"><h2>Identity &amp; details</h2><div className="pc-fields">
-    {field("dateBought","Date acquired")} {field("referenceNumber","Reference number","e.g. 126610LN",{required:true})}{field("manufacturer","Manufacturer","e.g. Rolex",{required:true})}{field("model","Model","e.g. Submariner")}{field("subModel","Sub-model","e.g. Date")}
+     {field("dateBought","Date acquired")} {field("referenceNumber","Reference number","e.g. 126610LN",{required:true})}<Field label="Manufacturer" required><select className="pc-select" value={values.manufacturer} onChange={e=>set("manufacturer",e.target.value)} required><option value="">Choose a brand</option>{values.manufacturer && !settings.watch_brands.includes(values.manufacturer) && <option value={values.manufacturer}>{values.manufacturer} (not in Settings)</option>}{settings.watch_brands.map(brand=><option key={brand} value={brand}>{brand}</option>)}</select></Field>{field("model","Model","e.g. Submariner")}{field("subModel","Sub-model","e.g. Date")}
     <Field label="Condition"><select className="pc-select" value={values.condition} onChange={e=>set("condition",e.target.value)}>{["New","Pre-owned","Vintage"].map(x=><option key={x}>{x}</option>)}</select></Field>
     <Field label="Condition grade"><select className="pc-select" value={values.conditionGrade} onChange={e=>set("conditionGrade",e.target.value)}>{["Not graded","Mint","Excellent","Very Good","Good","Fair","Poor"].map(x=><option key={x}>{x}</option>)}</select></Field>
     {field("year","Year","e.g. 2021")}{field("serialNumber","Serial number","")}{field("linkCount","Link count","e.g. 11 or 11.5")}{field("bracelet","Bracelet","e.g. Oyster, Jubilee, leather")}{field("bezel","Bezel","e.g. Fluted, ceramic")}{field("dial","Dial","e.g. Silver sunburst")}
-    <div className="pc-field full"><div className="pc-checks">{(["box","boxForWholesale","papers"] as const).map(k=><label key={k} className="pc-check"><input type="checkbox" checked={values[k]} onChange={e=>set(k,e.target.checked)}/>{k==="boxForWholesale"?"Box for wholesale":k==="box"?"Box":"Papers"}</label>)}</div></div>
+     <div className="pc-field full"><div className="pc-checks">{(["box","papers"] as const).map(k=><label key={k} className="pc-check"><input type="checkbox" checked={values[k]} onChange={e=>set(k,e.target.checked)}/>{k==="box"?"Box":"Papers"}</label>)}</div></div>
     {field("warrantyCardDate","Warranty card date")}{field("warrantyExpiration","Warranty expiration")}
     <Field label="Condition notes" full hint="Private reference only."><textarea className="pc-textarea" rows={3} value={values.conditionNotes} onChange={e=>set("conditionNotes",e.target.value)} placeholder="Describe wear, service or finish"/></Field>
     <Field label="Contents notes" full><textarea className="pc-textarea" rows={3} value={values.contentsNotes} onChange={e=>set("contentsNotes",e.target.value)} placeholder="What came with the watch"/></Field>
