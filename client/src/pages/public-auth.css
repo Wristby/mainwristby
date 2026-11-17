@@ -82,3 +82,31 @@
   .wb-auth-brand { margin-bottom: 22px; }
   .wb-auth-panel { padding: 26px 21px; }
 }
+
+/* Rounded edges echo the workspace's quiet, considered interface. */
+.wb-auth-panel {
+  border-radius: 22px;
+  box-shadow: 0 20px 58px #27372d12;
+}
+.wb-auth-form input:not([type="checkbox"]) {
+  border-radius: 12px;
+}
+.wb-auth-submit {
+  border-radius: 999px !important;
+  transition: background-color .2s ease, transform .2s ease;
+}
+.wb-auth-submit:not(:disabled):hover { transform: translateY(-1px); }
+.wb-auth-form input:not([type="checkbox"]):focus-visible {
+  outline: 2px solid #305947;
+  outline-offset: 2px;
+}
+.wb-auth-submit:focus-visible {
+  outline: 2px solid #305947;
+  outline-offset: 3px;
+}
+.wb-auth-success,
+.wb-legal-disclaimer,
+.wb-registration-closed,
+.wb-pro-card {
+  border-radius: 14px;
+}

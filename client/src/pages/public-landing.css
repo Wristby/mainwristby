@@ -275,3 +275,26 @@
   .noct-footer nav a { font-size: 9px; }
   .noct-copyright { position: absolute; margin-top: 84px; right: 7%; font-size: 7px; }
 }
+
+/* A little more ease in the touchpoints, without softening the editorial tone. */
+.noct-top-cta,
+.noct-button {
+  border-radius: 999px;
+  transition: background-color .22s ease, color .22s ease, border-color .22s ease, transform .22s ease;
+}
+.noct-top-cta { padding-right: 17px; padding-left: 17px; }
+.noct-button { padding-right: 22px; padding-left: 22px; }
+.noct-button-bright:hover,
+.noct-button-gold:hover,
+.noct-top-cta:hover { transform: translateY(-1px); }
+.noct-dashboard { border-radius: 20px; overflow: hidden; }
+.noct-stat-grid article { border-radius: 12px; }
+.noct-plan { border-radius: 18px; }
+.noct-plan-overline i { border-radius: 999px; }
+.noct-add-button { border-radius: 999px; }
+
+@media (max-width: 640px) {
+  .noct-top-cta { padding: 9px 12px; }
+  .noct-button { padding-right: 20px; padding-left: 20px; }
+  .noct-dashboard { border-radius: 16px; }
+}
