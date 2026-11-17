@@ -20,7 +20,6 @@
     "0015_client_address_fields.sql",
     "0016_chrono24_certification_sent_at.sql",
     "0017_personal_collection_valuations.sql",
-    "0018_watch_warranties.sql",
-    "0019_public_accounts_and_billing.sql"
+    "0018_watch_warranties.sql"
   ]
 }

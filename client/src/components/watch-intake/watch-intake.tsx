@@ -14,7 +14,7 @@ import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useSettings } from "@/hooks/use-settings";
 import { insertClientSchema } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { buildWatchIntakePayload, watchIntakeConditions, watchIntakeDefaults, watchIntakeFieldTab, watchIntakeSchema, type WatchIntakeInput, type WatchIntakeValues } from "./model";
+import { buildWatchIntakePayload, watchIntakeConditions, watchIntakeDefaults, watchIntakeFieldTab, watchIntakeSchema, type WatchIntakeValues } from "./model";
 import { Card, CheckRow, DateField, Field, Money } from "./fields";
 import { IntakeReview } from "./review";
 import { SaleBuyerFields } from "@/components/sale-buyer-fields";
@@ -55,7 +55,7 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
   const content = useRef<HTMLDivElement>(null);
   const activeStep = useRef<HTMLButtonElement>(null);
   const submitting = useRef(false);
-  const form = useForm<WatchIntakeInput, unknown, WatchIntakeValues>({ resolver: zodResolver(watchIntakeSchema), defaultValues: watchIntakeDefaults, mode: "onSubmit" });
+  const form = useForm<WatchIntakeValues>({ resolver: zodResolver(watchIntakeSchema), defaultValues: watchIntakeDefaults, mode: "onSubmit" });
   const { isDirty } = form.formState;
   const values = form.watch();
   const serialNumber = values.serialNumber ?? "";
@@ -131,7 +131,7 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
       submission = buildWatchIntakePayload(data, buyer);
       setBuyerError(""); setSaveError("");
     } catch (error) {
-      setBuyerError(error instanceof z.ZodError ? error.issues[0].message : (error as Error).message);
+      setBuyerError(error instanceof z.ZodError ? error.errors[0].message : (error as Error).message);
       setTab(3); setShowSale(true);
       return;
     }
@@ -202,7 +202,7 @@ export function WatchIntake({ open, onOpenChange }: WatchIntakeProps) {
               <Field name="purchasedFrom" label="Purchase channel" required options={settings.purchase_channels}/>
               <Field name="paidWith" label="Paid with" required options={settings.paid_with_methods.length ? settings.paid_with_methods.map(option=>option.name) : ["Credit", "Debit", "Wire"]}/>
               {["Dealer","Private Purchase","Other"].includes(purchaseChannel) && <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="intake-clientId">Seller{purchaseChannel==="Dealer"?" *":""}</Label>
-                <div className="flex gap-2"><select id="intake-clientId" {...form.register("clientId")} value={String(values.clientId ?? "")} className="h-10 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm"><option value="">Choose seller…</option>{sellerOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                <div className="flex gap-2"><select id="intake-clientId" {...form.register("clientId")} value={values.clientId ?? ""} className="h-10 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm"><option value="">Choose seller…</option>{sellerOptions.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
                   <Button type="button" variant="outline" className="shrink-0" onClick={()=>{ setSeller({...seller,type:purchaseChannel==="Dealer"?"dealer":"client"}); setQuickAdd(true); }}><Plus className="mr-1 h-4 w-4"/>New seller</Button></div>
                 {purchaseChannel==="Dealer" && !values.clientId && form.formState.submitCount>0 && <p role="alert" className="text-xs text-rose-700">Select a dealer.</p>}</div>}
               <DateField name="purchaseDate" label="Purchase date"/>

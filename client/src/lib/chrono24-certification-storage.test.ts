@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, describe, expect, vi } from "vitest";
-import { ownerIt as it } from "./owner-test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   saved: {} as Record<string, any>,

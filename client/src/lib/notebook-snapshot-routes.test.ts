@@ -1,5 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, vi } from "vitest";
-import { ownerIt as it } from "./owner-test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import { createServer } from "node:http";
 import type { DealerNotebookEntry } from "@shared/schema";
@@ -13,7 +12,6 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../../../server/auth", () => ({
   setupAuth: async () => {},
-  requirePro: (_req: unknown, _res: unknown, next: () => void) => next(),
   isAuthenticated: (_req: unknown, res: express.Response, next: () => void) =>
     mocks.authenticated ? next() : res.status(401).json({ message: "Unauthorized" }),
 }));
@@ -28,8 +26,6 @@ vi.mock("../../../server/storage", () => ({
   },
   SaleBuyerSaveError: class extends Error {},
   storage: {
-    getAccountIds: async () => [],
-    getWorkspaceAccess: async () => ({ isPro: true, plan: "pro", aiEnabled: true, activeWatchCount: 0, clientCount: 0, limits: null }),
     getSetting: async () => undefined,
     getClients: async () => [{ id: 1 }],
     getAllSettings: async () => ({}),

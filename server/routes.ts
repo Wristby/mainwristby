@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "node:crypto";
-import { setupAuth, isAuthenticated, requirePro } from "./auth";
+import { setupAuth, isAuthenticated } from "./auth";
 import { storage, SaleBuyerSaveError, NotebookSnapshotError } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -29,8 +29,6 @@ import { prepareNotebookAnalysis } from "./dealers-notebook";
 import { personalCollectionValuationInputSchema } from "@shared/personal-collection";
 import { DEFAULT_WARRANTY_MONTHS, WARRANTY_TERM_OPTIONS } from "@shared/warranty";
 import { getSoldDate } from "@shared/sold-date";
-import { runWithOwner } from "./tenant";
-import { registerBillingRoutes } from "./billing";
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_FALLBACK_MODELS = [
@@ -191,11 +189,8 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // Setup Auth
-  await setupAuth(app, {
-    onAccountCreated: (userId) => runWithOwner(userId, seedSettings),
-  });
+  await setupAuth(app);
   registerRetentionRoutes(app);
-  registerBillingRoutes(app);
 
   // === API ROUTES ===
 
@@ -219,9 +214,8 @@ export async function registerRoutes(
       res.status(201).json(client);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0].message });
+        return res.status(400).json({ message: err.errors[0].message });
       }
-      if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       throw err;
     }
   });
@@ -233,7 +227,7 @@ export async function registerRoutes(
       res.json(client);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0].message });
+        return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(404).json({ message: "Client not found" });
     }
@@ -307,7 +301,7 @@ export async function registerRoutes(
       res.json(entry);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0].message });
+        return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Could not update this price history entry. Please try again." });
     }
@@ -322,7 +316,7 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0].message });
+        return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Could not add watch. Please try again." });
     }
@@ -336,7 +330,7 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0].message });
+        return res.status(400).json({ message: err.errors[0].message });
       }
       if (err instanceof Error && err.message === "Item not found") return res.status(404).json({ message: "Item not found" });
       res.status(500).json({ message: "Could not save watch. Please try again." });
@@ -379,7 +373,6 @@ export async function registerRoutes(
       const item = await storage.archiveInventoryItem(Number(req.params.id));
       res.json(item);
     } catch (err) {
-      if (err instanceof SaleBuyerSaveError) return res.status(err.status).json({ message: err.message });
       if (err instanceof Error && err.message === "Item not found") return res.status(404).json({ message: "Item not found" });
       res.status(500).json({ message: "Could not archive this watch. Please try again." });
     }
@@ -406,7 +399,7 @@ export async function registerRoutes(
       const item = await storage.updateCreditInfo(Number(req.params.id), input);
       res.json(item);
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.issues[0].message });
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(404).json({ message: "Item not found" });
     }
   });
@@ -446,7 +439,7 @@ export async function registerRoutes(
       res.status(201).json(valuation);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0]?.message || "Check the valuation date and amount." });
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the valuation date and amount." });
       }
       res.status(500).json({ message: "Could not add this valuation. Please try again." });
     }
@@ -470,7 +463,7 @@ export async function registerRoutes(
       res.json(valuation);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0]?.message || "Check the valuation date and amount." });
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the valuation date and amount." });
       }
       res.status(500).json({ message: "Could not correct this valuation. Please try again." });
     }
@@ -483,7 +476,7 @@ export async function registerRoutes(
       res.status(201).json(watch);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0]?.message || "Check the collection watch details." });
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the collection watch details." });
       }
       res.status(500).json({ message: "Could not add this collection watch. Please try again." });
     }
@@ -499,7 +492,7 @@ export async function registerRoutes(
       res.json(watch);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0]?.message || "Check the collection watch details." });
+        return res.status(400).json({ message: err.errors[0]?.message || "Check the collection watch details." });
       }
       res.status(500).json({ message: "Could not save this collection watch. Please try again." });
     }
@@ -526,7 +519,7 @@ export async function registerRoutes(
       res.status(201).json(expense);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0].message });
+        return res.status(400).json({ message: err.errors[0].message });
       }
       throw err;
     }
@@ -540,7 +533,7 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof RetentionError) return res.status(err.status).json({ message: err.message });
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.issues[0].message });
+        return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(404).json({ message: "Expense not found" });
     }
@@ -653,7 +646,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/dealers-notebook/analyze", isAuthenticated, requirePro, async (req, res) => {
+  app.post("/api/dealers-notebook/analyze", isAuthenticated, async (req, res) => {
     const parsed = analyzeNotebookSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Choose a valid month and comparison period." });
@@ -798,7 +791,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
     }
   });
 
-  app.get("/api/ai/models", isAuthenticated, requirePro, async (req, res) => {
+  app.get("/api/ai/models", isAuthenticated, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.json({ models: [] });
@@ -834,7 +827,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
   });
 
   // AI — Generate Listing Description
-  app.post("/api/ai/inventory-search", isAuthenticated, requirePro, async (req, res) => {
+  app.post("/api/ai/inventory-search", isAuthenticated, async (req, res) => {
     const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
     if (!query || query.length > 300) {
       return res.status(400).json({ message: "Enter a search question of up to 300 characters." });
@@ -874,7 +867,7 @@ User request: ${JSON.stringify(query)}`;
     }
   });
 
-  app.post("/api/ai/generate-description", isAuthenticated, requirePro, async (req, res) => {
+  app.post("/api/ai/generate-description", isAuthenticated, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(503).json({ message: "AI generation is not configured. Please add your GEMINI_API_KEY." });
@@ -919,7 +912,7 @@ Papers/Cards: {{papers}}`;
   });
 
   // AI — Movement Specs Lookup
-  app.post("/api/ai/movement-specs", isAuthenticated, requirePro, async (req, res) => {
+  app.post("/api/ai/movement-specs", isAuthenticated, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(503).json({ message: "AI is not configured. Please add your GEMINI_API_KEY." });
@@ -975,7 +968,7 @@ Papers/Cards: {{papers}}`;
   });
 
   // AI — Generate Instagram Caption
-  app.post("/api/ai/generate-caption", isAuthenticated, requirePro, async (req, res) => {
+  app.post("/api/ai/generate-caption", isAuthenticated, async (req, res) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(503).json({ message: "AI generation is not configured. Please add your GEMINI_API_KEY." });
@@ -1014,13 +1007,81 @@ Papers/Cards: {{papers}}`;
     }
   });
 
-  // Provision default preferences separately for every workspace. No demo
-  // watches or shared default business records are inserted.
-  for (const ownerId of await storage.getAccountIds()) {
-    await runWithOwner(ownerId, seedSettings);
-  }
+  // Seed Data & Settings
+  await seedDatabase();
+  await seedSettings();
 
   return httpServer;
+}
+
+async function seedDatabase() {
+  const existingClients = await storage.getClients();
+  if (existingClients.length === 0) {
+    const dealer = await storage.createClient({
+      name: "Luxury Watch Supply Co.",
+      email: "dealer@supply.co",
+      type: "dealer",
+      notes: "Trusted supplier for Rolex/Patek."
+    });
+    
+    const client = await storage.createClient({
+      name: "John Smith",
+      email: "john@example.com",
+      type: "client",
+      notes: "VIP Collector. Likes vintage Omega."
+    });
+
+    // Rolex Submariner (In Stock)
+    await storage.createInventoryItem({
+      brand: "Rolex",
+      model: "Submariner",
+      referenceNumber: "124060",
+      purchasePrice: 900000, // $9,000.00
+      targetSellPrice: 1150000, // $11,500.00
+      purchaseDate: new Date("2025-01-10"),
+      condition: "New",
+      status: "in_stock",
+      box: true,
+      papers: true,
+      clientId: dealer.id,
+      notes: "Full set, stickers on."
+    });
+
+    // Patek Nautilus (Sold)
+    await storage.createInventoryItem({
+      brand: "Patek Philippe",
+      model: "Nautilus",
+      referenceNumber: "5711/1A",
+      purchasePrice: 9000000, // $90,000.00
+      targetSellPrice: 11500000, 
+      soldPrice: 11000000, // $110,000.00
+      purchaseDate: new Date("2024-11-01"),
+      soldDate: new Date("2024-12-15"),
+      condition: "Mint",
+      status: "sold",
+      box: true,
+      papers: true,
+      clientId: dealer.id,
+      buyerId: client.id,
+      notes: "Quick flip."
+    });
+
+    // Omega Speedmaster (Servicing)
+    await storage.createInventoryItem({
+      brand: "Omega",
+      model: "Speedmaster Professional",
+      referenceNumber: "311.30.42.30.01.005",
+      purchasePrice: 400000, // $4,000.00
+      targetSellPrice: 550000, // $5,500.00
+      purchaseDate: new Date("2025-01-20"),
+      condition: "Used",
+      status: "servicing",
+      box: true,
+      papers: false,
+      clientId: client.id,
+      notes: "Needs movement service."
+    });
+  }
 }
 
 const DEFAULT_MOVEMENT_PROMPT = `You are a horological reference database. Research the movement for watch reference {{referenceNumber}} by {{brand}}.

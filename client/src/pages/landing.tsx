@@ -24,7 +24,7 @@ export default function Landing() {
     setError(null);
     
     try {
-      await login({ identifier: username, password });
+      await login({ username, password });
     } catch (err: any) {
       setError(err.message);
     }

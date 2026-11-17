@@ -1,6 +1,4 @@
 import { WatchIntake } from "@/components/watch-intake/watch-intake";
-import { safeExternalUrl } from "@/lib/safe-external-url";
-import { csvCell } from "@/lib/csv";
 import { calculateWatchFinancials } from "@shared/watch-financials";
 import { getSoldDate } from "@shared/sold-date";
 import { useInventory } from "@/hooks/use-inventory";
@@ -306,18 +304,18 @@ export default function Inventory() {
       
       const allValues = [
         item.id,
-        item.brand,
-        item.model,
-        item.referenceNumber,
-        item.serialNumber || "",
-        item.internalSerial || "",
+        `"${item.brand}"`,
+        `"${item.model.replace(/"/g, '""')}"`,
+        `"${item.referenceNumber}"`,
+        `"${item.serialNumber || ""}"`,
+        `"${item.internalSerial || ""}"`,
         item.year || "",
         item.condition || "",
         item.box ? "Yes" : "No",
         item.papers ? "Yes" : "No",
         item.status,
-        item.purchasedFrom || "",
-        item.paidWith || "",
+        `"${item.purchasedFrom || ""}"`,
+        `"${item.paidWith || ""}"`,
         purchasePrice,
         importFee,
         item.watchRegister ? "Yes" : "No",
@@ -330,25 +328,25 @@ export default function Inventory() {
         shippingFee,
         insuranceFee,
         margin,
-        item.soldTo || "",
-        item.soldPlatform || "",
+        `"${item.soldTo || ""}"`,
+        `"${item.soldPlatform || ""}"`,
         item.purchaseDate ? format(new Date(item.purchaseDate), "yyyy-MM-dd") : "",
         item.dateReceived ? format(new Date(item.dateReceived), "yyyy-MM-dd") : "",
         item.dateListed ? format(new Date(item.dateListed), "yyyy-MM-dd") : "",
         holdTime,
-        item.shippingPartner || "",
-        item.trackingNumber || "",
-        item.gdriveLink || "",
+        `"${item.shippingPartner || ""}"`,
+        `"${item.trackingNumber || ""}"`,
+        `"${item.gdriveLink || ""}"`,
         profit,
-        (item.notes || "").replace(/\n/g, " "),
+        `"${(item.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`,
         item.serviceStartDate ? format(new Date(item.serviceStartDate), "yyyy-MM-dd") : ""
       ];
       return colIndices.map(c => allValues[c.index]);
     });
     
     const csvContent = [
-      headers.map(csvCell).join(","),
-      ...rows.map(row => row.map(csvCell).join(","))
+      headers.join(","),
+      ...rows.map(row => row.join(","))
     ].join("\n");
     
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -794,7 +792,7 @@ export default function Inventory() {
                   )}
                   <TableCell className="text-right">
                     <div className="relative z-10 flex justify-end gap-2">
-                      {safeExternalUrl(item.gdriveLink) && (
+                      {item.gdriveLink && (
                         <TooltipProvider delayDuration={0}>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -804,8 +802,7 @@ export default function Inventory() {
                                 className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  const url = safeExternalUrl(item.gdriveLink);
-                                  if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                  window.open(item.gdriveLink!, '_blank');
                                 }}
                               >
                                 <ExternalLink className="h-4 w-4" />

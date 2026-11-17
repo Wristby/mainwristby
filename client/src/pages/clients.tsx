@@ -28,7 +28,6 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertClientSchema } from "@shared/schema";
 import { z } from "zod";
-import { safeExternalUrl } from "@/lib/safe-external-url";
 import { useToast } from "@/hooks/use-toast";
 import { COUNTRIES } from "@/lib/countries";
 
@@ -295,7 +294,7 @@ export default function Clients() {
                         {client.website && (
                           <div className="flex items-center gap-2 text-xs text-slate-500">
                             <Globe className="w-3 h-3 text-blue-400" /> 
-                            <a href={safeExternalUrl(client.website, true)} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors" onClick={(e) => e.stopPropagation()}>
+                            <a href={client.website.startsWith('http') ? client.website : `https://${client.website}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors" onClick={(e) => e.stopPropagation()}>
                               {client.website.replace(/^https?:\/\/(www\.)?/, '')}
                             </a>
                           </div>

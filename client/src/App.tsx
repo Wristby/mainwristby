@@ -1,21 +1,14 @@
 import { Switch, Route, Redirect } from "wouter";
 import { lazy, Suspense, type ComponentType } from "react";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
-import { fetchApiResponse, throwIfResNotOk } from "@/lib/queryClient";
 
 const NotFound = lazy(() => import("@/pages/not-found"));
-const Login = lazy(() => import("@/pages/login"));
-const PublicLanding = lazy(() => import("@/pages/public-landing"));
-const SignUp = lazy(() => import("@/pages/signup"));
-const VerifyEmail = lazy(() => import("@/pages/verify-email"));
-const ResetPassword = lazy(() => import("@/pages/reset-password"));
-const Account = lazy(() => import("@/pages/account"));
-const LegalInfo = lazy(() => import("@/pages/legal-info"));
+const Landing = lazy(() => import("@/pages/landing"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Inventory = lazy(() => import("@/pages/inventory"));
 const InventoryDetail = lazy(() => import("@/pages/inventory-detail"));
@@ -68,20 +61,8 @@ function RouteLoading({ fullScreen = false }: { fullScreen?: boolean }) {
   );
 }
 
-function ProtectedRoute({ component: Component, allowExpired = false }: { component: ComponentType; allowExpired?: boolean }) {
+function ProtectedRoute({ component: Component }: { component: ComponentType }) {
   const { user, isLoading } = useAuth();
-  const access = useQuery<{ canAccessWorkspace: boolean }>({
-    queryKey: ["/api/billing/status"],
-    queryFn: async () => {
-      const response = await fetchApiResponse("/api/billing/status");
-      await throwIfResNotOk(response, "Could not check workspace access.");
-      return response.json();
-    },
-    enabled: Boolean(user) && !allowExpired,
-    retry: false,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  });
 
   if (isLoading) {
     return <RouteLoading fullScreen />;
@@ -89,14 +70,6 @@ function ProtectedRoute({ component: Component, allowExpired = false }: { compon
 
   if (!user) {
     return <Redirect to="/landing" />;
-  }
-
-  if (!allowExpired && access.isLoading) {
-    return <RouteLoading fullScreen />;
-  }
-
-  if (!allowExpired && access.data?.canAccessWorkspace === false) {
-    return <Redirect to="/account?trial=expired" />;
   }
 
   return (
@@ -112,16 +85,7 @@ function Router() {
   return (
     <Suspense fallback={<RouteLoading fullScreen />}>
     <Switch>
-      <Route path="/landing" component={PublicLanding} />
-      <Route path="/login" component={Login} />
-      <Route path="/signup" component={SignUp} />
-      <Route path="/verify-email" component={VerifyEmail} />
-      <Route path="/reset-password" component={ResetPassword} />
-      <Route path="/privacy" component={LegalInfo} />
-      <Route path="/terms" component={LegalInfo} />
-      <Route path="/account">
-        <ProtectedRoute component={Account} allowExpired />
-      </Route>
+      <Route path="/landing" component={Landing} />
       <Route path="/">
         <ProtectedRoute component={Dashboard} />
       </Route>

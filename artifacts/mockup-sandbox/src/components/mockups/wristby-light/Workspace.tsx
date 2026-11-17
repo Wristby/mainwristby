@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { format, differenceInDays, startOfDay } from "date-fns";
 import { z } from "zod";
-import { useForm, type Resolver } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DollarSign, TrendingUp, Percent, Watch, AlertTriangle, Plus, Receipt, UserPlus, Calendar as CalendarIcon, Pencil, Check, X, Scale, Target, LayoutDashboard, Package, Users, BarChart3, Settings, LogOut, CreditCard, Menu } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./_source/ui/card";
@@ -28,7 +28,7 @@ import "./_workspace.css";
 
 const createExpenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
-  date: z.date(),
+  date: z.coerce.date(),
 });
 
 type CreateExpenseFormValues = z.infer<typeof createExpenseFormSchema>;
@@ -79,7 +79,7 @@ function DashboardWorkspace() {
   const createExpenseMutation = useCreateExpense();
   const createClientMutation = useCreateClient();
 
-  const expenseForm = useForm<z.input<typeof createExpenseFormSchema>, unknown, CreateExpenseFormValues>({
+  const expenseForm = useForm<CreateExpenseFormValues>({
     resolver: zodResolver(createExpenseFormSchema),
     defaultValues: {
       description: "",

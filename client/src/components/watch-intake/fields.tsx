@@ -3,13 +3,13 @@ import { useFormContext } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { WatchIntakeInput, WatchIntakeValues } from "./model";
+import type { WatchIntakeValues } from "./model";
 
 export function Field({ name, label, type = "text", required = false, placeholder, options, step, labelAction }: {
   name: keyof WatchIntakeValues; label: string; type?: string; required?: boolean;
   placeholder?: string; options?: string[]; step?: string; labelAction?: ReactNode;
 }) {
-  const form = useFormContext<WatchIntakeInput, unknown, WatchIntakeValues>();
+  const form = useFormContext<WatchIntakeValues>();
   const error = form.formState.errors[name]?.message as string | undefined;
   const id = `intake-${name}`;
   const attributes = { id, "aria-invalid": !!error, "aria-required": required, "aria-describedby": error ? `${id}-error` : undefined };
@@ -31,7 +31,7 @@ export const Money = ({ name, label }: { name: keyof WatchIntakeValues; label: s
   <Field name={name} label={label} type="number" step="0.01" required={name === "purchasePrice"} />;
 
 export function CheckRow({ name, label }: { name: "box" | "papers" | "watchRegister"; label: string }) {
-  const form = useFormContext<WatchIntakeInput, unknown, WatchIntakeValues>();
+  const form = useFormContext<WatchIntakeValues>();
   return <label className="flex min-h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm">
     <Checkbox aria-label={label} checked={!!form.watch(name)} onCheckedChange={checked => form.setValue(name, !!checked, { shouldDirty: true })} />
     {label}

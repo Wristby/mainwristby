@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, vi } from "vitest";
-import { ownerIt as it } from "./owner-test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { expiry, scheduleInputSchema, type RetentionSchedule } from "@shared/retention";
 
 const harness = vi.hoisted(() => ({
@@ -179,8 +178,8 @@ describe("reviewable profile cleanup", () => {
     await expect(clearClient(1, preview.fingerprint)).resolves.toEqual({ cleared: true, retainedTransactionRecords: true });
     const parties = harness.writes.filter(w => w.table === transactionParties).map(w => w.values);
     expect(parties).toEqual([
-      { ownerId: "owner-a", inventoryId: 11, role: "buyer", name: "Transaction Buyer" },
-      { ownerId: "owner-a", inventoryId: 11, role: "seller", name: "Transaction Seller" },
+      { inventoryId: 11, role: "buyer", name: "Transaction Buyer" },
+      { inventoryId: 11, role: "seller", name: "Transaction Seller" },
     ]);
     const profile = harness.writes.find(w => w.table === clients)!.values;
     expect(profile).toMatchObject({
@@ -189,7 +188,7 @@ describe("reviewable profile cleanup", () => {
     });
     expect(profile.buyerId).toBeUndefined();
     const audit = harness.writes.find(w => w.table === retentionAudit)!.values;
-    expect(audit).toEqual({ ownerId: "owner-a", action: "profile_cleared", recordId: 1, revision: "test-revision" });
+    expect(audit).toEqual({ action: "profile_cleared", recordId: 1, revision: "test-revision" });
     expect(harness.execute).toHaveBeenCalledTimes(2);
     expect(harness.rows).toHaveLength(0);
   });
@@ -215,18 +214,17 @@ describe("reviewable profile cleanup", () => {
     expect(archived).toMatchObject({ id: 11, archivedAt });
     expect(harness.writes).toEqual([
       { table: inventory, values: { archivedAt: expect.any(Date) } },
-      { table: retentionAudit, values: { ownerId: "owner-a", action: "watch_archived", recordId: 11 } },
+      { table: retentionAudit, values: { action: "watch_archived", recordId: 11 } },
     ]);
 
     harness.writes = [];
     harness.rows.push([{ ...original, archivedAt }]);
-    harness.rows.push([{ accountRole: "owner", subscriptionStatus: null }]);
     harness.returningRows.push([{ ...original, archivedAt: null }]);
     const restored = await storage.restoreInventoryItem(11);
     expect(restored).toMatchObject({ id: 11, archivedAt: null });
     expect(harness.writes).toEqual([
       { table: inventory, values: { archivedAt: null } },
-      { table: retentionAudit, values: { ownerId: "owner-a", action: "watch_restored", recordId: 11 } },
+      { table: retentionAudit, values: { action: "watch_restored", recordId: 11 } },
     ]);
   });
   it("deletes only the watch and keeps linked expense and transaction-party records detached", async () => {

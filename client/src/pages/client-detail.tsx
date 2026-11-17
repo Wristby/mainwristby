@@ -46,7 +46,6 @@ import { format } from "date-fns";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { safeExternalUrl } from "@/lib/safe-external-url";
 import { useDeleteClient, useUpdateClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -258,7 +257,7 @@ export default function ClientDetail() {
                         <FormItem>
                           <FormLabel>Email</FormLabel>
                           <FormControl>
-                            <Input {...field} value={field.value ?? ""} className="bg-white border-slate-200" />
+                            <Input {...field} className="bg-white border-slate-200" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -271,7 +270,7 @@ export default function ClientDetail() {
                         <FormItem>
                           <FormLabel>Phone</FormLabel>
                           <FormControl>
-                            <Input {...field} value={field.value ?? ""} className="bg-white border-slate-200" />
+                            <Input {...field} className="bg-white border-slate-200" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -286,7 +285,7 @@ export default function ClientDetail() {
                         <FormItem>
                           <FormLabel>Social Handle</FormLabel>
                           <FormControl>
-                            <Input {...field} value={field.value ?? ""} className="bg-white border-slate-200" />
+                            <Input {...field} className="bg-white border-slate-200" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -299,7 +298,7 @@ export default function ClientDetail() {
                         <FormItem>
                           <FormLabel>Website</FormLabel>
                           <FormControl>
-                            <Input {...field} value={field.value ?? ""} className="bg-white border-slate-200" placeholder="https://example.com" />
+                            <Input {...field} className="bg-white border-slate-200" placeholder="https://example.com" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -414,7 +413,7 @@ export default function ClientDetail() {
                       <FormItem>
                         <FormLabel>Notes</FormLabel>
                         <FormControl>
-                          <Textarea {...field} value={field.value ?? ""} className="bg-white border-slate-200" />
+                          <Textarea {...field} className="bg-white border-slate-200" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -527,7 +526,7 @@ export default function ClientDetail() {
                 <div>
                   <p className="text-xs text-slate-400 font-medium uppercase">Website</p>
                   <a 
-                    href={safeExternalUrl(client.website, true)}
+                    href={client.website.startsWith('http') ? client.website : `https://${client.website}`} 
                     target="_blank" 
                     rel="noopener noreferrer" 
                     className="text-sm text-blue-600 hover:underline flex items-center gap-1"

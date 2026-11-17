@@ -5,7 +5,6 @@ import { z } from "zod";
 import { getSoldDate } from "@shared/sold-date";
 import { db } from "./db";
 import { isAuthenticated } from "./auth";
-import { requireOwnerId } from "./tenant";
 import { clients, inventory, expenses, settings, retentionHolds, retentionAudit, retentionPolicies, transactionParties } from "@shared/schema";
 import { expiry, profileFields, retentionKey, scheduleInputSchema,
   type RetentionSchedule, type RetentionPreview } from "@shared/retention";
@@ -16,11 +15,7 @@ export class RetentionError extends Error {
 }
 
 export async function readSchedule(connection: Connection = db): Promise<RetentionSchedule | null> {
-  const ownerId = requireOwnerId();
-  const [row] = await connection.select().from(settings).where(and(
-    eq(settings.ownerId, ownerId),
-    eq(settings.key, retentionKey),
-  ));
+  const [row] = await connection.select().from(settings).where(eq(settings.key, retentionKey));
   if (!row) return null;
   const stored = row.value as RetentionSchedule;
   // Metadata is server-owned and is not accepted through the generic settings API.
@@ -35,21 +30,13 @@ export async function readSchedule(connection: Connection = db): Promise<Retenti
 }
 
 export async function previewClient(id: number, connection: Connection = db): Promise<RetentionPreview> {
-  const ownerId = requireOwnerId();
-  const [client] = await connection.select().from(clients).where(and(eq(clients.ownerId, ownerId), eq(clients.id, id)));
+  const [client] = await connection.select().from(clients).where(eq(clients.id, id));
   if (!client) throw new RetentionError("Client not found.", 404);
-  const watches = await connection.select().from(inventory).where(and(
-    eq(inventory.ownerId, ownerId),
-    or(eq(inventory.buyerId, id), eq(inventory.clientId, id)),
-  ));
+  const watches = await connection.select().from(inventory).where(or(eq(inventory.buyerId, id), eq(inventory.clientId, id)));
   const ids = watches.map(w => w.id);
   const linkedExpenses = ids.length
-    ? await connection.select().from(expenses).where(and(
-        eq(expenses.ownerId, ownerId),
-        inArray(expenses.inventoryId, ids),
-      )) : [];
+    ? await connection.select().from(expenses).where(inArray(expenses.inventoryId, ids)) : [];
   const holds = await connection.select().from(retentionHolds).where(and(
-    eq(retentionHolds.ownerId, ownerId),
     isNull(retentionHolds.releasedAt),
     or(and(eq(retentionHolds.scope, "client"), eq(retentionHolds.recordId, id)),
       ...(ids.length ? [and(eq(retentionHolds.scope, "inventory"), inArray(retentionHolds.recordId, ids))] : [])),
@@ -100,7 +87,6 @@ export async function previewClient(id: number, connection: Connection = db): Pr
 }
 
 export async function clearClient(id: number, fingerprint: string) {
-  const ownerId = requireOwnerId();
   return db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(73284088)`);
     // Includes parent tables to exclude concurrent new links and fee writes,
@@ -109,16 +95,12 @@ export async function clearClient(id: number, fingerprint: string) {
     const preview = await previewClient(id, tx);
     if (preview.fingerprint !== fingerprint) throw new RetentionError("Records changed. Refresh and review the preview again.");
     if (!preview.eligible) throw new RetentionError(preview.blockers.join(" "));
-    const [client] = await tx.select().from(clients).where(and(eq(clients.ownerId, ownerId), eq(clients.id, id)));
+    const [client] = await tx.select().from(clients).where(eq(clients.id, id));
     for (const watchId of preview.linkedWatchIds) {
-      const [watch] = await tx.select().from(inventory).where(and(
-        eq(inventory.ownerId, ownerId),
-        eq(inventory.id, watchId),
-      ));
+      const [watch] = await tx.select().from(inventory).where(eq(inventory.id, watchId));
       for (const role of ["buyer", "seller"] as const) {
         if ((role === "buyer" ? watch.buyerId : watch.clientId) !== id) continue;
         await tx.insert(transactionParties).values({
-          ownerId,
           inventoryId: watchId, role,
           name: (role === "buyer" ? watch.soldTo : watch.purchasedFrom) || client.name,
         });
@@ -129,9 +111,9 @@ export async function clearClient(id: number, fingerprint: string) {
       website: null, addressLine1: null, addressLine2: null, city: null,
       state: null, postalCode: null, country: null, notes: null, isVip: false,
       profileClearedAt: new Date(),
-    }).where(and(eq(clients.ownerId, ownerId), eq(clients.id, id)));
+    }).where(eq(clients.id, id));
     const schedule = await readSchedule(tx);
-    await tx.insert(retentionAudit).values({ ownerId, action: "profile_cleared", recordId: id, revision: schedule!.revision });
+    await tx.insert(retentionAudit).values({ action: "profile_cleared", recordId: id, revision: schedule!.revision });
     return { cleared: true, retainedTransactionRecords: true };
   });
 }
@@ -152,23 +134,19 @@ export function registerRetentionRoutes(app: Express) {
   };
   route("get", "/api/retention/schedule", () => readSchedule());
   route("get", "/api/retention/inventory/:id/parties", req =>
-    db.select().from(transactionParties).where(and(
-      eq(transactionParties.ownerId, requireOwnerId()),
-      eq(transactionParties.inventoryId, idSchema.parse(req.params.id)),
-    )));
+    db.select().from(transactionParties).where(eq(transactionParties.inventoryId, idSchema.parse(req.params.id))));
   route("put", "/api/retention/schedule", async req => {
     const input = scheduleInputSchema.parse(req.body);
     const schedule: RetentionSchedule = {
       ...input, revision: randomUUID(), approvedAt: input.confirmApproval ? new Date().toISOString() : null,
       automaticDeletionEnabled: false,
     };
-    const ownerId = requireOwnerId();
     await db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(73284088)`);
-      await tx.insert(settings).values({ ownerId, key: retentionKey, value: schedule })
-        .onConflictDoUpdate({ target: [settings.ownerId, settings.key], set: { value: schedule } });
-      await tx.insert(retentionPolicies).values({ ownerId, revision: schedule.revision, schedule });
-      await tx.insert(retentionAudit).values({ ownerId, action: schedule.approvedAt ? "schedule_approved" : "schedule_drafted", revision: schedule.revision });
+      await tx.insert(settings).values({ key: retentionKey, value: schedule })
+        .onConflictDoUpdate({ target: settings.key, set: { value: schedule } });
+      await tx.insert(retentionPolicies).values({ revision: schedule.revision, schedule });
+      await tx.insert(retentionAudit).values({ action: schedule.approvedAt ? "schedule_approved" : "schedule_drafted", revision: schedule.revision });
     });
     return schedule;
   });
@@ -177,43 +155,31 @@ export function registerRetentionRoutes(app: Express) {
     const { fingerprint } = z.object({ fingerprint: z.string().regex(/^[0-9a-f]{64}$/) }).strict().parse(req.body);
     return clearClient(idSchema.parse(req.params.id), fingerprint);
   });
-  route("get", "/api/retention/holds", () => db.select().from(retentionHolds).where(and(
-    eq(retentionHolds.ownerId, requireOwnerId()),
-    isNull(retentionHolds.releasedAt),
-  )));
+  route("get", "/api/retention/holds", () => db.select().from(retentionHolds).where(isNull(retentionHolds.releasedAt)));
   route("post", "/api/retention/holds", async req => {
     const hold = z.object({
       scope: z.enum(["client", "inventory"]), recordId: idSchema,
       reason: z.string().trim().min(1).max(1000),
     }).strict().parse(req.body);
-    const ownerId = requireOwnerId();
     return db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(73284088)`);
       const table = hold.scope === "client" ? clients : inventory;
-      const [record] = await tx.select({ id: table.id }).from(table).where(and(
-        eq(table.ownerId, ownerId),
-        eq(table.id, hold.recordId),
-      ));
+      const [record] = await tx.select({ id: table.id }).from(table).where(eq(table.id, hold.recordId));
       if (!record) throw new RetentionError("Record not found.", 404);
-      const [saved] = await tx.insert(retentionHolds).values({ ...hold, ownerId }).returning();
-      await tx.insert(retentionAudit).values({ ownerId, action: "hold_placed", recordId: saved.id });
+      const [saved] = await tx.insert(retentionHolds).values(hold).returning();
+      await tx.insert(retentionAudit).values({ action: "hold_placed", recordId: saved.id });
       return saved;
     });
   });
   route("post", "/api/retention/holds/:id/release", async req => {
     const id = idSchema.parse(req.params.id);
     const { reason } = z.object({ reason: z.string().trim().min(1).max(1000) }).strict().parse(req.body);
-    const ownerId = requireOwnerId();
     return db.transaction(async tx => {
       await tx.execute(sql`select pg_advisory_xact_lock(73284088)`);
       const [hold] = await tx.update(retentionHolds).set({ releasedAt: new Date(), releaseReason: reason })
-        .where(and(
-          eq(retentionHolds.ownerId, ownerId),
-          eq(retentionHolds.id, id),
-          isNull(retentionHolds.releasedAt),
-        )).returning();
+        .where(and(eq(retentionHolds.id, id), isNull(retentionHolds.releasedAt))).returning();
       if (!hold) throw new RetentionError("Active hold not found.", 404);
-      await tx.insert(retentionAudit).values({ ownerId, action: "hold_released", recordId: id });
+      await tx.insert(retentionAudit).values({ action: "hold_released", recordId: id });
       return hold;
     });
   });

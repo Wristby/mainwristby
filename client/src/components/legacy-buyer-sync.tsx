@@ -3,8 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { api } from "@shared/routes";
-import { apiFetch } from "@/lib/queryClient";
-import { invalidateClientCaches } from "@/lib/query-cache";
 import type { Client } from "@shared/schema";
 import {
   buyerReviewPath, buyerSyncPath,
@@ -12,10 +10,14 @@ import {
 } from "@shared/client-backfill";
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const response = await apiFetch(path, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+  const response = await fetch(path, {
+    method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body || {}),
-  }, "Watch buyers could not be synced. Try again.");
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.message || "Watch buyers could not be synced. Try again.");
+  }
   return response.json();
 }
 
@@ -25,11 +27,10 @@ export function LegacyBuyerSync({ clients = [] }: { clients?: Client[] }) {
   const [selected, setSelected] = useState<Record<number, string>>({});
   const [created, setCreated] = useState(0);
   const invalidate = () => {
-    return Promise.all([
-      invalidateClientCaches(queryClient),
-      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] }),
-      queryClient.invalidateQueries({ queryKey: [api.inventory.get.path] }),
-    ]);
+    queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
+    queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
+    queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
+    queryClient.invalidateQueries({ queryKey: [api.inventory.get.path] });
   };
   const sync = useMutation({
     mutationFn: () => post<BuyerSyncReport>(buyerSyncPath),

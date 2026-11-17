@@ -1,7 +1,6 @@
-import type { WatchIntakeInput, WatchIntakeValues } from "./model";
+import type { WatchIntakeValues } from "./model";
 import type { SaleBuyerDraft } from "@shared/sale-buyer";
-import { watchIntakeFieldTab, watchIntakeMoneyFields } from "./model";
-import { resolveWatchFormStatus } from "@/lib/watch-form-contract";
+import { buildWatchIntakePayload, watchIntakeFieldTab, watchIntakeMoneyFields } from "./model";
 
 const labels: Record<keyof WatchIntakeValues, string> = {
   brand: "Brand", model: "Model", referenceNumber: "Reference", serialNumber: "Serial number", internalSerial: "Movement serial",
@@ -19,15 +18,9 @@ const labels: Record<keyof WatchIntakeValues, string> = {
 };
 const sectionTitles = ["Watch", "Purchase", "Preparation", "Listing & Sale"];
 export function IntakeReview({ values, clients, edit, buyer }: {
-  values: WatchIntakeInput; clients: Array<{ id: number; name: string }>; edit: (tab: number) => void; buyer?: SaleBuyerDraft;
+  values: WatchIntakeValues; clients: Array<{ id: number; name: string }>; edit: (tab: number) => void; buyer?: SaleBuyerDraft;
 }) {
-  const status = resolveWatchFormStatus({
-    status: values.status,
-    dateSold: values.dateSold,
-    dateReturnedFromService: values.dateReturnedFromService,
-    dateListed: values.dateListed,
-    dateReceived: values.dateReceived,
-  });
+  const status = buildWatchIntakePayload(values).status;
   return <div className="mx-auto max-w-3xl space-y-4">
     <div className="rounded-xl bg-emerald-900 p-5 text-white">
       <p className="text-xs font-semibold uppercase tracking-[.16em] text-emerald-200">Review before saving</p>

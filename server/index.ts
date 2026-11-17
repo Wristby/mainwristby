@@ -6,14 +6,11 @@ import { createServer } from "http";
 import { requestMetadataLogger, safeErrorHandler, securityHeaders } from "./security";
 import { startNotebookSnapshotScheduler } from "./notebook-snapshot-scheduler";
 import { storage } from "./storage";
-import { runWithOwner } from "./tenant";
-import { registerStripeWebhook } from "./billing";
 
 const app = express();
 const httpServer = createServer(app);
 app.disable("x-powered-by");
 app.use(securityHeaders);
-registerStripeWebhook(app);
 
 declare module "http" {
   interface IncomingMessage {
@@ -47,11 +44,7 @@ app.use(requestMetadataLogger(log));
 (async () => {
   await registerRoutes(httpServer, app);
   const stopSnapshotScheduler = startNotebookSnapshotScheduler(
-    async monthKey => {
-      for (const ownerId of await storage.getAccountIds()) {
-        await runWithOwner(ownerId, () => storage.captureDealerNotebookInventorySnapshot(monthKey));
-      }
-    },
+    monthKey => storage.captureDealerNotebookInventorySnapshot(monthKey),
   );
   httpServer.once("close", stopSnapshotScheduler);
 

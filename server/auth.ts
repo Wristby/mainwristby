@@ -2,15 +2,10 @@ import session from "express-session";
 import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import type { Express, RequestHandler } from "express";
-import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, or, sql } from "drizzle-orm";
-import { z } from "zod";
-import { db, pool } from "./db";
+import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { initializeLoginProtection, loginAttemptLimit, sameOriginWrites } from "./security";
-import { runWithOwner } from "./tenant";
-import { isMailConfigured, sendPasswordResetEmail, sendVerificationEmail } from "./mailer";
-import { resolvePlanAccess } from "@shared/plan-access";
+import { eq } from "drizzle-orm";
+import { denyRegistration, initializeLoginProtection, loginAttemptLimit, sameOriginWrites } from "./security";
 
 declare module "express-session" {
   interface SessionData {
@@ -45,249 +40,27 @@ export function getSession() {
   });
 }
 
-const signupSchema = z.object({
-  username: z.string().trim().min(3).max(50).regex(/^[A-Za-z0-9._-]+$/),
-  email: z.string().trim().email().max(254),
-  firstName: z.string().trim().max(80).optional().default(""),
-  lastName: z.string().trim().max(80).optional().default(""),
-  password: z.string().min(12).max(128),
-  termsAccepted: z.literal(true),
-}).strict();
-
-const POLICY_VERSION = "draft-2026-11-16";
-const tokenSchema = z.object({ token: z.string().min(32).max(128) }).strict();
-const resetPasswordSchema = z.object({
-  token: z.string().min(32).max(128),
-  password: z.string().min(12).max(128),
-}).strict();
-
-const requiredAccountColumns = [
-  "users.account_role",
-  "users.subscription_status",
-  "users.email_verified_at",
-  "users.email_verification_token_hash",
-  "users.email_verification_expires_at",
-  "users.password_reset_token_hash",
-  "users.password_reset_expires_at",
-  "users.terms_accepted_at",
-  "users.terms_version",
-  "users.privacy_notice_version",
-  "clients.owner_id",
-  "inventory.owner_id",
-  "expenses.owner_id",
-  "settings.owner_id",
-  "dealer_notebook_entries.owner_id",
-  "retention_holds.owner_id",
-  "transaction_parties.owner_id",
-  "retention_audit.owner_id",
-  "retention_policies.owner_id",
-  "inventory_price_history.owner_id",
-  "personal_collection_valuations.owner_id",
-];
-
-async function publicAccountSchemaReady(): Promise<boolean> {
-  try {
-    const { rows } = await pool.query<{ table_name: string; column_name: string }>(`
-      SELECT table_name, column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND (table_name, column_name) IN (
-          SELECT split_part(required, '.', 1), split_part(required, '.', 2)
-          FROM unnest($1::text[]) AS required
-        )
-    `, [requiredAccountColumns]);
-    const present = new Set(rows.map(row => `${row.table_name}.${row.column_name}`));
-    return requiredAccountColumns.every(column => present.has(column));
-  } catch {
-    return false;
-  }
-}
-
-async function publicRegistrationReady(): Promise<boolean> {
-  if (process.env.PUBLIC_REGISTRATION_ENABLED !== "true" ||
-      process.env.PUBLIC_LEGAL_DOCUMENTS_APPROVED !== "true" ||
-      POLICY_VERSION.startsWith("draft-") ||
-      !isMailConfigured()) {
-    return false;
-  }
-  return publicAccountSchemaReady();
-}
-
-function hashToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function publicUser(user: typeof users.$inferSelect) {
-  return {
-    id: user.id,
-    username: user.username,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-    profileImageUrl: user.profileImageUrl,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-    accountRole: user.accountRole,
-    subscriptionStatus: user.subscriptionStatus,
-    emailVerified: Boolean(user.emailVerifiedAt),
-  };
-}
-
-export async function setupAuth(
-  app: Express,
-  options: { onAccountCreated?: (userId: string) => Promise<void> } = {},
-) {
+export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   await initializeLoginProtection();
   app.use("/api", sameOriginWrites);
   app.use(getSession());
 
-  // Registration stays closed until the manual tenant migration, SMTP
-  // configuration, and explicit legal-document approval are present.
-  app.get("/api/public/registration-status", async (_req, res) => {
-    res.setHeader("Cache-Control", "no-store");
-    res.json({ enabled: await publicRegistrationReady() });
-  });
-
-  app.post("/api/register", loginAttemptLimit, async (req, res) => {
-    const parsed = signupSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Enter a valid username, email, and password of at least 12 characters." });
-    if (!(await publicRegistrationReady())) {
-      return res.status(503).json({ message: "Account registration is not available on this host yet." });
-    }
-    const input = { ...parsed.data, email: parsed.data.email.toLowerCase() };
-    try {
-      const [existing] = await db.select({ id: users.id }).from(users).where(or(
-        sql`lower(${users.username}) = ${input.username.toLowerCase()}`,
-        sql`lower(${users.email}) = ${input.email.toLowerCase()}`,
-      )).limit(1);
-      if (existing) {
-        // Do not disclose whether a username or an email is already registered.
-        return res.status(202).json({ message: "If the details can be used, a verification email will arrive shortly." });
-      }
-
-      const token = randomBytes(32).toString("base64url");
-      const [user] = await db.insert(users).values({
-        username: input.username.toLowerCase(),
-        email: input.email.toLowerCase(),
-        password: await bcrypt.hash(input.password, 12),
-        firstName: input.firstName || null,
-        lastName: input.lastName || null,
-        subscriptionStatus: "trial_pending",
-        emailVerificationTokenHash: hashToken(token),
-        emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        termsAcceptedAt: new Date(),
-        termsVersion: POLICY_VERSION,
-        privacyNoticeVersion: POLICY_VERSION,
-      }).returning();
-      await options.onAccountCreated?.(user.id);
-      await sendVerificationEmail(user.email!, user.firstName, token);
-      return res.status(202).json({ message: "If the details can be used, a verification email will arrive shortly." });
-    } catch {
-      console.error("Account registration could not be completed.");
-      return res.status(503).json({ message: "Account registration is temporarily unavailable." });
-    }
-  });
-
-  app.post("/api/verify-email", loginAttemptLimit, async (req, res) => {
-    const parsed = tokenSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Verification link is invalid or expired." });
-    try {
-      const verifiedAt = new Date();
-      const [user] = await db.update(users).set({
-        emailVerifiedAt: verifiedAt,
-        subscriptionStatus: "trial",
-        emailVerificationTokenHash: null,
-        emailVerificationExpiresAt: null,
-        updatedAt: verifiedAt,
-      }).where(and(
-        eq(users.emailVerificationTokenHash, hashToken(parsed.data.token)),
-        gt(users.emailVerificationExpiresAt, new Date()),
-      )).returning({ id: users.id });
-      if (!user) return res.status(400).json({ message: "Verification link is invalid or expired." });
-      return res.json({ message: "Email verified. Your 7-day trial starts now. You can sign in." });
-    } catch {
-      return res.status(503).json({ message: "Email verification is temporarily unavailable." });
-    }
-  });
-
-  app.post("/api/resend-verification", loginAttemptLimit, async (req, res) => {
-    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    if (!z.string().email().safeParse(email).success || !isMailConfigured()) {
-      return res.status(202).json({ message: "If the account needs verification, a message will arrive shortly." });
-    }
-    try {
-      const [user] = await db.select().from(users).where(sql`lower(${users.email}) = ${email.toLowerCase()}`).limit(1);
-      if (user && !user.emailVerifiedAt && user.accountRole !== "owner") {
-        const token = randomBytes(32).toString("base64url");
-        await db.update(users).set({
-          emailVerificationTokenHash: hashToken(token),
-          emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        }).where(eq(users.id, user.id));
-        await sendVerificationEmail(email, user.firstName, token);
-      }
-      return res.status(202).json({ message: "If the account needs verification, a message will arrive shortly." });
-    } catch {
-      return res.status(202).json({ message: "If the account needs verification, a message will arrive shortly." });
-    }
-  });
-
-  app.post("/api/password-reset", loginAttemptLimit, async (req, res) => {
-    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    const generic = { message: "If the account exists, a password reset link will arrive shortly." };
-    if (!z.string().email().safeParse(email).success || !isMailConfigured()) return res.status(202).json(generic);
-    try {
-      const [user] = await db.select().from(users).where(sql`lower(${users.email}) = ${email.toLowerCase()}`).limit(1);
-      if (user?.emailVerifiedAt) {
-        const token = randomBytes(32).toString("base64url");
-        await db.update(users).set({
-          passwordResetTokenHash: hashToken(token),
-          passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
-        }).where(eq(users.id, user.id));
-        await sendPasswordResetEmail(email, user.firstName, token);
-      }
-      return res.status(202).json(generic);
-    } catch {
-      return res.status(202).json(generic);
-    }
-  });
-
-  app.post("/api/password-reset/confirm", loginAttemptLimit, async (req, res) => {
-    const parsed = resetPasswordSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Reset link is invalid or expired." });
-    try {
-      const [user] = await db.update(users).set({
-        password: await bcrypt.hash(parsed.data.password, 12),
-        passwordResetTokenHash: null,
-        passwordResetExpiresAt: null,
-        updatedAt: new Date(),
-      }).where(and(
-        eq(users.passwordResetTokenHash, hashToken(parsed.data.token)),
-        gt(users.passwordResetExpiresAt, new Date()),
-      )).returning({ id: users.id });
-      if (!user) return res.status(400).json({ message: "Reset link is invalid or expired." });
-      await pool.query("DELETE FROM sessions WHERE sess->>'userId' = $1", [user.id]);
-      return res.json({ message: "Password updated. You can now sign in." });
-    } catch {
-      return res.status(503).json({ message: "Password reset is temporarily unavailable." });
-    }
-  });
+  // Register endpoint
+  app.post("/api/register", denyRegistration);
 
   // Login endpoint
   app.post("/api/login", loginAttemptLimit, async (req, res) => {
     try {
-      const { username, identifier, password } = req.body ?? {};
-      const loginId = typeof identifier === "string" ? identifier : username;
+      const { username, password } = req.body ?? {};
 
-      if (typeof loginId !== "string" || typeof password !== "string" ||
-          !loginId || !password || loginId.length > 256 || password.length > 1024) {
-        return res.status(400).json({ message: "Email or username and password are required." });
+      if (typeof username !== "string" || typeof password !== "string" ||
+          !username || !password || username.length > 256 || password.length > 1024) {
+        return res.status(400).json({ message: "Username and password are required" });
       }
 
-      const [user] = await db.select().from(users).where(or(
-        sql`lower(${users.username}) = ${loginId.toLowerCase()}`,
-        eq(users.email, loginId.toLowerCase()),
-      )).limit(1);
+      // Find user
+      const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
       if (!user) {
         return res.status(401).json({ message: "Invalid username or password" });
       }
@@ -296,9 +69,6 @@ export async function setupAuth(
       const isValid = await bcrypt.compare(password, user.password);
       if (!isValid) {
         return res.status(401).json({ message: "Invalid username or password" });
-      }
-      if (!user.emailVerifiedAt && user.accountRole !== "owner") {
-        return res.status(403).json({ message: "Verify your email before signing in.", needsEmailVerification: true });
       }
 
       // Set session
@@ -310,7 +80,16 @@ export async function setupAuth(
         req.session.save((err) => err ? reject(err) : resolve());
       });
       
-      res.json(publicUser(user));
+      res.json({
+        id: user.id,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        profileImageUrl: user.profileImageUrl,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      });
     } catch {
       console.error("Login failed due to an internal error.");
       res.status(500).json({ message: "Internal server error" });
@@ -331,16 +110,25 @@ export async function setupAuth(
   // Get current user
   app.get("/api/auth/user", async (req, res) => {
     if (!req.session.userId) {
-      return res.json(null);
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     const [user] = await db.select().from(users).where(eq(users.id, req.session.userId)).limit(1);
     if (!user) {
       req.session.destroy(() => {});
-      return res.json(null);
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
-    res.json(publicUser(user));
+    res.json({
+      id: user.id,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      profileImageUrl: user.profileImageUrl,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    });
   });
 }
 
@@ -349,54 +137,11 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized" });
   }
   try {
-    const [user] = await db.select({
-      id: users.id,
-      emailVerifiedAt: users.emailVerifiedAt,
-      accountRole: users.accountRole,
-      subscriptionStatus: users.subscriptionStatus,
-    }).from(users)
+    const [user] = await db.select({ id: users.id }).from(users)
       .where(eq(users.id, req.session.userId)).limit(1);
-    if (!user || (!user.emailVerifiedAt && user.accountRole !== "owner")) {
+    if (!user) {
       req.session.destroy(() => {});
       res.status(401).json({ message: "Unauthorized" });
-      return;
-    }
-    const planAccess = resolvePlanAccess(user);
-    const canUseAccountTools =
-      req.path.startsWith("/api/billing/") ||
-      req.path.startsWith("/api/retention/");
-    if (!planAccess.canAccessWorkspace && !canUseAccountTools) {
-      res.status(402).json({
-        code: planAccess.isTrialExpired ? "TRIAL_EXPIRED" : "SUBSCRIPTION_REQUIRED",
-        message: planAccess.isTrialExpired
-          ? "Your 7-day trial has ended. Subscribe to Pro to continue using your workspace."
-          : "An active subscription is required to use this workspace.",
-      });
-      return;
-    }
-    runWithOwner(user.id, next);
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const requirePro: RequestHandler = async (req, res, next) => {
-  if (!req.session.userId) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-  try {
-    const [user] = await db.select({
-      accountRole: users.accountRole,
-      subscriptionStatus: users.subscriptionStatus,
-      emailVerifiedAt: users.emailVerifiedAt,
-    }).from(users).where(eq(users.id, req.session.userId)).limit(1);
-    if (!user) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
-    }
-    if (!resolvePlanAccess(user).isPro) {
-      res.status(402).json({ message: "AI features are available during the 7-day trial and with WRISTBY Pro." });
       return;
     }
     next();

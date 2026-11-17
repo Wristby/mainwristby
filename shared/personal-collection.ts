@@ -13,8 +13,6 @@ const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date
 const optionalDate = calendarDate.nullable().optional();
 const optionalMoney = z.number().int().min(0).max(2_000_000_000).nullable().optional();
 const nullableText = (maxLength = 1000) => z.string().trim().max(maxLength).nullable().optional();
-const collectionConditionSchema = z.enum(["New", "Pre-owned", "Vintage"]);
-const collectionConditionGradeSchema = z.enum(["Not graded", "Mint", "Excellent", "Very Good", "Good", "Fair", "Poor"]);
 
 export const personalCollectionFeeSchema = z.object({
   label: z.string().trim().min(1).max(100),
@@ -32,8 +30,9 @@ export const personalCollectionInputSchema = insertPersonalCollectionWatchSchema
   manufacturer: z.string().trim().min(1, "Manufacturer is required.").max(100),
   model: nullableText(150),
   subModel: nullableText(150),
-  condition: collectionConditionSchema.default("Pre-owned"),
-  conditionGrade: collectionConditionGradeSchema.default("Not graded"),
+  condition: z.enum(["New", "Pre-owned", "Vintage"]).default("Pre-owned"),
+  conditionGrade: z.enum(["Not graded", "Mint", "Excellent", "Very Good", "Good", "Fair", "Poor"])
+    .default("Not graded"),
   year: z.number().int().min(1500).max(2200).nullable().optional(),
   serialNumber: nullableText(120),
   linkCount: nullableText(40),
@@ -51,14 +50,8 @@ export const personalCollectionInputSchema = insertPersonalCollectionWatchSchema
   msrp: optionalMoney,
   intakeFees: z.array(personalCollectionFeeSchema).max(50).optional(),
   notes: nullableText(5000),
-  technicalDetails: z.record(z.string(), z.string().trim().max(300)).optional(),
-});
-
-export const personalCollectionUpdateInputSchema = personalCollectionInputSchema.partial().extend({
-  condition: collectionConditionSchema.optional(),
-  conditionGrade: collectionConditionGradeSchema.optional(),
+  technicalDetails: z.record(z.string().trim().max(300)).optional(),
 });
 
 export type PersonalCollectionInput = z.input<typeof personalCollectionInputSchema>;
-export type PersonalCollectionUpdateInput = z.input<typeof personalCollectionUpdateInputSchema>;
 export type PersonalCollectionValuationInput = z.infer<typeof personalCollectionValuationInputSchema>;

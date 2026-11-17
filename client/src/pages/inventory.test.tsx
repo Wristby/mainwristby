@@ -152,7 +152,7 @@ describe("Sold list controls", () => {
       deadlineButton(render()).props.onClick();
       const tree = render();
       nodes(tree).find(node => typeof node.props.onClick === "function" && text(node).includes("Export CSV"))!.props.onClick();
-      expect(await blob!.text()).toBe('"ID","Brand","Sold Date"\n"1","Omega","2026-10-06"\n"3","Omega","2026-10-05"');
+      expect(await blob!.text()).toBe('ID,Brand,Sold Date\n1,"Omega",2026-10-06\n3,"Omega",2026-10-05');
       expect(link.click).toHaveBeenCalledOnce();
     } finally {
       harness.settings.inventory_export_columns = original;

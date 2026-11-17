@@ -73,9 +73,8 @@ export async function initializeLoginProtection() {
 
 export const loginAttemptLimit: RequestHandler = async (req, res, next) => {
   try {
-    const identifier = typeof req.body?.username === "string" ? req.body.username
-      : typeof req.body?.identifier === "string" ? req.body.identifier : "(invalid)";
-    const username = identifier.toLowerCase();
+    const username = typeof req.body?.username === "string"
+      ? req.body.username.toLowerCase() : "(invalid)";
     const keys = [`ip:${req.ip || req.socket.remoteAddress || "unknown"}`, `account:${username}`]
       .map((value) => createHash("sha256").update(value).digest("hex"));
     await pool.query("DELETE FROM login_attempts WHERE expires_at <= NOW()");

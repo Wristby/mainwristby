@@ -1,59 +1,62 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
-import { apiFetch, fetchApiResponse, throwIfResNotOk } from "@/lib/queryClient";
 
 async function fetchUser(): Promise<User | null> {
-  const response = await fetchApiResponse("/api/auth/user");
+  const response = await fetch("/api/auth/user", {
+    credentials: "include",
+  });
 
   if (response.status === 401) {
     return null;
   }
 
-  await throwIfResNotOk(response, "Could not check your sign-in status.");
+  if (!response.ok) {
+    throw new Error(`${response.status}: ${response.statusText}`);
+  }
 
   return response.json();
 }
 
 async function logoutFn(): Promise<void> {
-  await apiFetch("/api/logout", {
+  await fetch("/api/logout", {
     method: "POST",
-  }, "Could not sign out. Please try again.");
+    credentials: "include",
+  });
 }
 
 interface LoginCredentials {
-  identifier: string;
+  username: string;
   password: string;
 }
 
 async function loginFn(credentials: LoginCredentials): Promise<User> {
-  const response = await apiFetch("/api/login", {
+  const response = await fetch("/api/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credentials),
-  }, "Could not sign in. Check your details and try again.");
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Login failed");
+  }
 
   return response.json();
 }
 
-export interface SignupCredentials {
-  username: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  password: string;
-  termsAccepted: boolean;
-}
-
-interface AuthMessage {
-  message: string;
-}
-
-async function registerFn(credentials: SignupCredentials): Promise<AuthMessage> {
-  const response = await apiFetch("/api/register", {
+async function registerFn(credentials: LoginCredentials): Promise<User> {
+  const response = await fetch("/api/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credentials),
-  }, "Could not create your account. Please try again.");
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Registration failed");
+  }
 
   return response.json();
 }
@@ -79,13 +82,15 @@ export function useAuth() {
     mutationFn: loginFn,
     onSuccess: (data) => {
       queryClient.setQueryData(["/api/auth/user"], data);
+      window.location.href = "/";
     },
   });
 
   const registerMutation = useMutation({
     mutationFn: registerFn,
     onSuccess: (data) => {
-      return data;
+      queryClient.setQueryData(["/api/auth/user"], data);
+      window.location.href = "/";
     },
   });
 

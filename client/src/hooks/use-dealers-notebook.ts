@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest, fetchApiResponse, queryClient, throwIfResNotOk } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
   NotebookAction,
   NotebookComparisonMode,
@@ -19,7 +19,10 @@ export interface DealerNotebookState {
 }
 
 async function readNotebookResponse(response: Response): Promise<DealerNotebookState> {
-  await throwIfResNotOk(response, "Could not load Dealer's Notebook.");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.message || "Could not load Dealer's Notebook.");
+  }
   return response.json() as Promise<DealerNotebookState>;
 }
 
@@ -30,7 +33,9 @@ function notebookQueryKey(monthKey: string) {
 export function useDealerNotebookEntry(monthKey: string) {
   return useQuery({
     queryKey: notebookQueryKey(monthKey),
-    queryFn: async () => readNotebookResponse(await fetchApiResponse(`/api/dealers-notebook/${encodeURIComponent(monthKey)}`)),
+    queryFn: async () => readNotebookResponse(await fetch(`/api/dealers-notebook/${encodeURIComponent(monthKey)}`, {
+      credentials: "include",
+    })),
     enabled: /^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey),
   });
 }

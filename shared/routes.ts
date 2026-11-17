@@ -2,11 +2,7 @@ import { z } from 'zod';
 import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses, inventoryPriceHistory, type InventoryItem } from './schema';
 import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
-import {
-  personalCollectionInputSchema,
-  personalCollectionUpdateInputSchema,
-  personalCollectionValuationInputSchema,
-} from './personal-collection';
+import { personalCollectionInputSchema, personalCollectionValuationInputSchema } from './personal-collection';
 import { personalCollectionValuations, personalCollectionWatches, type PersonalCollectionWatch } from './schema';
 import { isCalendarDate } from './delivery';
 import { storeWarrantyMonthsSchema } from './warranty';
@@ -284,7 +280,7 @@ export const api = {
     update: {
       method: 'PUT' as const,
       path: '/api/personal-collection/:id',
-      input: personalCollectionUpdateInputSchema,
+      input: personalCollectionInputSchema.partial(),
       responses: {
         200: z.custom<PersonalCollectionWatch>(),
         400: errorSchemas.validation,

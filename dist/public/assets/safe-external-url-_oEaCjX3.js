@@ -1,1 +1,0 @@
-function s(e,n=!1){if(!e||/[\u0000-\u001f\u007f]/.test(e))return;const r=e.trim();if(!r)return;const o=/^[a-z][a-z\d+.-]*:/i.test(r);if(!(!o&&!n))try{const t=new URL(o?r:`https://${r}`);return t.protocol!=="https:"&&t.protocol!=="http:"||!t.hostname||t.username||t.password?void 0:t.href}catch{return}}export{s};

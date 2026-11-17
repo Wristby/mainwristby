@@ -1,14 +1,10 @@
-import { afterEach, beforeEach, describe, expect, vi } from "vitest";
-import { ownerIt as it } from "./owner-test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import { createServer, type Server } from "node:http";
 
 const fixture = vi.hoisted(() => ({
   query: vi.fn(),
   userExists: true,
-  accountRole: "owner",
-  subscriptionStatus: "free",
-  emailVerifiedAt: new Date("2026-11-16T00:00:00Z"),
 }));
 vi.mock("../../../server/db", () => ({
   pool: { query: fixture.query },
@@ -18,9 +14,6 @@ vi.mock("../../../server/db", () => ({
         where: () => ({
           limit: async () => fixture.userExists ? [{
             id: "test-user", username: "test-account", password: "test-hash",
-            accountRole: fixture.accountRole,
-            subscriptionStatus: fixture.subscriptionStatus,
-            emailVerifiedAt: fixture.emailVerifiedAt,
           }] : [],
         }),
       }),
@@ -34,15 +27,7 @@ vi.mock("bcryptjs", () => ({
   default: { compare: async (password: string) => password === "correct-test-password" },
 }));
 vi.mock("../../../server/storage", () => ({
-  SaleBuyerSaveError: class SaleBuyerSaveError extends Error {
-    status = 400;
-  },
-  NotebookSnapshotError: class NotebookSnapshotError extends Error {
-    status = 409;
-  },
   storage: {
-    getAccountIds: async () => [],
-    getWorkspaceAccess: async () => ({ isPro: true, plan: "pro", aiEnabled: true, activeWatchCount: 0, clientCount: 0, limits: null }),
     getSetting: async () => undefined,
     getClients: async () => [{ id: 1 }],
     getAllSettings: async () => ({}),
@@ -68,9 +53,6 @@ beforeEach(() => {
   vi.stubEnv("SESSION_SECRET", "isolated-test-secret-not-a-real-credential");
   vi.stubEnv("NODE_ENV", "test");
   fixture.userExists = true;
-  fixture.accountRole = "owner";
-  fixture.subscriptionStatus = "free";
-  fixture.emailVerifiedAt = new Date("2026-11-16T00:00:00Z");
   fixture.query.mockReset();
   fixture.query.mockResolvedValue({ rows: [] });
 });
@@ -94,8 +76,6 @@ describe("private app access", () => {
       res.json({ ok: true });
     });
     app.get("/api/private", isAuthenticated, (_req, res) => res.json({ ok: true }));
-    app.get("/api/billing/status", isAuthenticated, (_req, res) => res.json({ ok: true }));
-    app.get("/api/retention/schedule", isAuthenticated, (_req, res) => res.json({ ok: true }));
     app.use(safeErrorHandler);
     return serve(app);
   }
@@ -108,28 +88,6 @@ describe("private app access", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ message: "Public registration is disabled." });
     expect(fixture.query).not.toHaveBeenCalled();
-  });
-
-  it("keeps registration closed until legal documents are explicitly approved", async () => {
-    vi.stubEnv("PUBLIC_REGISTRATION_ENABLED", "true");
-    vi.stubEnv("PUBLIC_LEGAL_DOCUMENTS_APPROVED", "false");
-    const url = await authApp();
-    const status = await fetch(`${url}/api/public/registration-status`);
-    expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ enabled: false });
-
-    const response = await fetch(`${url}/api/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "new-account",
-        email: "new-account@example.invalid",
-        password: "valid-test-password-123",
-        termsAccepted: true,
-      }),
-    });
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ message: "Account registration is not available on this host yet." });
   });
 
   it("keeps existing-account login working and regenerates its session cookie", async () => {
@@ -160,26 +118,6 @@ describe("private app access", () => {
       headers: { Cookie: cookie.split(";")[0] },
     });
     expect(revoked.status).toBe(401);
-  });
-
-  it("pauses expired trial workspace APIs but leaves billing and retention controls available", async () => {
-    fixture.accountRole = "customer";
-    fixture.subscriptionStatus = "trial";
-    fixture.emailVerifiedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-    const url = await authApp();
-    const login = await fetch(`${url}/api/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "test-account", password: "correct-test-password" }),
-    });
-    expect(login.status).toBe(200);
-    const cookie = login.headers.get("set-cookie")!.split(";")[0];
-
-    const workspace = await fetch(`${url}/api/private`, { headers: { Cookie: cookie } });
-    expect(workspace.status).toBe(402);
-    expect(await workspace.json()).toMatchObject({ code: "TRIAL_EXPIRED" });
-    expect((await fetch(`${url}/api/billing/status`, { headers: { Cookie: cookie } })).status).toBe(200);
-    expect((await fetch(`${url}/api/retention/schedule`, { headers: { Cookie: cookie } })).status).toBe(200);
   });
 
   it("rejects malformed login credentials and unauthenticated private requests", async () => {
@@ -224,41 +162,6 @@ describe("AI secret isolation", () => {
     const [providerUrl, options] = providerFetch.mock.calls[0];
     expect(String(providerUrl)).not.toMatch(/key=|isolated-dummy-ai-key/);
     expect(options?.headers).toMatchObject({ "x-goog-api-key": "isolated-dummy-ai-key" });
-  });
-});
-
-describe("Zod API validation responses", () => {
-  it("returns 400 field-validation responses for malformed create requests", async () => {
-    const app = express();
-    app.use(express.json());
-    await registerRoutes(createServer(app), app);
-    const url = await serve(app);
-    const login = await fetch(`${url}/api/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "test-account", password: "correct-test-password" }),
-    });
-    expect(login.status).toBe(200);
-    const cookie = login.headers.get("set-cookie")!.split(";")[0];
-    const invalidCreates = [
-      ["/api/clients", {}],
-      ["/api/inventory", {}],
-      ["/api/expenses", {}],
-      ["/api/personal-collection", {}],
-    ] as const;
-
-    for (const [path, payload] of invalidCreates) {
-      const response = await fetch(`${url}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: cookie },
-        body: JSON.stringify(payload),
-      });
-      const responseText = await response.text();
-      expect(response.status, `${path}: ${responseText}`).toBe(400);
-      const body = JSON.parse(responseText);
-      expect(body.message, path).toEqual(expect.any(String));
-      expect(body.message, path).not.toBe("Internal server error.");
-    }
   });
 });
 

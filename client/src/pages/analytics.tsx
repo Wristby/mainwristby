@@ -8,7 +8,6 @@ import {
   summarizeWatchSales,
 } from "@shared/reporting";
 import { useInventory } from "@/hooks/use-inventory";
-import { csvCell } from "@/lib/csv";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -234,7 +233,11 @@ export default function Analytics() {
     URL.revokeObjectURL(url);
   };
 
-  const csvEscape = csvCell;
+  const csvEscape = (val: string | number | null | undefined) => {
+    let s = String(val ?? "");
+    if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
 
   const fmtMoney = (cents: number) => (cents / 100).toFixed(2);
   const fmtDate = (d: string | Date | null | undefined) => d ? formatDate(new Date(d), "yyyy-MM-dd") : "";

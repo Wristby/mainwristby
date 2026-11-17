@@ -57,11 +57,10 @@ import { COUNTRIES } from "@/lib/countries";
 
 const createExpenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
-  date: z.date(),
+  date: z.coerce.date(),
 });
 
 type CreateExpenseFormValues = z.infer<typeof createExpenseFormSchema>;
-type CreateExpenseFormInput = z.input<typeof createExpenseFormSchema>;
 
 export default function Dashboard() {
   const [isAddWatchOpen, setIsAddWatchOpen] = useState(false);
@@ -81,7 +80,7 @@ export default function Dashboard() {
   const createExpenseMutation = useCreateExpense();
   const createClientMutation = useCreateClient();
 
-  const expenseForm = useForm<CreateExpenseFormInput, unknown, CreateExpenseFormValues>({
+  const expenseForm = useForm<CreateExpenseFormValues>({
     resolver: zodResolver(createExpenseFormSchema),
     defaultValues: {
       description: "",

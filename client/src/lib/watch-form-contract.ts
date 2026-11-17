@@ -127,7 +127,6 @@ export const watchEditFormSchema = commonWatchFormSchema.extend({
 }).superRefine(validateManufacturerWarrantyDates);
 
 export type WatchEditFormValues = z.infer<typeof watchEditFormSchema>;
-export type WatchEditFormInput = z.input<typeof watchEditFormSchema>;
 
 export const watchEditFormDefaults: WatchEditFormValues = {
   ...commonWatchFormDefaults,
