@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import type { PersonalCollectionInput, PersonalCollectionValuationInput } from "@shared/personal-collection";
+import { apiJson, apiRequest, readApiJson } from "@/lib/queryClient";
+import { refreshData } from "@/lib/refresh-data";
 
 export const personalCollectionQueryKeys = {
   list: [api.personalCollection.list.path] as const,
@@ -8,30 +10,22 @@ export const personalCollectionQueryKeys = {
   valuations: (id: number) => [api.personalCollection.valuations.path, id] as const,
 };
 
-async function readError(response: Response, fallback: string): Promise<Error> {
-  const payload = await response.json().catch(() => null);
-  return new Error(payload?.message || fallback);
-}
-
 export function usePersonalCollection() {
   return useQuery({
     queryKey: personalCollectionQueryKeys.list,
-    queryFn: async () => {
-      const response = await fetch(api.personalCollection.list.path, { credentials: "include" });
-      if (!response.ok) throw await readError(response, "Could not load your collection.");
-      return api.personalCollection.list.responses[200].parse(await response.json());
-    },
+    queryFn: ({ signal }) => apiJson("GET", api.personalCollection.list.path, undefined,
+      api.personalCollection.list.responses[200], { signal }),
   });
 }
 
 export function usePersonalCollectionWatch(id: number) {
   return useQuery({
     queryKey: personalCollectionQueryKeys.detail(id),
-    queryFn: async () => {
-      const response = await fetch(buildUrl(api.personalCollection.get.path, { id }), { credentials: "include" });
+    queryFn: async ({ signal }) => {
+      const response = await apiRequest("GET", buildUrl(api.personalCollection.get.path, { id }), undefined,
+        { signal, allowStatuses: [404] });
       if (response.status === 404) return null;
-      if (!response.ok) throw await readError(response, "Could not load this collection watch.");
-      return api.personalCollection.get.responses[200].parse(await response.json());
+      return readApiJson(response, api.personalCollection.get.responses[200]);
     },
     enabled: Number.isInteger(id) && id > 0,
   });
@@ -40,35 +34,21 @@ export function usePersonalCollectionWatch(id: number) {
 export function usePersonalCollectionValuations(id: number) {
   return useQuery({
     queryKey: personalCollectionQueryKeys.valuations(id),
-    queryFn: async () => {
-      const response = await fetch(buildUrl(api.personalCollection.valuations.path, { id }), { credentials: "include" });
-      if (!response.ok) throw await readError(response, "Could not load valuation history.");
-      return api.personalCollection.valuations.responses[200].parse(await response.json());
-    },
+    queryFn: ({ signal }) => apiJson("GET", buildUrl(api.personalCollection.valuations.path, { id }), undefined,
+      api.personalCollection.valuations.responses[200], { signal }),
     enabled: Number.isInteger(id) && id > 0,
   });
-}
-
-function invalidatePersonalValuationQueries(queryClient: ReturnType<typeof useQueryClient>, id: number) {
-  queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.valuations(id) });
-  queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.detail(id) });
-  queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.list });
 }
 
 export function useCreatePersonalCollectionValuation(watchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: PersonalCollectionValuationInput) => {
-      const response = await fetch(buildUrl(api.personalCollection.createValuation.path, { id: watchId }), {
-        method: api.personalCollection.createValuation.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!response.ok) throw await readError(response, "Could not add this valuation.");
-      return api.personalCollection.createValuation.responses[201].parse(await response.json());
+      return apiJson(api.personalCollection.createValuation.method,
+        buildUrl(api.personalCollection.createValuation.path, { id: watchId }), data,
+        api.personalCollection.createValuation.responses[201]);
     },
-    onSuccess: () => invalidatePersonalValuationQueries(queryClient, watchId),
+    onSuccess: () => refreshData(queryClient, "personalCollection"),
   });
 }
 
@@ -76,16 +56,11 @@ export function useUpdatePersonalCollectionValuation(watchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ valuationId, data }: { valuationId: number; data: PersonalCollectionValuationInput }) => {
-      const response = await fetch(buildUrl(api.personalCollection.updateValuation.path, { id: watchId, valuationId }), {
-        method: api.personalCollection.updateValuation.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!response.ok) throw await readError(response, "Could not correct this valuation.");
-      return api.personalCollection.updateValuation.responses[200].parse(await response.json());
+      return apiJson(api.personalCollection.updateValuation.method,
+        buildUrl(api.personalCollection.updateValuation.path, { id: watchId, valuationId }), data,
+        api.personalCollection.updateValuation.responses[200]);
     },
-    onSuccess: () => invalidatePersonalValuationQueries(queryClient, watchId),
+    onSuccess: () => refreshData(queryClient, "personalCollection"),
   });
 }
 
@@ -93,18 +68,10 @@ export function useCreatePersonalCollectionWatch() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: PersonalCollectionInput) => {
-      const response = await fetch(api.personalCollection.create.path, {
-        method: api.personalCollection.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!response.ok) throw await readError(response, "Could not add this collection watch.");
-      return api.personalCollection.create.responses[201].parse(await response.json());
+      return apiJson(api.personalCollection.create.method, api.personalCollection.create.path, data,
+        api.personalCollection.create.responses[201]);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.list });
-    },
+    onSuccess: () => refreshData(queryClient, "personalCollection"),
   });
 }
 
@@ -112,18 +79,12 @@ export function useUpdatePersonalCollectionWatch(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<PersonalCollectionInput>) => {
-      const response = await fetch(buildUrl(api.personalCollection.update.path, { id }), {
-        method: api.personalCollection.update.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!response.ok) throw await readError(response, "Could not save this collection watch.");
-      return api.personalCollection.update.responses[200].parse(await response.json());
+      return apiJson(api.personalCollection.update.method, buildUrl(api.personalCollection.update.path, { id }),
+        data, api.personalCollection.update.responses[200]);
     },
     onSuccess: (watch) => {
       queryClient.setQueryData(personalCollectionQueryKeys.detail(watch.id), watch);
-      queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.list });
+      return refreshData(queryClient, "personalCollection");
     },
   });
 }
@@ -132,16 +93,13 @@ export function useDeletePersonalCollectionWatch() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(buildUrl(api.personalCollection.delete.path, { id }), {
-        method: api.personalCollection.delete.method,
-        credentials: "include",
-      });
-      if (!response.ok) throw await readError(response, "Could not delete this collection watch.");
+      await apiRequest(api.personalCollection.delete.method, buildUrl(api.personalCollection.delete.path, { id }));
       return id;
     },
     onSuccess: (id) => {
       queryClient.removeQueries({ queryKey: personalCollectionQueryKeys.detail(id) });
-      queryClient.invalidateQueries({ queryKey: personalCollectionQueryKeys.list });
+      queryClient.removeQueries({ queryKey: personalCollectionQueryKeys.valuations(id) });
+      return refreshData(queryClient, "personalCollection");
     },
   });
 }

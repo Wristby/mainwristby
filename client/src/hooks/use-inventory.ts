@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type CreateInventoryRequest, type UpdateInventoryRequest } from "@shared/routes";
 import { normalizeWatchSerial } from "@shared/serial-match";
+import { apiJson, apiRequest, readApiJson } from "@/lib/queryClient";
+import { refreshData } from "@/lib/refresh-data";
 
 export function useInventorySerialMatches(
   serialNumber?: string | null,
@@ -12,14 +14,13 @@ export function useInventorySerialMatches(
   const normalizedInternalSerial = normalizeWatchSerial(internalSerial);
   return useQuery({
     queryKey: [api.inventory.serialMatches.path, normalizedSerial, normalizedInternalSerial, excludeId ?? null],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       if (serialNumber?.trim()) params.set("serialNumber", serialNumber.trim());
       if (internalSerial?.trim()) params.set("internalSerial", internalSerial.trim());
       if (excludeId != null) params.set("excludeId", String(excludeId));
-      const response = await fetch(`${api.inventory.serialMatches.path}?${params.toString()}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Could not check saved watch serial numbers.");
-      return api.inventory.serialMatches.responses[200].parse(await response.json());
+      return apiJson("GET", `${api.inventory.serialMatches.path}?${params.toString()}`,
+        undefined, api.inventory.serialMatches.responses[200], { signal });
     },
     enabled: enabled && Boolean(normalizedSerial || normalizedInternalSerial),
     staleTime: 15_000,
@@ -30,15 +31,13 @@ export function useInventorySerialMatches(
 export function useInventory(status?: string, includeArchived = false) {
   return useQuery({
     queryKey: [api.inventory.list.path, status, includeArchived],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
       if (includeArchived) params.set("includeArchived", "true");
       const query = params.toString();
       const url = query ? `${api.inventory.list.path}?${query}` : api.inventory.list.path;
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch inventory");
-      return api.inventory.list.responses[200].parse(await res.json());
+      return apiJson("GET", url, undefined, api.inventory.list.responses[200], { signal });
     },
   });
 }
@@ -46,12 +45,11 @@ export function useInventory(status?: string, includeArchived = false) {
 export function useInventoryItem(id: number) {
   return useQuery({
     queryKey: [api.inventory.get.path, id],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const url = buildUrl(api.inventory.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
+      const res = await apiRequest("GET", url, undefined, { signal, allowStatuses: [404] });
       if (res.status === 404) return null;
-      if (!res.ok) throw new Error("Failed to fetch inventory item");
-      return api.inventory.get.responses[200].parse(await res.json());
+      return readApiJson(res, api.inventory.get.responses[200]);
     },
     enabled: !!id,
   });
@@ -60,12 +58,9 @@ export function useInventoryItem(id: number) {
 export function useInventoryPriceHistory(id: number) {
   return useQuery({
     queryKey: [api.inventory.priceHistory.path, id],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const url = buildUrl(api.inventory.priceHistory.path, { id });
-      const response = await fetch(url, { credentials: "include" });
-      if (response.status === 404) return [];
-      if (!response.ok) throw new Error("Could not load listed price history.");
-      return api.inventory.priceHistory.responses[200].parse(await response.json());
+      return apiJson("GET", url, undefined, api.inventory.priceHistory.responses[200], { signal });
     },
     enabled: !!id,
   });
@@ -76,21 +71,10 @@ export function useUpdateInventoryPriceHistory(inventoryId: number) {
   return useMutation({
     mutationFn: async ({ historyId, listPrice }: { historyId: number; listPrice: number }) => {
       const url = buildUrl(api.inventory.updatePriceHistory.path, { id: inventoryId, historyId });
-      const response = await fetch(url, {
-        method: api.inventory.updatePriceHistory.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listPrice }),
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => null);
-        throw new Error(error?.message || "Failed to correct the listed price");
-      }
-      return api.inventory.updatePriceHistory.responses[200].parse(await response.json());
+      return apiJson(api.inventory.updatePriceHistory.method, url, { listPrice },
+        api.inventory.updatePriceHistory.responses[200]);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.inventory.priceHistory.path, inventoryId] });
-    },
+    onSuccess: () => refreshData(queryClient, "priceHistory"),
   });
 }
 
@@ -98,25 +82,9 @@ export function useCreateInventory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateInventoryRequest) => {
-      const res = await fetch(api.inventory.create.path, {
-        method: api.inventory.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => null);
-        throw new Error(error?.message || "Failed to create inventory item");
-      }
-      return api.inventory.create.responses[201].parse(await res.json());
+      return apiJson(api.inventory.create.method, api.inventory.create.path, data, api.inventory.create.responses[201]);
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-      if (variables.saleBuyer) {
-        queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
-        queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
-      }
-    },
+    onSuccess: () => refreshData(queryClient, "inventory"),
   });
 }
 
@@ -125,27 +93,9 @@ export function useUpdateInventory() {
   return useMutation({
     mutationFn: async ({ id, ...data }: UpdateInventoryRequest & { id: number }) => {
       const url = buildUrl(api.inventory.update.path, { id });
-      const res = await fetch(url, {
-        method: api.inventory.update.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => null);
-        throw new Error(error?.message || "Failed to update inventory item");
-      }
-      return api.inventory.update.responses[200].parse(await res.json());
+      return apiJson(api.inventory.update.method, url, data, api.inventory.update.responses[200]);
     },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.inventory.get.path, data.id] });
-      queryClient.invalidateQueries({ queryKey: [api.inventory.priceHistory.path, data.id] });
-      if (variables.saleBuyer) {
-        queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
-        queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
-      }
-    },
+    onSuccess: () => refreshData(queryClient, "inventory"),
   });
 }
 
@@ -154,15 +104,12 @@ export function useDeleteInventory() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.inventory.delete.path, { id });
-      const res = await fetch(url, { method: api.inventory.delete.method, credentials: "include" });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(payload?.message || "Failed to delete inventory item");
-      }
+      await apiRequest(api.inventory.delete.method, url);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.expenses.list.path] });
+    onSuccess: async (_data, id) => {
+      queryClient.setQueryData([api.inventory.get.path, id], null);
+      queryClient.removeQueries({ queryKey: [api.inventory.priceHistory.path, id] });
+      await refreshData(queryClient, "inventory");
     },
   });
 }
@@ -170,42 +117,27 @@ export function useDeleteInventory() {
 export function useArchivedInventory() {
   return useQuery({
     queryKey: [api.inventory.archived.path],
-    queryFn: async () => {
-      const res = await fetch(api.inventory.archived.path, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load archived watches");
-      return api.inventory.archived.responses[200].parse(await res.json());
-    },
+    queryFn: ({ signal }) => apiJson("GET", api.inventory.archived.path, undefined,
+      api.inventory.archived.responses[200], { signal }),
   });
 }
 
-async function postInventoryLifecycleAction(path: string, id: number, fallback: string) {
-  const res = await fetch(buildUrl(path, { id }), { method: "POST", credentials: "include" });
-  if (!res.ok) {
-    const payload = await res.json().catch(() => null);
-    throw new Error(payload?.message || fallback);
-  }
-  return res.json();
-}
-
-function invalidateInventoryLifecycleQueries(queryClient: ReturnType<typeof useQueryClient>, id: number) {
-  queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-  queryClient.invalidateQueries({ queryKey: [api.inventory.archived.path] });
-  queryClient.invalidateQueries({ queryKey: [api.inventory.get.path, id] });
-  queryClient.invalidateQueries({ queryKey: [api.dashboard.stats.path] });
+async function postInventoryLifecycleAction(path: string, id: number) {
+  return apiJson("POST", buildUrl(path, { id }));
 }
 
 export function useArchiveInventory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => postInventoryLifecycleAction(api.inventory.archive.path, id, "Failed to archive watch"),
-    onSuccess: (_item, id) => invalidateInventoryLifecycleQueries(queryClient, id),
+    mutationFn: (id: number) => postInventoryLifecycleAction(api.inventory.archive.path, id),
+    onSuccess: () => refreshData(queryClient, "inventory"),
   });
 }
 
 export function useRestoreInventory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => postInventoryLifecycleAction(api.inventory.restore.path, id, "Failed to restore watch"),
-    onSuccess: (_item, id) => invalidateInventoryLifecycleQueries(queryClient, id),
+    mutationFn: (id: number) => postInventoryLifecycleAction(api.inventory.restore.path, id),
+    onSuccess: () => refreshData(queryClient, "inventory"),
   });
 }

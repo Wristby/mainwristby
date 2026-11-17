@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, readApiJson, apiJson } from "@/lib/queryClient";
 import type {
   NotebookAction,
   NotebookComparisonMode,
@@ -19,11 +19,7 @@ export interface DealerNotebookState {
 }
 
 async function readNotebookResponse(response: Response): Promise<DealerNotebookState> {
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.message || "Could not load Dealer's Notebook.");
-  }
-  return response.json() as Promise<DealerNotebookState>;
+  return readApiJson<DealerNotebookState>(response);
 }
 
 function notebookQueryKey(monthKey: string) {
@@ -33,9 +29,8 @@ function notebookQueryKey(monthKey: string) {
 export function useDealerNotebookEntry(monthKey: string) {
   return useQuery({
     queryKey: notebookQueryKey(monthKey),
-    queryFn: async () => readNotebookResponse(await fetch(`/api/dealers-notebook/${encodeURIComponent(monthKey)}`, {
-      credentials: "include",
-    })),
+    queryFn: ({ signal }) => apiJson<DealerNotebookState>("GET",
+      `/api/dealers-notebook/${encodeURIComponent(monthKey)}`, undefined, undefined, { signal }),
     enabled: /^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey),
   });
 }
@@ -62,7 +57,7 @@ export function useSaveDealerNotebookActions() {
     },
     onSuccess: (result) => {
       client.setQueryData(notebookQueryKey(result.entry.monthKey), result);
-      client.invalidateQueries({ queryKey: notebookQueryKey(result.previousMonthKey) });
+      return client.invalidateQueries({ queryKey: ["/api/dealers-notebook"] });
     },
   });
 }
@@ -80,7 +75,7 @@ export function useGenerateDealerNotebookReport() {
     },
     onSuccess: (result) => {
       client.setQueryData(notebookQueryKey(result.entry.monthKey), result);
-      client.invalidateQueries({ queryKey: notebookQueryKey(result.previousMonthKey) });
+      return client.invalidateQueries({ queryKey: ["/api/dealers-notebook"] });
     },
   });
 }
@@ -93,6 +88,7 @@ export function useCaptureDealerNotebookInventory() {
     ),
     onSuccess: result => {
       client.setQueryData(notebookQueryKey(result.entry.monthKey), result);
+      return client.invalidateQueries({ queryKey: ["/api/dealers-notebook"] });
     },
   });
 }

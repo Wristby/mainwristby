@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiJson } from "@/lib/queryClient";
+import { refreshData } from "@/lib/refresh-data";
 import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
 
 export type QuickEstimatePlatformFee = {
@@ -96,20 +97,22 @@ const DEFAULTS: AppSettings = {
 
 async function migrateLocalStorage() {
   const migrationKey = "settings_migrated_to_db";
-  if (localStorage.getItem(migrationKey)) return;
+  if (localStorage.getItem(migrationKey)) return false;
   const mappings: Record<string, string> = {
     taxRate: "default_tax_rate",
     marginRate: "default_margin_rate",
     monthlyProfitGoal: "monthly_profit_goal",
   };
   let allSucceeded = true;
+  let changed = false;
   for (const [lsKey, settingKey] of Object.entries(mappings)) {
     const val = localStorage.getItem(lsKey);
     if (val !== null) {
       const num = parseFloat(val);
       if (!isNaN(num)) {
         try {
-          await apiRequest("PUT", `/api/settings/${settingKey}`, { value: num });
+          await apiJson("PUT", `/api/settings/${settingKey}`, { value: num });
+          changed = true;
           localStorage.removeItem(lsKey);
         } catch (err) {
           console.error(`Failed to migrate setting ${lsKey} -> ${settingKey}:`, err);
@@ -123,6 +126,7 @@ async function migrateLocalStorage() {
   if (allSucceeded) {
     localStorage.setItem(migrationKey, "1");
   }
+  return changed;
 }
 
 export function useSettings() {
@@ -133,8 +137,8 @@ export function useSettings() {
   useEffect(() => {
     if (query.data && !migrated.current) {
       migrated.current = true;
-      migrateLocalStorage().then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      migrateLocalStorage().then((changed) => {
+        if (changed) return refreshData(queryClient, "settings");
       });
     }
   }, [query.data]);
@@ -195,11 +199,8 @@ export function useSettings() {
 export function useUpdateSetting() {
   return useMutation({
     mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
-      const res = await apiRequest("PUT", `/api/settings/${key}`, { value });
-      return res.json();
+      return apiJson("PUT", `/api/settings/${encodeURIComponent(key)}`, { value });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
-    },
+    onSuccess: () => refreshData(queryClient, "settings"),
   });
 }

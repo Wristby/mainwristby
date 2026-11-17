@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { api } from "@shared/routes";
+import { apiJson } from "@/lib/queryClient";
+import { refreshData } from "@/lib/refresh-data";
 import type { Client } from "@shared/schema";
 import {
   buyerReviewPath, buyerSyncPath,
@@ -10,15 +11,7 @@ import {
 } from "@shared/client-backfill";
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.message || "Watch buyers could not be synced. Try again.");
-  }
-  return response.json();
+  return apiJson<T>("POST", path, body || {});
 }
 
 export function LegacyBuyerSync({ clients = [] }: { clients?: Client[] }) {
@@ -26,24 +19,19 @@ export function LegacyBuyerSync({ clients = [] }: { clients?: Client[] }) {
   const started = useRef(false);
   const [selected, setSelected] = useState<Record<number, string>>({});
   const [created, setCreated] = useState(0);
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
-    queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
-    queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-    queryClient.invalidateQueries({ queryKey: [api.inventory.get.path] });
-  };
+  const invalidate = () => refreshData(queryClient, "clients");
   const sync = useMutation({
     mutationFn: () => post<BuyerSyncReport>(buyerSyncPath),
     onSuccess: report => {
       if (report.created) setCreated(count => count + report.created);
-      invalidate();
+      return invalidate();
     },
   });
   const resolve = useMutation({
     mutationFn: (input: BuyerReviewInput) => post(buyerReviewPath, input),
-    onSuccess: (_data, input) => {
+    onSuccess: async (_data, input) => {
       if (input.action === "create") setCreated(count => count + 1);
-      invalidate();
+      await invalidate();
       sync.mutate();
     },
     onError: () => sync.mutate(),

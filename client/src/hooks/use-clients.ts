@@ -1,26 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
+import { apiJson, apiRequest } from "@/lib/queryClient";
+import { refreshData } from "@/lib/refresh-data";
 
 export function useClients(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: [api.clients.list.path],
     enabled: options.enabled ?? true,
-    queryFn: async () => {
-      const res = await fetch(api.clients.list.path, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch clients");
-      return api.clients.list.responses[200].parse(await res.json());
-    },
+    queryFn: ({ signal }) => apiJson("GET", api.clients.list.path, undefined, api.clients.list.responses[200], { signal }),
   });
 }
 
 export function useClient(id: number) {
   return useQuery({
     queryKey: [api.clients.get.path, id],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const url = buildUrl(api.clients.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch client");
-      return api.clients.get.responses[200].parse(await res.json());
+      return apiJson("GET", url, undefined, api.clients.get.responses[200], { signal });
     },
     enabled: !!id,
   });
@@ -30,18 +26,9 @@ export function useCreateClient() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: any) => {
-      const res = await fetch(api.clients.create.path, {
-        method: api.clients.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to create client");
-      return api.clients.create.responses[201].parse(await res.json());
+      return apiJson(api.clients.create.method, api.clients.create.path, data, api.clients.create.responses[201]);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
-    },
+    onSuccess: () => refreshData(queryClient, "clients"),
   });
 }
 
@@ -50,18 +37,9 @@ export function useUpdateClient() {
   return useMutation({
     mutationFn: async ({ id, ...data }: any) => {
       const url = buildUrl(api.clients.update.path, { id });
-      const res = await fetch(url, {
-        method: api.clients.update.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to update client");
-      return api.clients.update.responses[200].parse(await res.json());
+      return apiJson(api.clients.update.method, url, data, api.clients.update.responses[200]);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
-    },
+    onSuccess: () => refreshData(queryClient, "clients"),
   });
 }
 
@@ -70,21 +48,12 @@ export function useDeleteClient() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.clients.delete.path, { id });
-      const res = await fetch(url, {
-        method: api.clients.delete.method,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(payload?.message || "Failed to delete client");
-      }
+      await apiRequest(api.clients.delete.method, url);
       return true;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.clients.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.clients.get.path] });
-      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.inventory.get.path] });
+    onSuccess: async (_data, id) => {
+      queryClient.removeQueries({ queryKey: [api.clients.get.path, id] });
+      await refreshData(queryClient, "clients");
     },
   });
 }

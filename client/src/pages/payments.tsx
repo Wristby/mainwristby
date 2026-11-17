@@ -1,7 +1,7 @@
 import { useInventory } from "@/hooks/use-inventory";
 import { useSettings } from "@/hooks/use-settings";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { api } from "@shared/routes";
+import { apiJson, queryClient } from "@/lib/queryClient";
+import { refreshData } from "@/lib/refresh-data";
 import { useMutation } from "@tanstack/react-query";
 import { RowLink } from "@/components/row-link";
 import { Card, CardContent } from "@/components/ui/card";
@@ -115,10 +115,8 @@ export default function Payments() {
 
   const creditMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: { creditPaid?: boolean; creditDueDate?: string | null; creditNotes?: string | null } }) =>
-      apiRequest("PATCH", `/api/inventory/${id}/credit`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-    },
+      apiJson("PATCH", `/api/inventory/${id}/credit`, data),
+    onSuccess: () => refreshData(queryClient, "inventory"),
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },

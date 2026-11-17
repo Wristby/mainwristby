@@ -48,7 +48,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useDeleteClient, useUpdateClient } from "@/hooks/use-clients";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
 import { ClientSalesHistory } from "@/components/client-sales-history";
 import { getSaleAmount } from "@/lib/sale-amount";
 
@@ -158,7 +157,6 @@ export default function ClientDetail() {
     updateClientMutation.mutate({ id: client.id, ...data }, {
       onSuccess: () => {
         setIsEditOpen(false);
-        queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
         toast({ title: "Success", description: "Client updated successfully" });
       },
       onError: (error: any) => {

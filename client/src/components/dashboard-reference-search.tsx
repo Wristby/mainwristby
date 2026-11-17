@@ -4,6 +4,7 @@ import { LoaderCircle, Sparkles } from "lucide-react";
 import type { Client, InventoryItem } from "@shared/schema";
 import { findReferenceMatches, type ReferenceWatch } from "@/lib/reference-search";
 import { useClients } from "@/hooks/use-clients";
+import { apiJson } from "@/lib/queryClient";
 import {
   findNaturalClientMatches,
   findNaturalInventoryMatches,
@@ -141,14 +142,11 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
     setActiveIndex(-1);
     setDismissed(false);
     try {
-      const response = await fetch("/api/ai/inventory-search", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmedQuery }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.message || "AI search failed.");
+      const payload = await apiJson<{
+        filters: NaturalInventoryFilters;
+        aggregate?: string;
+        groupBy?: unknown;
+      }>("POST", "/api/ai/inventory-search", { query: trimmedQuery });
       setNaturalEntity("watches");
       setNaturalFilters(payload.filters);
       setNaturalAggregate(payload.aggregate === "count" || payload.aggregate === "asking_price_total" ? payload.aggregate : null);

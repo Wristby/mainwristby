@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiJson } from "@/lib/queryClient";
 import type { RetentionPreview, RetentionSchedule, RetentionScheduleInput } from "@shared/retention";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,18 +21,8 @@ type Hold = { id: number; scope: "client" | "inventory"; recordId: number; reaso
 type ApiError = Error & { status?: number };
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    credentials: "include",
-    headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers },
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = new Error(payload?.message || `Request failed (${response.status})`) as ApiError;
-    error.status = response.status;
-    throw error;
-  }
-  return payload as T;
+  return apiJson<T>(init?.method ?? "GET", url,
+    typeof init?.body === "string" ? JSON.parse(init.body) : undefined);
 }
 
 const categoryInfo = [

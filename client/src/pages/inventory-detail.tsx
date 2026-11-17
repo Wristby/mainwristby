@@ -2,7 +2,8 @@ import { useInventoryItem, useInventory, useUpdateInventory, useDeleteInventory,
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useCreateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { insertClientSchema, insertExpenseSchema, type InventoryItem } from "@shared/schema";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, apiJson, readApiJson } from "@/lib/queryClient";
+import { refreshData } from "@/lib/refresh-data";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -156,8 +157,6 @@ export default function InventoryDetail() {
       onSuccess: () => {
         setIsAddExpenseOpen(false);
         expenseForm.reset({ description: "", amount: 0, category: "other", date: new Date(), isRecurring: false, inventoryId: id });
-        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         toast({ title: "Success", description: "Expense added to this watch" });
       },
       onError: (err) => {
@@ -170,8 +169,6 @@ export default function InventoryDetail() {
     if (!confirm("Delete this expense only? The watch and other financial records will remain. This cannot be undone.")) return;
     deleteExpenseMutation.mutate(expenseId, {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
         toast({ title: "Success", description: "Expense removed" });
       },
       onError: (err) => {
@@ -389,8 +386,8 @@ export default function InventoryDetail() {
   const handleSaveDescription = async () => {
     setIsSavingDescription(true);
     try {
-      await apiRequest("PUT", `/api/inventory/${id}`, { description: descriptionValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      await apiJson("PUT", `/api/inventory/${id}`, { description: descriptionValue });
+      await refreshData(queryClient, "inventory");
       toast({ title: "Saved", description: "Listing description saved." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -402,8 +399,8 @@ export default function InventoryDetail() {
   const handleSaveListingTitle = async () => {
     setIsSavingListingTitle(true);
     try {
-      await apiRequest("PUT", `/api/inventory/${id}`, { listingTitle: listingTitleValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      await apiJson("PUT", `/api/inventory/${id}`, { listingTitle: listingTitleValue });
+      await refreshData(queryClient, "inventory");
       toast({ title: "Saved", description: "Listing title saved." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -425,7 +422,7 @@ export default function InventoryDetail() {
         box: item.box,
         papers: item.papers,
       });
-      const data = await result.json();
+      const data = await readApiJson<{ description?: string; message?: string }>(result);
       if (data.description) {
         setDescriptionValue(data.description);
       } else {
@@ -450,7 +447,7 @@ export default function InventoryDetail() {
         condition: item.condition,
         listPrice: item.listPrice ?? null,
       });
-      const data = await result.json();
+      const data = await readApiJson<{ caption?: string; message?: string }>(result);
       if (data.caption) {
         setCaptionValue(data.caption);
       } else {
@@ -466,8 +463,8 @@ export default function InventoryDetail() {
   const handleSaveCaption = async () => {
     setIsSavingCaption(true);
     try {
-      await apiRequest("PUT", `/api/inventory/${id}`, { instagramCaption: captionValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+      await apiJson("PUT", `/api/inventory/${id}`, { instagramCaption: captionValue });
+      await refreshData(queryClient, "inventory");
       toast({ title: "Saved", description: "Instagram caption saved." });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -489,10 +486,10 @@ export default function InventoryDetail() {
       if (!contentType.includes("application/json")) {
         throw new Error("Movement Specs endpoint not found on this server. Pull the latest app code and restart the server.");
       }
-      const data = await result.json();
+      const data = await readApiJson<{ specs?: Record<string, string>; message?: string }>(result);
       if (data.specs) {
         setMovementSpecs(data.specs);
-        queryClient.invalidateQueries({ queryKey: ["/api/inventory", id] });
+        await refreshData(queryClient, "inventory");
       } else {
         toast({ title: "Error", description: data.message || "No specs returned.", variant: "destructive" });
       }
@@ -507,9 +504,8 @@ export default function InventoryDetail() {
     if (isSavingNotes) return;
     setIsSavingNotes(true);
     try {
-      await apiRequest("PUT", `/api/inventory/${id}`, { notes: notesValue });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      await apiJson("PUT", `/api/inventory/${id}`, { notes: notesValue });
+      await refreshData(queryClient, "inventory");
       setIsEditingNotes(false);
       toast({ title: "Notes saved" });
     } catch (err: any) {
@@ -581,9 +577,8 @@ export default function InventoryDetail() {
           payload.listPrice = Math.round(parsed * 100);
         }
       }
-      await apiRequest("PUT", `/api/inventory/${id}`, payload);
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory/:id", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      await apiJson("PUT", `/api/inventory/${id}`, payload);
+      await refreshData(queryClient, "inventory");
       resetStatusPopover();
       toast({ title: "Status updated", description: `Status changed to ${getStatusLabel(newStatus)}` });
     } catch (err: any) {
@@ -1669,7 +1664,6 @@ export default function InventoryDetail() {
                 setIsQuickAddClientOpen(false);
                 quickClientForm.reset();
                 toast({ title: "Success", description: `${data.type === 'dealer' ? 'Dealer' : 'Client'} "${data.name}" added` });
-                queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
               },
               onError: (err: any) => {
                 toast({ title: "Error", description: err.message, variant: "destructive" });

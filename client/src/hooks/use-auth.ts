@@ -1,27 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
+import { ApiError, apiJson, apiRequest, readApiJson } from "@/lib/queryClient";
+import { toast } from "@/hooks/use-toast";
 
 async function fetchUser(): Promise<User | null> {
-  const response = await fetch("/api/auth/user", {
-    credentials: "include",
-  });
+  const response = await apiRequest("GET", "/api/auth/user", undefined, { allowStatuses: [401] });
 
   if (response.status === 401) {
     return null;
   }
 
-  if (!response.ok) {
-    throw new Error(`${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
+  return readApiJson<User>(response);
 }
 
 async function logoutFn(): Promise<void> {
-  await fetch("/api/logout", {
-    method: "POST",
-    credentials: "include",
-  });
+  await apiRequest("POST", "/api/logout");
 }
 
 interface LoginCredentials {
@@ -30,35 +23,18 @@ interface LoginCredentials {
 }
 
 async function loginFn(credentials: LoginCredentials): Promise<User> {
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(credentials),
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Login failed");
+  try {
+    return await apiJson<User>("POST", "/api/login", credentials);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      throw new ApiError("Incorrect username or password.", 401);
+    }
+    throw error;
   }
-
-  return response.json();
 }
 
 async function registerFn(credentials: LoginCredentials): Promise<User> {
-  const response = await fetch("/api/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(credentials),
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || "Registration failed");
-  }
-
-  return response.json();
+  return apiJson<User>("POST", "/api/register", credentials);
 }
 
 export function useAuth() {
@@ -72,6 +48,7 @@ export function useAuth() {
 
   const logoutMutation = useMutation({
     mutationFn: logoutFn,
+    onError: (error) => toast({ title: "Could not sign out", description: error.message, variant: "destructive" }),
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
       window.location.href = "/landing";
