@@ -460,11 +460,26 @@ function MoneyField({
   );
 }
 
-export function WarrantyFields({ form }: { form: WatchEditForm }) {
+export function WarrantyFields({
+  form,
+  showWarrantyDetails,
+  setShowWarrantyDetails,
+}: {
+  form: WatchEditForm;
+  showWarrantyDetails: boolean;
+  setShowWarrantyDetails: (show: boolean) => void;
+}) {
   return (
     <section className="space-y-4">
-      <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 pb-2">Warranty Coverage</h3>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Warranty Coverage</h3>
+        <div className="flex items-center space-x-2">
+          <Label htmlFor="edit-showWarranty" className="text-sm font-medium text-slate-500">Show Warranty Fields</Label>
+          <Switch id="edit-showWarranty" checked={showWarrantyDetails} onCheckedChange={setShowWarrantyDetails} />
+        </div>
+      </div>
+      {showWarrantyDetails && (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 animate-in fade-in slide-in-from-top-2 duration-300">
         <div className="space-y-2">
           <Label>Store Warranty Term</Label>
           <Select value={form.watch("storeWarrantyMonths") == null ? "not-recorded" : String(form.watch("storeWarrantyMonths"))}
@@ -499,6 +514,7 @@ export function WarrantyFields({ form }: { form: WatchEditForm }) {
           <Textarea id="edit-manufacturer-warranty-details" {...form.register("manufacturerWarrantyDetails")} maxLength={2000} className="min-h-20 bg-white border-slate-200" placeholder="Optional warranty-card or coverage notes" />
         </div>
       </div>
+      )}
     </section>
   );
 }

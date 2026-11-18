@@ -6,7 +6,7 @@ import { watchEditFormDefaults, type WatchEditFormValues } from "@/lib/watch-for
 import { DealOverviewCard } from "./deal-overview-card";
 import { PurchaseInformationCard } from "./purchase-information-card";
 import { WatchIdentityCard } from "./identity-card";
-import { WatchIdentityFields } from "./watch-edit-fields";
+import { WarrantyFields, WatchIdentityFields } from "./watch-edit-fields";
 
 const item = {
   id: 31,
@@ -91,5 +91,27 @@ describe("Watch Details sections", () => {
     expect(html).toContain("Condition");
     expect(html).toContain("Open Folder");
     expect(html).toContain("19gIwCa7aNqQk1s00gmkCWWzFC_dfL4sG");
+  });
+
+  it("lets warranty fields be hidden while retaining the section toggle", () => {
+    function WarrantyFieldsHarness({ visible }: { visible: boolean }) {
+      const form = useForm<WatchEditFormValues>({ defaultValues: watchEditFormDefaults });
+      return (
+        <WarrantyFields
+          form={form}
+          showWarrantyDetails={visible}
+          setShowWarrantyDetails={() => {}}
+        />
+      );
+    }
+
+    const hiddenHtml = renderToStaticMarkup(<WarrantyFieldsHarness visible={false} />);
+    expect(hiddenHtml).toContain("Warranty Coverage");
+    expect(hiddenHtml).toContain("Show Warranty Fields");
+    expect(hiddenHtml).not.toContain("Store Warranty Term");
+
+    const visibleHtml = renderToStaticMarkup(<WarrantyFieldsHarness visible />);
+    expect(visibleHtml).toContain("Store Warranty Term");
+    expect(visibleHtml).toContain("Manufacturer Warranty Ends");
   });
 });

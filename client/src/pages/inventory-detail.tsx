@@ -129,6 +129,7 @@ export default function InventoryDetail() {
   const [showSaleDetails, setShowSaleDetails] = useState(false);
   const [scrollToSaleOnOpen, setScrollToSaleOnOpen] = useState(false);
   const salesSectionRef = useRef<HTMLDivElement>(null);
+  const [showWarrantyDetails, setShowWarrantyDetails] = useState(false);
   const [showServiceDetails, setShowServiceDetails] = useState(false);
   const [showShippingDetails, setShowShippingDetails] = useState(false);
   const [isQuickAddClientOpen, setIsQuickAddClientOpen] = useState(false);
@@ -269,9 +270,15 @@ export default function InventoryDetail() {
   useEffect(() => {
     if (item) {
       const hasSaleData = (item as any).salePrice > 0 || !!getSoldDate(item);
+      const hasWarrantyData = item.storeWarrantyMonths != null
+        || !!item.manufacturerPurchaseDate
+        || !!item.manufacturerWarrantyExpires
+        || !!item.manufacturerWarrantyCardPresent
+        || !!item.manufacturerWarrantyDetails;
       const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).serviceStartDate || (item as any).dateReturnedFromService;
       const hasShippingData = item.shippingPartner || item.trackingNumber || item.chrono24CertificationSent;
       setShowSaleDetails(hasSaleData);
+      setShowWarrantyDetails(hasWarrantyData);
       setShowServiceDetails(hasServiceData);
       setShowShippingDetails(!!hasShippingData);
     }
@@ -838,7 +845,11 @@ export default function InventoryDetail() {
                   soldDatePopover={{ open: isDateSoldOpen, onOpenChange: setIsDateSoldOpen }}
                 />
 
-                <WarrantyFields form={form} />
+                <WarrantyFields
+                  form={form}
+                  showWarrantyDetails={showWarrantyDetails}
+                  setShowWarrantyDetails={setShowWarrantyDetails}
+                />
 
                 <ServiceMaintenanceFields
                   form={form}
