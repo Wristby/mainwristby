@@ -6,6 +6,7 @@ import {
   SALES_PATTERN_MONTHS,
 } from "@/lib/sales-patterns";
 import type { InventoryItem } from "@shared/schema";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function SalesPatternsPreview({
   inventory,
@@ -38,16 +39,34 @@ export function SalesPatternsPreview({
           </p>
         </div>
         {preview.totalSales > 0 && (
-          <div className="grid min-w-0 flex-1 grid-cols-6 gap-x-2 gap-y-3 sm:grid-cols-12 sm:max-w-[650px]" aria-label={`Monthly sales counts for ${periodLabel}`}>
-            {preview.monthlySalesCounts.map((count, month) => (
-              <div key={month} className="flex min-w-0 flex-col items-center gap-1.5" aria-label={`${SALES_PATTERN_MONTHS[month]}: ${count} sales`}>
-                <div className="flex h-9 w-full items-end justify-center border-b border-[#e4eae4]">
-                  {count > 0 && <span className="w-3 rounded-t-sm bg-[#6f9a7d]" style={{ height: `${Math.max(4, (count / peak) * 30)}px` }} />}
-                </div>
-                <span className="text-[10px] font-medium text-[#839087]">{SALES_PATTERN_MONTHS[month]}</span>
-              </div>
-            ))}
-          </div>
+          <TooltipProvider delayDuration={100}>
+            <div className="grid min-w-0 flex-1 grid-cols-6 gap-x-2 gap-y-3 sm:grid-cols-12 sm:max-w-[650px]" aria-label={`Monthly sales counts for ${periodLabel}`}>
+              {preview.monthlySalesCounts.map((count, month) => {
+                const monthLabel = SALES_PATTERN_MONTHS[month];
+                const saleLabel = `${count} ${count === 1 ? "sale" : "sales"}`;
+                return (
+                  <Tooltip key={month}>
+                    <TooltipTrigger asChild>
+                      <div
+                        tabIndex={0}
+                        data-testid={`sales-month-${month}`}
+                        className="flex min-w-0 cursor-help flex-col items-center gap-1.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[#315747] focus-visible:ring-offset-2"
+                        aria-label={`${monthLabel}: ${saleLabel}`}
+                      >
+                        <div className="flex h-9 w-full items-end justify-center border-b border-[#e4eae4]">
+                          {count > 0 && <span className="w-3 rounded-t-sm bg-[#6f9a7d]" style={{ height: `${Math.max(4, (count / peak) * 30)}px` }} />}
+                        </div>
+                        <span className="text-[10px] font-medium text-[#839087]">{monthLabel}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p>{monthLabel}: {saleLabel}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         )}
         <Link
           href="/sales-patterns"

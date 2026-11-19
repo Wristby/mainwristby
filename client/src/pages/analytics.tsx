@@ -1174,9 +1174,11 @@ export default function Analytics() {
               <p className="text-slate-400 text-sm">No sold watches yet.</p>
             ) : (
               topPerformers.map((item, index) => (
-                <div
+                <Link
                   key={item.id}
-                  className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100"
+                  href={`/inventory/${item.id}`}
+                  className="group flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 transition-colors hover:bg-emerald-50/60 hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                  data-testid={`top-performer-watch-${item.id}`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 font-bold text-sm border border-amber-100">
@@ -1195,7 +1197,8 @@ export default function Analytics() {
                     </p>
                     <p className="text-xs text-slate-400">{item.roi.toFixed(1)}% ROI</p>
                   </div>
-                </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-700" aria-hidden="true" />
+                </Link>
               ))
             )}
           </CardContent>
@@ -1211,9 +1214,11 @@ export default function Analytics() {
               <p className="text-slate-400 text-sm">No sold watches yet.</p>
             ) : (
               underperformers.map((item, index) => (
-                <div
+                <Link
                   key={item.id}
-                  className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100"
+                  href={`/inventory/${item.id}`}
+                  className="group flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 transition-colors hover:bg-emerald-50/60 hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                  data-testid={`underperformer-watch-${item.id}`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-200">
@@ -1232,7 +1237,8 @@ export default function Analytics() {
                     </p>
                     <p className="text-xs text-slate-400">{item.roi.toFixed(1)}% ROI</p>
                   </div>
-                </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-700" aria-hidden="true" />
+                </Link>
               ))
             )}
           </CardContent>
@@ -1256,7 +1262,15 @@ export default function Analytics() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-900">{brand.brand}</span>
+                      <Link
+                        href={`/inventory?status=sold&brand=${encodeURIComponent(brand.brand)}`}
+                        className="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-emerald-700 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                        aria-label={`View ${brand.brand} sold watches`}
+                        data-testid={`brand-sold-watches-${encodeURIComponent(brand.brand)}`}
+                      >
+                        {brand.brand}
+                        <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                      </Link>
                       <Badge variant="secondary" className="bg-slate-200 text-slate-700">
                         {brand.sold}
                       </Badge>

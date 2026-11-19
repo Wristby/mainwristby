@@ -82,6 +82,7 @@ export default function Inventory() {
   useEffect(() => {
     const queryParams = new URLSearchParams(window.location.search);
     const status = queryParams.get("status");
+    const brand = queryParams.get("brand");
     if (status) {
       setStatusFilter(status);
       if (status === "sold") {
@@ -92,8 +93,9 @@ export default function Inventory() {
         setSortField("id");
         setSortOrder("desc");
       }
-      window.history.replaceState({}, '', window.location.pathname);
     }
+    if (brand) setBrandFilter(brand);
+    if (status || brand) window.history.replaceState({}, '', window.location.pathname);
   }, [location]);
   const [hasPapersFilter, setHasPapersFilter] = useState<boolean | null>(null);
   const [sortField, setSortField] = useState<SortField>('id');

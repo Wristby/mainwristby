@@ -140,6 +140,10 @@ describe("Sales Patterns page", () => {
       periodLabel: "2025",
     });
     expect(text(preview)).toContain("1 sale · 2025");
+    expect(text(preview)).toMatch(/Jan\s*:\s*1 sale/);
+    const januaryBar = nodes(preview).find((node) => node.props["data-testid"] === "sales-month-0");
+    expect(januaryBar?.props.tabIndex).toBe(0);
+    expect(januaryBar?.props["aria-label"]).toBe("Jan: 1 sale");
     expect(nodes(preview).some((node) => node.type === "a" && node.props.href === "/sales-patterns")).toBe(true);
   });
 });
