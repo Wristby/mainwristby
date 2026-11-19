@@ -193,7 +193,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
           : isClientScope && clientsUnavailable
             ? "Client records could not be loaded. Refresh the page to try again."
     : !hasQuery
-      ? isClientScope ? "Type to search saved client records." : "Search watches by keyword, or choose Clients to search client records."
+      ? isClientScope ? "Type to search saved client records." : ""
     : isClientScope
       ? clientMatches.length === 0
         ? `No clients found for “${query.trim()}”.`
@@ -292,7 +292,7 @@ export function DashboardReferenceSearch({ watches, unavailable = false }: { wat
         </div>}
       </form>
 
-      <p id="reference-search-message" className="mt-2 min-h-5 text-xs text-slate-500" aria-live="polite" aria-atomic="true">
+      <p id="reference-search-message" className={resultMessage ? "mt-2 min-h-5 text-xs text-slate-500" : "sr-only"} aria-live="polite" aria-atomic="true">
         {resultMessage}
       </p>
 

@@ -84,11 +84,13 @@ describe("personal collection intake", () => {
 
     const conditionSelect = nodes(tree).find((node) =>
       node.type === "select" &&
-      nodes(node).some((option) => option.type === "option" && (option.props.value ?? option.props.children) === "Not graded"),
+      nodes(node).some((option) => option.type === "option" && (option.props.value ?? option.props.children) === "Mint"),
     );
     expect(conditionSelect).toBeDefined();
     expect(nodes(conditionSelect).filter((option) => option.type === "option").map((option) => option.props.value ?? option.props.children))
-      .toEqual(["Not graded", "Mint", "Excellent", "Very Good", "Good", "Fair", "Poor"]);
+      .toEqual(["", "Mint", "Excellent", "Very Good", "Good", "Fair", "Poor"]);
+    expect(text(conditionSelect)).toContain("Select condition");
+    expect(nodes(conditionSelect).some((option) => option.type === "option" && option.props.children === "Not graded")).toBe(false);
   });
 
   it("shows total investment from purchase prices and intake fees, not current estimates", () => {

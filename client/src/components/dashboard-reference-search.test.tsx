@@ -20,6 +20,7 @@ describe("dashboard search shell", () => {
     expect(html).toContain("Search watches by brand, model, reference, or serial number");
     expect(html).toContain("Search category");
     expect(html).toContain("Client search updates as you type.");
+    expect(html).not.toContain("Search watches by keyword, or choose Clients to search client records.");
     expect(html).toContain("role=\"search\"");
     expect(html).toContain("aria-live=\"polite\"");
     expect(html).not.toContain("placeholder=");
