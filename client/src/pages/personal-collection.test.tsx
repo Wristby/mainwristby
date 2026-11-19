@@ -79,6 +79,8 @@ describe("personal collection intake", () => {
     expect(nodes(brandSelect).filter((option) => option.type === "option").map((option) => option.props.value))
       .toEqual(["", ...harness.brands]);
     expect(text(tree)).not.toContain("Box for wholesale");
+    expect(text(tree)).not.toContain("Sub-model");
+    expect(text(tree)).not.toContain("Condition grade");
   });
 
   it("shows total investment from purchase prices and intake fees, not current estimates", () => {
