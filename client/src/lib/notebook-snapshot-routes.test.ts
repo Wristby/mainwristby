@@ -32,6 +32,7 @@ vi.mock("../../../server/storage", () => ({
     upsertSetting: async () => {},
     getNotebookInventoryData: async () => [],
     getNotebookPriceHistory: async () => [],
+    getSales: async () => [],
     getDealerNotebookEntry: async (monthKey: string) => mocks.entries.get(monthKey),
     captureDealerNotebookInventorySnapshot: mocks.capture,
     saveDealerNotebookReport: mocks.saveReport,

@@ -4,6 +4,7 @@ import {
   getReturnAdjustmentCents,
   getSaleCycleNetProfitCents,
   groupReceivedReturnsByMonth,
+  summarizeMonthlySalesLifecycle,
   summarizeSalesLifecycle,
   type InventorySaleWithReturns,
 } from "@shared/sales-lifecycle";
@@ -145,5 +146,67 @@ describe("sales lifecycle accounting", () => {
       { month: "2026-02", count: 2 },
       { month: "2026-03", count: 1 },
     ]);
+  });
+
+  it("attributes return costs to receipt month and keeps resale profit in its sale month", () => {
+    const original = saleWithReturns({
+      soldDate: new Date("2026-01-10T12:00:00.000Z"),
+      returns: [returnCase({
+        receivedDate: "2026-02-06",
+        refundAmountCents: 500000,
+        shippingCostCents: 5000,
+        inspectionCostCents: 1200,
+        cogsRestoredCents: 250000,
+        platformFeeRefunded: false,
+      })],
+    });
+    const resale = saleWithReturns({
+      id: 2,
+      cycleNumber: 2,
+      salePrice: 1200000,
+      profitAtSaleCents: 420000,
+      soldDate: new Date("2026-02-20T12:00:00.000Z"),
+    });
+
+    expect(summarizeMonthlySalesLifecycle([original, resale], ["2026-02"])).toEqual({
+      returnCount: 1,
+      refundAmountCents: 500000,
+      sellerPaidShippingCents: 5000,
+      inspectionCostCents: 1200,
+      saleCycleCount: 1,
+      resaleCount: 1,
+      saleCycleProfitCents: 420000,
+      returnAdjustmentCents: -256200,
+      returnAdjustedProfitCents: 163800,
+    });
+    expect(summarizeMonthlySalesLifecycle([original, resale], ["2026-01"])).toMatchObject({
+      returnCount: 0,
+      saleCycleCount: 1,
+      resaleCount: 0,
+      saleCycleProfitCents: 220000,
+      returnAdjustmentCents: 0,
+    });
+  });
+
+  it("does not include buyer-paid shipping or cancelled cases in monthly return outcomes", () => {
+    const item = saleWithReturns({
+      returns: [
+        returnCase({ shippingPayer: "buyer", shippingCostCents: 9000 }),
+        returnCase({
+          id: 11,
+          status: "cancelled",
+          receivedDate: null,
+          refundAmountCents: 0,
+          shippingCostCents: 0,
+          cogsRestoredCents: 0,
+          platformFeeRefunded: false,
+        }),
+      ],
+    });
+    expect(summarizeMonthlySalesLifecycle([item], ["2026-02"])).toMatchObject({
+      returnCount: 1,
+      sellerPaidShippingCents: 0,
+      returnAdjustmentCents: -235000,
+    });
   });
 });

@@ -9,6 +9,10 @@ import {
   type NotebookWatchInput,
 } from "@shared/dealers-notebook";
 import { getSoldDate } from "@shared/sold-date";
+import {
+  summarizeMonthlySalesLifecycle,
+  type InventorySaleWithReturns,
+} from "@shared/sales-lifecycle";
 
 const euro = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
 const monthLabel = (key: string) => {
@@ -32,16 +36,23 @@ export function prepareNotebookAnalysis(
   contextNote: string,
   now = new Date(),
   inventorySnapshots: readonly NotebookInventorySnapshot[] = [],
+  salesWithReturns: readonly InventorySaleWithReturns[] = [],
 ) {
   const comparisonMonthKeys = notebookComparisonMonthKeys(monthKey, comparisonMode);
-  const period = calculateNotebookPeriod(inventory, priceHistory, [monthKey], watchRegisterFeeCents, monthLabel(monthKey));
-  const comparison = calculateNotebookPeriod(
-    inventory,
-    priceHistory,
-    comparisonMonthKeys,
-    watchRegisterFeeCents,
-    formatPeriod(comparisonMonthKeys, comparisonMode),
-  );
+  const period = {
+    ...calculateNotebookPeriod(inventory, priceHistory, [monthKey], watchRegisterFeeCents, monthLabel(monthKey)),
+    returnOutcomes: summarizeMonthlySalesLifecycle(salesWithReturns, [monthKey]),
+  };
+  const comparison = {
+    ...calculateNotebookPeriod(
+      inventory,
+      priceHistory,
+      comparisonMonthKeys,
+      watchRegisterFeeCents,
+      formatPeriod(comparisonMonthKeys, comparisonMode),
+    ),
+    returnOutcomes: summarizeMonthlySalesLifecycle(salesWithReturns, comparisonMonthKeys),
+  };
   const currentStock = calculateNotebookCurrentStock(inventory, now);
   const selectedMonths = new Set([monthKey, ...comparisonMonthKeys]);
   const soldWatches = inventory
@@ -70,6 +81,18 @@ export function prepareNotebookAnalysis(
       papers: watch.papers,
     };
   });
+  const saleCycleSamples = salesWithReturns
+    .filter(sale => selectedMonths.has(notebookMonthKey(sale.soldDate) ?? ""))
+    .sort((a, b) => (b.soldDate?.getTime() ?? 0) - (a.soldDate?.getTime() ?? 0))
+    .slice(0, 24)
+    .map(sale => ({
+      month: notebookMonthKey(sale.soldDate),
+      brand: sale.brandSnapshot,
+      model: sale.modelSnapshot,
+      cycleNumber: sale.cycleNumber,
+      salePriceCents: sale.salePrice,
+      profitAtSaleCents: sale.profitAtSaleCents,
+    }));
 
   const currentCandidates = currentStock.candidates.map((watch) => {
     const label = `${watch.brand} ${watch.model}`.trim();
@@ -79,6 +102,12 @@ export function prepareNotebookAnalysis(
   });
 
   const money = (cents: number) => euro.format(cents / 100);
+  const lifecycleEvidence = (label: string, outcomes: typeof period.returnOutcomes) =>
+    `${outcomes.returnCount} returns received in ${label}; refunds ${money(outcomes.refundAmountCents)}, `
+    + `seller-paid return shipping ${money(outcomes.sellerPaidShippingCents)}, inspection costs ${money(outcomes.inspectionCostCents)}, `
+    + `return profit adjustment ${money(outcomes.returnAdjustmentCents)}. `
+    + `${outcomes.saleCycleCount} sale cycles produced ${money(outcomes.saleCycleProfitCents)} profit at sale, `
+    + `including ${outcomes.resaleCount} resale cycles; return-adjusted cycle profit ${money(outcomes.returnAdjustedProfitCents)}.`;
   const percentChange = (current: number, previous: number, previousPeriods = 1) => {
     if (previous <= 0 || previousPeriods <= 0) return "No comparable baseline is available.";
     const average = previous / previousPeriods;
@@ -95,6 +124,8 @@ export function prepareNotebookAnalysis(
     period_profit: `Recorded profit before VAT: ${money(period.netProfitCents)}`,
     comparison_profit: `Comparison profit before VAT: ${money(comparison.netProfitCents)}`,
     profit_change: `Recorded profit is ${percentChange(period.netProfitCents, comparison.netProfitCents, comparisonMonthKeys.length)}`,
+    period_returns: lifecycleEvidence(period.label, period.returnOutcomes),
+    comparison_returns: lifecycleEvidence(comparison.label, comparison.returnOutcomes),
     period_margin: period.marginPercent == null ? "Margin unavailable: no priced sales." : `Revenue-weighted margin before VAT: ${period.marginPercent.toFixed(1)}%`,
     comparison_margin: comparison.marginPercent == null ? "Comparison margin unavailable: no priced sales." : `Comparison revenue-weighted margin before VAT: ${comparison.marginPercent.toFixed(1)}%`,
     period_days: period.medianDaysListed == null ? "Days-to-sell unavailable: no complete listing-date samples." : `Median days listed before sale: ${period.medianDaysListed.toFixed(0)} (n=${period.daysSampleCount})`,
@@ -134,10 +165,14 @@ export function prepareNotebookAnalysis(
       },
       inventorySnapshots: relevantSnapshots.map(({ watches: _watches, ...summary }) => summary),
       saleSamples,
+      saleCycleSamples,
       evidence,
       contextNote,
       dataNotes: [
         "The period measures completed sales by saved sale date in Europe/Amsterdam time.",
+        "The sale-cycle ledger preserves profit at the time each cycle sold. Resale cycles are separate sales, not a continuation of the original sale's profit.",
+        "Returns are grouped by the date the watch was received. Return-adjusted cycle profit is sale-cycle profit from sales in the selected month(s) plus return adjustments from returns received in those month(s); these events can relate to different transactions and months.",
+        "Return adjustments include recorded refunds, seller-paid return shipping, inspection costs, restored acquisition cost, and refunded platform fees.",
         "Profit is calculated from recorded watch-level purchase, import, service, polish, platform, shipping, insurance, and watch-register costs; it is before VAT and excludes general overhead.",
         "Price-change history begins when tracking started; earlier reductions may not be available.",
         "The current-stock view reflects inventory at report generation; a saved month-end stock snapshot is shown separately when available.",

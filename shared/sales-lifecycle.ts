@@ -14,6 +14,18 @@ export interface SalesLifecycleSummary {
   returnRatePercent: number;
 }
 
+export interface MonthlySalesLifecycle {
+  returnCount: number;
+  refundAmountCents: number;
+  sellerPaidShippingCents: number;
+  inspectionCostCents: number;
+  saleCycleCount: number;
+  resaleCount: number;
+  saleCycleProfitCents: number;
+  returnAdjustmentCents: number;
+  returnAdjustedProfitCents: number;
+}
+
 const isVoidedReturn = (item: InventoryReturn) =>
   item.status === "cancelled" || item.status === "declined";
 
@@ -43,6 +55,55 @@ export function getReturnAdjustmentCents(
 
 export function getSaleCycleNetProfitCents(item: InventorySaleWithReturns): number {
   return item.profitAtSaleCents + getReturnAdjustmentCents(item, item.returns);
+}
+
+const saleMonthFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Amsterdam",
+  year: "numeric",
+  month: "2-digit",
+});
+
+function saleMonthKey(value: Date | null): string | null {
+  if (!value || !Number.isFinite(value.getTime())) return null;
+  const parts = saleMonthFormatter.formatToParts(value);
+  const year = parts.find(part => part.type === "year")?.value;
+  const month = parts.find(part => part.type === "month")?.value;
+  return year && month ? `${year}-${month}` : null;
+}
+
+export function summarizeMonthlySalesLifecycle(
+  items: readonly InventorySaleWithReturns[],
+  monthKeys: readonly string[],
+): MonthlySalesLifecycle {
+  const monthSet = new Set(monthKeys);
+  const salesInPeriod = items.filter(sale => {
+    const month = saleMonthKey(sale.soldDate);
+    return month != null && monthSet.has(month);
+  });
+  const receivedReturns = items.flatMap(sale => sale.returns
+    .filter(record => record.receivedDate
+      && monthSet.has(record.receivedDate.slice(0, 7))
+      && !isVoidedReturn(record))
+    .map(record => ({ sale, record })));
+  const saleCycleProfitCents = salesInPeriod
+    .reduce((total, sale) => total + sale.profitAtSaleCents, 0);
+  const returnAdjustmentCents = receivedReturns.reduce(
+    (total, { sale, record }) => total + getReturnAdjustmentCents(sale, [record]),
+    0,
+  );
+
+  return {
+    returnCount: receivedReturns.length,
+    refundAmountCents: receivedReturns.reduce((total, { record }) => total + record.refundAmountCents, 0),
+    sellerPaidShippingCents: receivedReturns.reduce((total, { record }) => total
+      + (record.shippingPayer === "seller" ? record.shippingCostCents : 0), 0),
+    inspectionCostCents: receivedReturns.reduce((total, { record }) => total + record.inspectionCostCents, 0),
+    saleCycleCount: salesInPeriod.length,
+    resaleCount: salesInPeriod.filter(sale => sale.cycleNumber > 1).length,
+    saleCycleProfitCents,
+    returnAdjustmentCents,
+    returnAdjustedProfitCents: saleCycleProfitCents + returnAdjustmentCents,
+  };
 }
 
 export function summarizeSalesLifecycle(

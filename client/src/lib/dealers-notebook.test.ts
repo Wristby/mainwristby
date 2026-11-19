@@ -11,6 +11,7 @@ import {
   type NotebookWatchInput,
 } from "@shared/dealers-notebook";
 import { prepareNotebookAnalysis } from "../../../server/dealers-notebook";
+import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
 
 function watch(overrides: Partial<NotebookWatchInput> = {}): NotebookWatchInput {
   return {
@@ -155,6 +156,55 @@ describe("Dealer's Notebook calculations and privacy projection", () => {
       evidence: {}, dataCaveats: [], generatedAt: "2026-10-31T12:00:00.000Z",
     });
     expect(report.inventorySnapshots).toEqual([]);
+  });
+
+  it("sends received-month return outcomes and sale-cycle distinctions to the review", () => {
+    const sale = {
+      id: 44,
+      soldDate: new Date("2026-10-12T12:00:00Z"),
+      cycleNumber: 2,
+      brandSnapshot: "Rolex",
+      modelSnapshot: "Submariner",
+      salePrice: 120_000,
+      profitAtSaleCents: 30_000,
+      platformFees: 0,
+      returns: [{
+        receivedDate: "2026-10-20",
+        status: "completed",
+        refundAmountCents: 100_000,
+        shippingPayer: "seller",
+        shippingCostCents: 1_000,
+        inspectionCostCents: 2_000,
+        cogsRestoredCents: 0,
+        platformFeeRefunded: false,
+      }],
+    } as unknown as InventorySaleWithReturns;
+    const prepared = prepareNotebookAnalysis(
+      [],
+      [],
+      "2026-10",
+      "previous-month",
+      600,
+      "",
+      new Date("2026-10-31T12:00:00Z"),
+      [],
+      [sale],
+    );
+
+    expect(prepared.period.returnOutcomes).toMatchObject({
+      returnCount: 1,
+      refundAmountCents: 100_000,
+      sellerPaidShippingCents: 1_000,
+      inspectionCostCents: 2_000,
+      saleCycleCount: 1,
+      resaleCount: 1,
+      saleCycleProfitCents: 30_000,
+      returnAdjustmentCents: -103_000,
+      returnAdjustedProfitCents: -73_000,
+    });
+    expect(prepared.evidence.period_returns).toContain("return-adjusted cycle profit");
+    expect(prepared.promptData.saleCycleSamples[0]).toMatchObject({ cycleNumber: 2, profitAtSaleCents: 30_000 });
+    expect(prepared.promptData.dataNotes.join(" ")).toContain("Returns are grouped by the date the watch was received");
   });
 
   it("keeps private inventory identifiers out of the Gemini data projection", () => {

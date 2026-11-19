@@ -34,6 +34,7 @@ import type {
   NotebookAction,
   NotebookComparisonMode,
   NotebookInsight,
+  NotebookReturnOutcomes,
   SavedNotebookRecommendation,
 } from "@shared/dealers-notebook";
 import { notebookMonthKey } from "@shared/dealers-notebook";
@@ -452,6 +453,24 @@ export default function DealersNotebook() {
             </div>
           </section>
 
+          <section aria-label="Return outcomes and resale cycles" className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div><p className="dn-eyebrow">Sales lifecycle</p><h2 className="mt-1 text-xl font-semibold text-[#244235]">Returns & resale cycles</h2></div>
+              <p className="text-xs text-[#819087]">Returns are grouped by received date; sale cycles by sale date</p>
+            </div>
+            {report.period.returnOutcomes && report.comparison.returnOutcomes ? (
+              <>
+                <div className="dn-panel grid md:grid-cols-2">
+                  <ReturnOutcomePanel label={report.period.label} outcomes={report.period.returnOutcomes} emphasized />
+                  <ReturnOutcomePanel label={report.comparison.label} outcomes={report.comparison.returnOutcomes} />
+                </div>
+                <p className="text-xs leading-5 text-[#819087]">Return-adjusted cycle profit adds profit recorded when sale cycles sold to later adjustments for returns received during this period. Those events may relate to different months; this is a timing summary, not a restatement of saved sale records.</p>
+              </>
+            ) : (
+              <p className="dn-panel px-5 py-4 text-sm leading-6 text-[#718078]">This saved review predates return tracking in the Notebook. Refresh the review to include return and resale-cycle outcomes.</p>
+            )}
+          </section>
+
           <section className="grid items-start gap-6 lg:grid-cols-2">
             <div className="dn-panel space-y-7 p-5 sm:p-7">
               <InsightSection title="Wins" items={report.wins} evidence={report.evidence} icon={<TrendingUp aria-hidden="true" className="h-4 w-4" />} tone="positive" />
@@ -578,6 +597,32 @@ export default function DealersNotebook() {
 
 function Metric({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return <div><p className="text-xs text-[#839087]">{label}</p><p className={`mt-1 text-base font-semibold tabular-nums ${emphasis ? "text-[#315f43]" : "text-[#344b3d]"}`}>{value}</p></div>;
+}
+
+function ReturnOutcomePanel({
+  label,
+  outcomes,
+  emphasized = false,
+}: {
+  label: string;
+  outcomes: NotebookReturnOutcomes;
+  emphasized?: boolean;
+}) {
+  return (
+    <div className={`p-5 sm:p-6 ${emphasized ? "" : "border-t border-[#e2e9e1] bg-[#f6f7f2] md:border-l md:border-t-0"}`}>
+      <p className="text-sm font-semibold text-[#385342]">{label}</p>
+      <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-4">
+        <Metric label="Return cases received" value={String(outcomes.returnCount)} />
+        <Metric label="Resale cycles sold" value={String(outcomes.resaleCount)} />
+        <Metric label="Refunds" value={money(outcomes.refundAmountCents)} />
+        <Metric label="Seller-paid return shipping" value={money(outcomes.sellerPaidShippingCents)} />
+        <Metric label="Inspection costs" value={money(outcomes.inspectionCostCents)} />
+        <Metric label="Return profit adjustment" value={money(outcomes.returnAdjustmentCents)} />
+        <Metric label="Sale-cycle profit" value={money(outcomes.saleCycleProfitCents)} />
+        <Metric label="Return-adjusted cycle profit" value={money(outcomes.returnAdjustedProfitCents)} emphasis />
+      </div>
+    </div>
+  );
 }
 
 function Difference({ label, value }: { label: string; value: { amount: number; label: string } }) {

@@ -64,6 +64,19 @@ export const notebookInventorySnapshotSchema = z.object({
 });
 export type NotebookInventorySnapshot = z.infer<typeof notebookInventorySnapshotSchema>;
 
+export const notebookReturnOutcomesSchema = z.object({
+  returnCount: z.number().int().nonnegative(),
+  refundAmountCents: z.number().int().nonnegative(),
+  sellerPaidShippingCents: z.number().int().nonnegative(),
+  inspectionCostCents: z.number().int().nonnegative(),
+  saleCycleCount: z.number().int().nonnegative(),
+  resaleCount: z.number().int().nonnegative(),
+  saleCycleProfitCents: z.number().int(),
+  returnAdjustmentCents: z.number().int(),
+  returnAdjustedProfitCents: z.number().int(),
+});
+export type NotebookReturnOutcomes = z.infer<typeof notebookReturnOutcomesSchema>;
+
 export const notebookReportSchema = z.object({
   inventorySnapshots: z.array(notebookInventorySnapshotSchema).max(4).default([]),
   period: z.object({
@@ -73,6 +86,7 @@ export const notebookReportSchema = z.object({
     pricedSalesCount: z.number().int().nonnegative(),
     revenueCents: z.number().int(),
     netProfitCents: z.number().int(),
+    returnOutcomes: notebookReturnOutcomesSchema.optional(),
     marginPercent: z.number().nullable(),
     medianDaysListed: z.number().nullable(),
     daysSampleCount: z.number().int().nonnegative(),
@@ -96,6 +110,7 @@ export const notebookReportSchema = z.object({
     pricedSalesCount: z.number().int().nonnegative(),
     revenueCents: z.number().int(),
     netProfitCents: z.number().int(),
+    returnOutcomes: notebookReturnOutcomesSchema.optional(),
     marginPercent: z.number().nullable(),
     medianDaysListed: z.number().nullable(),
     daysSampleCount: z.number().int().nonnegative(),
