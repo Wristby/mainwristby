@@ -19,7 +19,6 @@
 .pc-stat { border:1px solid var(--pc-line); border-radius:9px; padding:11px 15px; background:#f8faf4; min-width:130px; }
 .pc-stat b { font:700 18px/1.1 "Manrope",sans-serif; display:block; color:#315f4b; }
 .pc-stat span { color:var(--pc-muted); font-size:11px; letter-spacing:.04em; }
-.pc-stat small { display:block; margin-top:3px; color:var(--pc-muted); font-size:10px; }
 .pc-tools { display:flex; gap:10px; margin-bottom:18px; }
 .pc-search { position:relative; flex:1; min-width:150px; }
 .pc-search svg { position:absolute; left:13px; top:50%; transform:translateY(-50%); width:17px; color:#718277; }

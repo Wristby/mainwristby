@@ -103,7 +103,7 @@ describe("personal collection intake", () => {
     const content = text(investmentCard ?? null);
 
     expect(investmentCard).toBeDefined();
-    expect(content).toContain("Recorded purchase price + fees");
+    expect(content).not.toContain("Recorded purchase price + fees");
     expect(content).toContain("2.150,00\u00a0€");
     expect(content).not.toContain("5.000,00\u00a0€");
   });
