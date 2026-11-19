@@ -57,6 +57,101 @@ export function getSaleCycleNetProfitCents(item: InventorySaleWithReturns): numb
   return item.profitAtSaleCents + getReturnAdjustmentCents(item, item.returns);
 }
 
+const csvEscape = (value: string | number | null | undefined) => {
+  let text = String(value ?? "");
+  const isNumericCell = typeof value === "number" || /^-?\d+(?:\.\d+)?$/.test(text);
+  if (!isNumericCell && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return text.includes(",") || text.includes('"') || text.includes("\n") || text.includes("\r")
+    ? `"${text.replace(/"/g, '""')}"`
+    : text;
+};
+
+const formatCsvDate = (value: Date | string | null | undefined) => {
+  if (!value) return "";
+  const date = value instanceof Date ? value.toISOString() : value;
+  return date.slice(0, 10);
+};
+
+const formatCsvMoney = (cents: number) => (cents / 100).toFixed(2);
+
+export function buildReturnReconciliationCsv(items: InventorySaleWithReturns[]): string {
+  const caseHeaders = [
+    "Return ID",
+    "Status",
+    "Brand",
+    "Model",
+    "Reference Number",
+    "Serial Number",
+    "Sale Cycle",
+    "Sale Date",
+    "Sale-Cycle Profit Before Returns (EUR)",
+    "Request Date",
+    "Return Shipped Date",
+    "Received Date",
+    "Refund Date",
+    "Actual Refund (EUR)",
+    "Return Carrier",
+    "Return Tracking Number",
+    "Shipping Payer",
+    "Return Shipping Cost (EUR)",
+    "Platform Fee Refund Recorded (EUR)",
+    "Inspection / Repair Cost (EUR)",
+    "Restored COGS Credit (EUR)",
+    "Return Adjustment (EUR)",
+    "Sale-Cycle Profit After This Case (EUR)",
+  ];
+  const cases = items.flatMap(sale => sale.returns.map(record => {
+    const adjustment = getReturnAdjustmentCents(sale, [record]);
+    return [
+      record.id,
+      record.status,
+      sale.brandSnapshot,
+      sale.modelSnapshot,
+      sale.referenceNumberSnapshot,
+      sale.serialNumberSnapshot,
+      sale.cycleNumber,
+      formatCsvDate(sale.soldDate),
+      formatCsvMoney(sale.profitAtSaleCents),
+      formatCsvDate(record.requestDate),
+      formatCsvDate(record.returnShippedDate),
+      formatCsvDate(record.receivedDate),
+      formatCsvDate(record.refundDate),
+      formatCsvMoney(record.refundAmountCents),
+      record.carrier,
+      record.trackingNumber,
+      record.shippingPayer,
+      formatCsvMoney(record.shippingCostCents),
+      formatCsvMoney(record.platformFeeRefunded ? sale.platformFees : 0),
+      formatCsvMoney(record.inspectionCostCents),
+      formatCsvMoney(record.receivedDate ? record.cogsRestoredCents : 0),
+      formatCsvMoney(adjustment),
+      formatCsvMoney(sale.profitAtSaleCents + adjustment),
+    ].map(csvEscape).join(",");
+  }));
+
+  const summary = summarizeSalesLifecycle(items);
+  const originalSaleCycleProfit = items.reduce((total, sale) => total + sale.profitAtSaleCents, 0);
+  const returnCases = items.flatMap(sale => sale.returns);
+  const lines = [
+    "Return reconciliation report",
+    "Scope,All-time sale cycles and all logged return cases",
+    "",
+    caseHeaders.map(csvEscape).join(","),
+    ...cases,
+    "",
+    "All-time Analytics reconciliation",
+    `Sale-cycle profit before returns (EUR),${formatCsvMoney(originalSaleCycleProfit)}`,
+    `Return adjustment (EUR),${formatCsvMoney(summary.netProfitCents - originalSaleCycleProfit)}`,
+    `Return-adjusted net profit (EUR),${formatCsvMoney(summary.netProfitCents)}`,
+    `Recorded refunds across all cases (EUR),${formatCsvMoney(returnCases.reduce((total, record) => total + record.refundAmountCents, 0))}`,
+    `Seller-paid return shipping across all cases (EUR),${formatCsvMoney(returnCases.reduce((total, record) => total + (record.shippingPayer === "seller" ? record.shippingCostCents : 0), 0))}`,
+    `Inspection / repair costs across all cases (EUR),${formatCsvMoney(returnCases.reduce((total, record) => total + record.inspectionCostCents, 0))}`,
+    `Platform fee refunds recorded across all cases (EUR),${formatCsvMoney(items.reduce((total, sale) => total + sale.returns.filter(record => record.platformFeeRefunded).length * sale.platformFees, 0))}`,
+    "Case-level profit after this case is informational; all-time totals count each sale cycle once.",
+  ];
+  return lines.join("\n");
+}
+
 const saleMonthFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Amsterdam",
   year: "numeric",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { InventoryReturn, InventorySale } from "@shared/schema";
 import {
+  buildReturnReconciliationCsv,
   getReturnAdjustmentCents,
   getSaleCycleNetProfitCents,
   groupReceivedReturnsByMonth,
@@ -110,6 +111,33 @@ describe("sales lifecycle accounting", () => {
     expect(getReturnAdjustmentCents(item, [cancelled])).toBe(-250000);
     expect(summary.returnedSaleCount).toBe(0);
     expect(summary.returnRatePercent).toBe(0);
+  });
+
+  it("exports canceled cases and reconciles all-time totals with Analytics", () => {
+    const cancelled = returnCase({
+      id: 12,
+      status: "cancelled",
+      receivedDate: null,
+      refundAmountCents: 250000,
+      refundDate: "2026-02-04",
+      shippingCostCents: 1200,
+      shippingPayer: "seller",
+      inspectionCostCents: 800,
+      cogsRestoredCents: 0,
+      platformFeeRefunded: false,
+    });
+    const completed = returnCase({ id: 13 });
+    const item = saleWithReturns({ returns: [cancelled, completed] });
+    const csv = buildReturnReconciliationCsv([item]);
+    const analyticsSummary = summarizeSalesLifecycle([item]);
+
+    expect(csv).toContain("Return ID,Status,Brand,Model,Reference Number,Serial Number,Sale Cycle");
+    expect(csv).toContain("12,cancelled,Rolex,Submariner,126610,ABC,1");
+    expect(csv).toContain("Recorded refunds across all cases (EUR),12500.00");
+    expect(csv).toContain("Seller-paid return shipping across all cases (EUR),62.00");
+    expect(csv).toContain("Inspection / repair costs across all cases (EUR),8.00");
+    expect(csv).toContain(`Return-adjusted net profit (EUR),${(analyticsSummary.netProfitCents / 100).toFixed(2)}`);
+    expect(csv).toContain("all-time totals count each sale cycle once");
   });
 
   it("keeps the original purchase cost and counts it once after resale", () => {

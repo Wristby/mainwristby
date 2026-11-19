@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { ArrowUpRight, Box, CalendarClock, CheckCircle2, CircleDollarSign, PackageCheck, RotateCcw, Search, Truck, Watch } from "lucide-react";
+import { ArrowUpRight, Box, CalendarClock, CheckCircle2, CircleDollarSign, Download, PackageCheck, RotateCcw, Search, Truck, Watch } from "lucide-react";
 import { useSales, returnNextActionLabels, returnStatusLabels } from "@/hooks/use-sales";
 import type { InventoryReturn } from "@shared/schema";
 import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
-import { getReturnAdjustmentCents, getSaleCycleNetProfitCents } from "@shared/sales-lifecycle";
+import { buildReturnReconciliationCsv, getReturnAdjustmentCents, getSaleCycleNetProfitCents } from "@shared/sales-lifecycle";
 import { api } from "@shared/routes";
 import { apiJson, queryClient } from "@/lib/queryClient";
 import { salesQueryKey } from "@/hooks/use-sales";
@@ -253,6 +253,16 @@ export default function ReturnsPage() {
   const receivedCount = allReturns.filter(({ record }) => Boolean(record.receivedDate)).length;
   const completedCount = allReturns.filter(({ record }) => record.status === "completed").length;
 
+  function downloadReturnReport() {
+    const blob = new Blob([`\uFEFF${buildReturnReconciliationCsv(sales)}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `wristby-return-reconciliation-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
   const filtered = allReturns.filter(({ sale, record }) => {
     const matchesFilter = filter === "all"
       || (filter === "open" && !["completed", "cancelled", "declined"].includes(record.status))
@@ -276,9 +286,14 @@ export default function ReturnsPage() {
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">Keep the original sale record and track each return, refund, shipment, and inspection separately.</p>
         </div>
-        <Link href="/inventory" className="inline-flex min-h-10 items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:self-auto">
-          <Watch className="h-4 w-4" /> Inventory <ArrowUpRight className="h-3.5 w-3.5" />
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={downloadReturnReport} disabled={isLoading || isError}>
+            <Download className="mr-2 h-4 w-4" /> Download return report
+          </Button>
+          <Link href="/inventory" className="inline-flex min-h-10 items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:self-auto">
+            <Watch className="h-4 w-4" /> Inventory <ArrowUpRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3" aria-label="Return summary">
