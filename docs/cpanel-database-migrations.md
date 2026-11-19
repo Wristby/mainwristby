@@ -23,7 +23,7 @@ The existing `0013` filename prefix is duplicated. Both files are preserved
 under their existing names because the repository cannot determine whether
 either has already been applied on cPanel. The checker allows only this exact
 legacy pair. Do not rename or re-run either based only on its filename. The next
-new incremental migration should use `0019`.
+new incremental migration should use `0021`.
 
 ## Release checklist
 

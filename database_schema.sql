@@ -126,6 +126,81 @@ CREATE TABLE IF NOT EXISTS inventory (
 );
 
 -- =============================================
+-- SALE HISTORY AND RETURNS
+-- =============================================
+CREATE TABLE IF NOT EXISTS inventory_sales (
+    id SERIAL PRIMARY KEY,
+    inventory_id INTEGER REFERENCES inventory(id) ON DELETE SET NULL,
+    cycle_number INTEGER NOT NULL,
+    brand_snapshot TEXT NOT NULL,
+    model_snapshot TEXT NOT NULL,
+    reference_number_snapshot TEXT NOT NULL,
+    serial_number_snapshot TEXT,
+    sale_price INTEGER NOT NULL DEFAULT 0,
+    sold_to TEXT,
+    buyer_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+    platform_fees INTEGER NOT NULL DEFAULT 0,
+    chrono24_fee_rate INTEGER,
+    shipping_fee INTEGER NOT NULL DEFAULT 0,
+    insurance_fee INTEGER NOT NULL DEFAULT 0,
+    sold_date TIMESTAMP,
+    sold_platform TEXT,
+    shipping_partner TEXT,
+    tracking_number TEXT,
+    date_shipped TIMESTAMP,
+    delivered_date DATE,
+    purchase_date_snapshot TIMESTAMP,
+    date_listed_snapshot TIMESTAMP,
+    purchase_price_snapshot INTEGER NOT NULL DEFAULT 0,
+    import_fee_snapshot INTEGER NOT NULL DEFAULT 0,
+    service_fee_snapshot INTEGER NOT NULL DEFAULT 0,
+    polish_fee_snapshot INTEGER NOT NULL DEFAULT 0,
+    watch_register_fee_snapshot INTEGER NOT NULL DEFAULT 0,
+    watch_register_snapshot BOOLEAN NOT NULL DEFAULT FALSE,
+    acquisition_cost_cents INTEGER NOT NULL DEFAULT 0,
+    profit_at_sale_cents INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS inventory_sales_watch_cycle_unique
+    ON inventory_sales (inventory_id, cycle_number);
+CREATE INDEX IF NOT EXISTS inventory_sales_sold_date_idx
+    ON inventory_sales (sold_date);
+
+CREATE TABLE IF NOT EXISTS inventory_returns (
+    id SERIAL PRIMARY KEY,
+    sale_id INTEGER NOT NULL REFERENCES inventory_sales(id),
+    status TEXT NOT NULL DEFAULT 'requested'
+        CHECK (status IN ('requested', 'approved', 'in_transit', 'received', 'inspected', 'completed', 'cancelled', 'declined')),
+    request_date DATE NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    return_shipped_date DATE,
+    received_date DATE,
+    carrier TEXT,
+    tracking_number TEXT,
+    shipping_cost_cents INTEGER NOT NULL DEFAULT 0,
+    shipping_payer TEXT NOT NULL DEFAULT 'seller'
+        CHECK (shipping_payer IN ('seller', 'buyer', 'marketplace')),
+    refund_amount_cents INTEGER NOT NULL DEFAULT 0,
+    refund_date DATE,
+    inspection_condition TEXT,
+    missing_items TEXT,
+    inspection_notes TEXT,
+    inspection_cost_cents INTEGER NOT NULL DEFAULT 0,
+    next_action TEXT NOT NULL DEFAULT 'hold'
+        CHECK (next_action IN ('relist', 'service', 'hold')),
+    cogs_restored_cents INTEGER NOT NULL DEFAULT 0,
+    platform_fee_refunded BOOLEAN NOT NULL DEFAULT FALSE,
+    completed_date DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS inventory_returns_sale_idx
+    ON inventory_returns (sale_id, created_at);
+CREATE INDEX IF NOT EXISTS inventory_returns_received_idx
+    ON inventory_returns (received_date);
+
+-- =============================================
 -- PERSONAL COLLECTION (private, not store inventory)
 -- =============================================
 CREATE TABLE IF NOT EXISTS personal_collection_watches (

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -213,6 +213,80 @@ export const inventory = pgTable("inventory", {
   buyerId: integer("buyer_id").references(() => clients.id),
 });
 
+// A watch can be sold, returned, and sold again. Sale rows are immutable history
+// snapshots; inventory continues to hold the watch's current editable details.
+export const inventorySales = pgTable("inventory_sales", {
+  id: serial("id").primaryKey(),
+  // Preserve sale history if the watch itself is deleted.
+  inventoryId: integer("inventory_id").references(() => inventory.id, { onDelete: "set null" }),
+  cycleNumber: integer("cycle_number").notNull(),
+  brandSnapshot: text("brand_snapshot").notNull(),
+  modelSnapshot: text("model_snapshot").notNull(),
+  referenceNumberSnapshot: text("reference_number_snapshot").notNull(),
+  serialNumberSnapshot: text("serial_number_snapshot"),
+  salePrice: integer("sale_price").notNull().default(0),
+  soldTo: text("sold_to"),
+  buyerId: integer("buyer_id").references(() => clients.id, { onDelete: "set null" }),
+  platformFees: integer("platform_fees").notNull().default(0),
+  chrono24FeeRate: integer("chrono24_fee_rate"),
+  shippingFee: integer("shipping_fee").notNull().default(0),
+  insuranceFee: integer("insurance_fee").notNull().default(0),
+  soldDate: timestamp("sold_date"),
+  soldPlatform: text("sold_platform"),
+  shippingPartner: text("shipping_partner"),
+  trackingNumber: text("tracking_number"),
+  dateShipped: timestamp("date_shipped"),
+  deliveredDate: date("delivered_date", { mode: "string" }),
+  purchaseDateSnapshot: timestamp("purchase_date_snapshot"),
+  dateListedSnapshot: timestamp("date_listed_snapshot"),
+  purchasePriceSnapshot: integer("purchase_price_snapshot").notNull().default(0),
+  importFeeSnapshot: integer("import_fee_snapshot").notNull().default(0),
+  serviceFeeSnapshot: integer("service_fee_snapshot").notNull().default(0),
+  polishFeeSnapshot: integer("polish_fee_snapshot").notNull().default(0),
+  watchRegisterFeeSnapshot: integer("watch_register_fee_snapshot").notNull().default(0),
+  watchRegisterSnapshot: boolean("watch_register_snapshot").notNull().default(false),
+  acquisitionCostCents: integer("acquisition_cost_cents").notNull().default(0),
+  profitAtSaleCents: integer("profit_at_sale_cents").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("inventory_sales_watch_cycle_unique").on(table.inventoryId, table.cycleNumber),
+  index("inventory_sales_sold_date_idx").on(table.soldDate),
+]);
+
+export const inventoryReturns = pgTable("inventory_returns", {
+  id: serial("id").primaryKey(),
+  saleId: integer("sale_id").notNull().references(() => inventorySales.id),
+  status: text("status", {
+    enum: ["requested", "approved", "in_transit", "received", "inspected", "completed", "cancelled", "declined"],
+  }).notNull().default("requested"),
+  requestDate: date("request_date", { mode: "string" }).notNull(),
+  reason: text("reason").notNull().default(""),
+  returnShippedDate: date("return_shipped_date", { mode: "string" }),
+  receivedDate: date("received_date", { mode: "string" }),
+  carrier: text("carrier"),
+  trackingNumber: text("tracking_number"),
+  shippingCostCents: integer("shipping_cost_cents").notNull().default(0),
+  shippingPayer: text("shipping_payer", { enum: ["seller", "buyer", "marketplace"] }).notNull().default("seller"),
+  refundAmountCents: integer("refund_amount_cents").notNull().default(0),
+  refundDate: date("refund_date", { mode: "string" }),
+  inspectionCondition: text("inspection_condition"),
+  missingItems: text("missing_items"),
+  inspectionNotes: text("inspection_notes"),
+  inspectionCostCents: integer("inspection_cost_cents").notNull().default(0),
+  nextAction: text("next_action", { enum: ["relist", "service", "hold"] }).notNull().default("hold"),
+  // The purchase cost remains unchanged on the watch. This credit records that
+  // the asset returned to inventory, keeping sale-cycle profit from double-counting it.
+  cogsRestoredCents: integer("cogs_restored_cents").notNull().default(0),
+  platformFeeRefunded: boolean("platform_fee_refunded").notNull().default(false),
+  completedDate: date("completed_date", { mode: "string" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("inventory_returns_sale_idx").on(table.saleId, table.createdAt),
+  index("inventory_returns_received_idx").on(table.receivedDate),
+]);
+
 export const inventoryPriceHistory = pgTable("inventory_price_history", {
   id: serial("id").primaryKey(),
   // Kept nullable so removing a watch does not remove its saved price history.
@@ -298,6 +372,8 @@ export const insertInventorySchema = createInsertSchema(inventory).omit({
 export type InventoryItem = typeof inventory.$inferSelect;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type InventoryPriceHistory = typeof inventoryPriceHistory.$inferSelect;
+export type InventorySale = typeof inventorySales.$inferSelect;
+export type InventoryReturn = typeof inventoryReturns.$inferSelect;
 
 // === EXPENSES ===
 export const expenses = pgTable("expenses", {
@@ -333,6 +409,26 @@ export const inventoryRelations = relations(inventory, ({ one, many }) => ({
   }),
   expenses: many(expenses),
   priceHistory: many(inventoryPriceHistory),
+  sales: many(inventorySales),
+}));
+
+export const inventorySalesRelations = relations(inventorySales, ({ one, many }) => ({
+  inventory: one(inventory, {
+    fields: [inventorySales.inventoryId],
+    references: [inventory.id],
+  }),
+  buyer: one(clients, {
+    fields: [inventorySales.buyerId],
+    references: [clients.id],
+  }),
+  returns: many(inventoryReturns),
+}));
+
+export const inventoryReturnsRelations = relations(inventoryReturns, ({ one }) => ({
+  sale: one(inventorySales, {
+    fields: [inventoryReturns.saleId],
+    references: [inventorySales.id],
+  }),
 }));
 
 export const inventoryPriceHistoryRelations = relations(inventoryPriceHistory, ({ one }) => ({

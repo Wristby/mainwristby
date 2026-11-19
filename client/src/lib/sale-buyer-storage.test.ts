@@ -47,6 +47,7 @@ function connection(getState: () => State) {
     const builder: any = {
       from(value: any) { table = value; return builder; },
       where(value: any) { condition = value; return builder; },
+      orderBy() { return builder; },
       for() { fixture.operations.push("lock:watch"); return builder; },
       set(value: any) { values = value; return builder; },
       values(value: any) { values = value; return builder; },
@@ -70,7 +71,7 @@ beforeEach(() => {
     clients: [{ id: 91, name: "Existing dealer", type: "dealer", email: "saved@example.invalid", phone: "+31 (6) 1234", country: "Netherlands", notes: "Preserve notes", isVip: true }],
     inventory: [{ id: 11, brand: "Rolex", model: "Fixture", referenceNumber: "TEST", status: "sold",
       purchasePrice: 100000, salePrice: 120000, clientId: 91, buyerId: null, soldTo: "Historical name", watchRegisterFeeSnapshot: 600 }],
-    expenses: [], settings: [],
+    expenses: [], settings: [], inventory_sales: [], inventory_returns: [],
   };
   Object.assign(fixture.db, connection(() => state));
   fixture.db.transaction.mockReset().mockImplementation(async callback => {

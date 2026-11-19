@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses, inventoryPriceHistory, type InventoryItem } from './schema';
+import {
+  insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses,
+  inventoryPriceHistory, inventorySales, inventoryReturns, type InventoryItem, type InventorySale,
+  type InventoryReturn,
+} from './schema';
 import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
 import { personalCollectionInputSchema, personalCollectionValuationInputSchema } from './personal-collection';
@@ -65,6 +69,40 @@ const expenseInputSchema = insertExpenseSchema.extend({
     z.string().transform((val) => val ? new Date(val) : new Date()),
     z.date(),
   ]),
+});
+
+const returnStatusSchema = z.enum([
+  "requested", "approved", "in_transit", "received", "inspected", "completed", "cancelled", "declined",
+]);
+const calendarDateInput = z.string().nullable().optional().refine(
+  value => value == null || isCalendarDate(value),
+  "Enter a valid date.",
+);
+const inventoryReturnInputSchema = z.object({
+  requestDate: z.string().refine(isCalendarDate, "Enter a valid request date."),
+  reason: z.string().max(2000).default(""),
+});
+const inventoryReturnUpdateSchema = z.object({
+  status: returnStatusSchema.optional(),
+  requestDate: z.string().optional().refine(
+    value => value == null || isCalendarDate(value),
+    "Enter a valid request date.",
+  ),
+  reason: z.string().max(2000).optional(),
+  returnShippedDate: calendarDateInput,
+  receivedDate: calendarDateInput,
+  carrier: z.string().max(200).nullable().optional(),
+  trackingNumber: z.string().max(500).nullable().optional(),
+  shippingCostCents: z.number().int().min(0).optional(),
+  shippingPayer: z.enum(["seller", "buyer", "marketplace"]).optional(),
+  refundAmountCents: z.number().int().min(0).optional(),
+  refundDate: calendarDateInput,
+  inspectionCondition: z.string().max(300).nullable().optional(),
+  missingItems: z.string().max(2000).nullable().optional(),
+  inspectionNotes: z.string().max(4000).nullable().optional(),
+  inspectionCostCents: z.number().int().min(0).optional(),
+  nextAction: z.enum(["relist", "service", "hold"]).optional(),
+  platformFeeRefunded: z.boolean().optional(),
 });
 
 export const errorSchemas = {
@@ -222,6 +260,47 @@ export const api = {
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+  sales: {
+    list: {
+      method: "GET" as const,
+      path: "/api/sales",
+      responses: {
+        200: z.array(z.custom<InventorySale & { returns: InventoryReturn[] }>()),
+      },
+    },
+    forWatch: {
+      method: "GET" as const,
+      path: "/api/inventory/:id/sales",
+      responses: {
+        200: z.array(z.custom<InventorySale & { returns: InventoryReturn[] }>()),
+        404: errorSchemas.notFound,
+      },
+    },
+    createReturn: {
+      method: "POST" as const,
+      path: "/api/sales/:saleId/returns",
+      input: inventoryReturnInputSchema,
+      responses: {
+        201: z.custom<typeof inventoryReturns.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
+      },
+    },
+  },
+  returns: {
+    update: {
+      method: "PATCH" as const,
+      path: "/api/returns/:id",
+      input: inventoryReturnUpdateSchema,
+      responses: {
+        200: z.custom<typeof inventoryReturns.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+        409: errorSchemas.validation,
       },
     },
   },

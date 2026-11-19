@@ -1,13 +1,18 @@
 import { useSettings } from "@/hooks/use-settings";
-import { calculateWatchCostBreakdown, calculateWatchFinancials } from "@shared/watch-financials";
 import { getSoldDate } from "@shared/sold-date";
 import {
   getInventoryReportingDate,
-  getSaleAmount,
   matchesCalendarPeriod,
-  summarizeWatchSales,
+  toReportDate,
 } from "@shared/reporting";
 import { useInventory } from "@/hooks/use-inventory";
+import { useSales } from "@/hooks/use-sales";
+import {
+  getSaleCycleNetProfitCents,
+  groupReceivedReturnsByMonth,
+  summarizeSalesLifecycle,
+  type InventorySaleWithReturns,
+} from "@shared/sales-lifecycle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,7 +33,8 @@ import {
   GitCompare,
   Download,
   BadgeCheck,
-  ChevronRight
+  ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -52,7 +58,6 @@ import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOf
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
 import { getChrono24CertificationStats, getChrono24CertificationWatches } from "@/lib/chrono24-certification";
-import { summarizeConfirmedSalesVat } from "@/lib/analytics-vat";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -158,6 +163,89 @@ function filterByDateRange(items: InventoryItem[], range: DateRange, customMonth
   });
 }
 
+function filterSaleCyclesByDateRange(
+  items: InventorySaleWithReturns[],
+  range: DateRange,
+  customMonth?: string,
+  customYear?: string,
+  preset?: PeriodPreset,
+): InventorySaleWithReturns[] {
+  return items.filter((item) => {
+    const date = toReportDate(item.soldDate);
+    if (!date) return preset !== "custom" && !range.start;
+    if (range.start && range.end) return date >= range.start && date <= range.end;
+    if (preset === "custom") {
+      return matchesCalendarPeriod(date, {
+        month: customMonth && customMonth !== "all" ? Number(customMonth) : null,
+        year: customYear && customYear !== "all" ? Number(customYear) : null,
+      });
+    }
+    return true;
+  });
+}
+
+function toAnalyticsSaleItem(
+  sale: InventorySaleWithReturns,
+  currentWatch: InventoryItem | undefined,
+) {
+  const activeReturns = sale.returns.filter(record => !["cancelled", "declined"].includes(record.status));
+  const refunds = activeReturns.reduce((sum, record) => sum + record.refundAmountCents, 0);
+  const refundedFee = activeReturns.some(record => record.platformFeeRefunded) ? sale.platformFees : 0;
+  const returnShipping = activeReturns.reduce((sum, record) =>
+    sum + (record.shippingPayer === "seller" ? record.shippingCostCents : 0), 0);
+  const inspectionCost = activeReturns.reduce((sum, record) => sum + record.inspectionCostCents, 0);
+  const saleDate = toReportDate(sale.soldDate);
+  const acquisitionDate = toReportDate(sale.dateListedSnapshot) ?? toReportDate(sale.purchaseDateSnapshot);
+  const profit = getSaleCycleNetProfitCents(sale);
+  const netRevenue = sale.salePrice - refunds;
+  const totalSaleCosts = sale.platformFees - refundedFee + sale.shippingFee + sale.insuranceFee + returnShipping + inspectionCost;
+  const effectiveAcquisitionCosts = Math.max(0, sale.acquisitionCostCents - activeReturns
+    .filter(record => record.receivedDate)
+    .reduce((sum, record) => sum + record.cogsRestoredCents, 0));
+  const base = currentWatch ?? ({} as InventoryItem);
+  const purchasePrice = sale.purchasePriceSnapshot;
+  const remainingOtherAcquisitionCost = Math.max(0, effectiveAcquisitionCosts - purchasePrice);
+  const roi = sale.purchasePriceSnapshot > 0 ? (profit / sale.purchasePriceSnapshot) * 100 : 0;
+  return {
+    ...base,
+    id: sale.inventoryId ?? -sale.id,
+    brand: sale.brandSnapshot,
+    model: sale.modelSnapshot,
+    referenceNumber: sale.referenceNumberSnapshot,
+    serialNumber: sale.serialNumberSnapshot,
+    purchasePrice,
+    importFee: remainingOtherAcquisitionCost,
+    serviceFee: 0,
+    polishFee: 0,
+    watchRegister: false,
+    watchRegisterFeeSnapshot: 0,
+    salePrice: netRevenue,
+    soldPrice: netRevenue,
+    soldTo: sale.soldTo,
+    buyerId: sale.buyerId,
+    platformFees: Math.max(0, sale.platformFees - refundedFee),
+    shippingFee: sale.shippingFee + returnShipping,
+    insuranceFee: sale.insuranceFee + inspectionCost,
+    soldDate: sale.soldDate,
+    dateSold: sale.soldDate,
+    soldPlatform: sale.soldPlatform,
+    status: "sold" as const,
+    purchaseDate: sale.purchaseDateSnapshot,
+    dateListed: sale.dateListedSnapshot,
+    profit,
+    roi,
+    daysOnMarket: saleDate && acquisitionDate ? differenceInDays(saleDate, acquisitionDate) : 0,
+    netRevenue,
+    netFees: totalSaleCosts + remainingOtherAcquisitionCost,
+  } as InventoryItem & {
+    profit: number;
+    roi: number;
+    daysOnMarket: number;
+    netRevenue: number;
+    netFees: number;
+  };
+}
+
 const PERIOD_OPTIONS: { value: PeriodPreset; label: string; group: string }[] = [
   { value: "all", label: "All Time", group: "general" },
   { value: "this_month", label: "This Month", group: "general" },
@@ -184,17 +272,20 @@ export default function Analytics() {
   const [isCertificationDialogOpen, setIsCertificationDialogOpen] = useState(false);
 
   const { data: inventory, isLoading: inventoryLoading } = useInventory(undefined, true);
+  const { data: sales = [], isLoading: salesLoading } = useSales();
 
-  const isLoading = inventoryLoading;
+  const isLoading = inventoryLoading || salesLoading;
 
   const years = useMemo(() => {
     if (!inventory) return [];
-    const dates = inventory
+    const inventoryDates = inventory
       .map(getInventoryReportingDate)
       .filter((d): d is Date => d !== null);
+    const saleDates = sales.map(item => toReportDate(item.soldDate)).filter((d): d is Date => d !== null);
+    const dates = [...inventoryDates, ...saleDates];
     const uniqueYears = Array.from(new Set(dates.map(d => getYear(d))));
     return uniqueYears.sort((a, b) => b - a);
-  }, [inventory]);
+  }, [inventory, sales]);
 
   const primaryDateRange = useMemo(() => {
     return getPresetDateRange(periodPreset, parseInt(quarterYear), monthFilter, yearFilter);
@@ -209,6 +300,20 @@ export default function Analytics() {
     if (periodPreset === "all") return inventory;
     return filterByDateRange(inventory, primaryDateRange, monthFilter, yearFilter, periodPreset);
   }, [inventory, periodPreset, primaryDateRange, monthFilter, yearFilter]);
+  const filteredSales = useMemo(
+    () => filterSaleCyclesByDateRange(sales, primaryDateRange, monthFilter, yearFilter, periodPreset),
+    [sales, primaryDateRange, monthFilter, yearFilter, periodPreset],
+  );
+  const monthlyReturnCounts = useMemo(() => {
+    const counts = new Map(groupReceivedReturnsByMonth(sales).map(entry => [entry.month, entry.count]));
+    const thisMonth = startOfMonth(new Date());
+    return Array.from({ length: 12 }, (_, index) => {
+      const date = subMonths(thisMonth, 11 - index);
+      const month = formatDate(date, "yyyy-MM");
+      return { month, count: counts.get(month) ?? 0 };
+    });
+  }, [sales]);
+  const allTimeReturnSummary = useMemo(() => summarizeSalesLifecycle(sales), [sales]);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat("de-DE", {
@@ -217,11 +322,6 @@ export default function Analytics() {
       maximumFractionDigits: 0,
       minimumFractionDigits: 0,
     }).format(val / 100);
-  };
-
-  // Helper to calculate total fees for an item
-  const getItemFees = (item: InventoryItem) => {
-    return calculateWatchCostBreakdown(item, settings.watch_register_fee).otherWatchCostsCents;
   };
 
   const triggerDownload = (filename: string, csvContent: string) => {
@@ -243,7 +343,7 @@ export default function Analytics() {
   const fmtMoney = (cents: number) => (cents / 100).toFixed(2);
   const fmtDate = (d: string | Date | null | undefined) => d ? formatDate(new Date(d), "yyyy-MM-dd") : "";
 
-  type EnrichedItem = InventoryItem & { profit: number; roi: number; daysOnMarket: number };
+  type EnrichedItem = InventoryItem & { profit: number; roi: number; daysOnMarket: number; netRevenue: number; netFees: number };
   const buildWatchRows = (items: EnrichedItem[]) => {
     const header = [
       "Brand","Model","Reference Number","Serial Number",
@@ -252,10 +352,11 @@ export default function Analytics() {
       "Margin %","ROI %","Sold Platform"
     ].join(",");
     const rows = items.map(item => {
-      const revenue = getSaleAmount(item) ?? 0;
-      const fees = getItemFees(item);
-      const { profitCents: profit, marginPercent: margin, roiPercent: roi } =
-        calculateWatchFinancials(item, revenue, 0, settings.watch_register_fee, true);
+      const revenue = item.netRevenue;
+      const fees = item.netFees;
+      const profit = item.profit;
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+      const roi = item.roi;
       const soldDate = getSoldDate(item);
       const daysHeld = soldDate && item.purchaseDate
         ? differenceInDays(soldDate, new Date(item.purchaseDate))
@@ -311,21 +412,7 @@ export default function Analytics() {
     ];
 
     const primaryWatchSection = `--- Period: ${primaryDateRange.label} ---\n${buildWatchRows(calculatedMetrics.profits)}`;
-    const compareWatchSection = `--- Period: ${compareDateRange.label} ---\n${buildWatchRows(
-      cM.soldItems.map(item => {
-        const { profitCents: profit, roiPercent: roi } =
-          calculateWatchFinancials(item, getSaleAmount(item) ?? 0, 0, settings.watch_register_fee, true);
-        const soldDate = getSoldDate(item);
-        return {
-          ...item,
-          profit,
-          roi,
-          daysOnMarket: soldDate && item.purchaseDate
-            ? differenceInDays(soldDate, new Date(item.purchaseDate))
-            : 0,
-        };
-      })
-    )}`;
+    const compareWatchSection = `--- Period: ${compareDateRange.label} ---\n${buildWatchRows(cM.profits)}`;
 
     const csv = [summaryHeader, ...summaryRows, "", primaryWatchSection, "", compareWatchSection].join("\n");
     triggerDownload(filename, csv);
@@ -333,58 +420,63 @@ export default function Analytics() {
 
   // Calculate metrics (moved before loading check for hook consistency)
   const calculatedMetrics = useMemo(() => {
-    const soldItems = filteredInventory.filter((i) => i.status === "sold" && getSoldDate(i));
+    const profits = filteredSales.map(sale => toAnalyticsSaleItem(
+      sale,
+      inventory?.find(watch => watch.id === sale.inventoryId),
+    ));
+    const soldItems = profits;
     const activeItems = filteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
-    const salesSummary = summarizeWatchSales(soldItems, settings.watch_register_fee);
+    const salesSummary = summarizeSalesLifecycle(filteredSales);
     const totalRevenue = salesSummary.revenueCents;
     const totalCOGS = salesSummary.purchaseCostsCents;
     const totalGrossMargin = totalRevenue - totalCOGS;
-    const totalFees = salesSummary.watchCostsCents;
+    const totalFees = salesSummary.saleCostsCents + salesSummary.otherAcquisitionCostsCents;
     const totalNetIncome = salesSummary.netProfitCents;
-    const averageMargin = salesSummary.averageMarginPercent;
-    const vatSummary = summarizeConfirmedSalesVat(soldItems, settings.vat_rate, settings.watch_register_fee);
-
-    const profits = soldItems.map((item) => {
-      const { profitCents: profit, roiPercent: roi } =
-          calculateWatchFinancials(item, getSaleAmount(item) ?? 0, 0, settings.watch_register_fee, true);
-      const soldDate = getSoldDate(item);
-      return {
-        ...item,
-        profit,
-        roi,
-        daysOnMarket: (soldDate && item.purchaseDate)
-          ? differenceInDays(soldDate, new Date(item.purchaseDate))
-          : 0,
-      };
-    });
+    const averageMargin = totalRevenue > 0 ? (totalNetIncome / totalRevenue) * 100 : 0;
+    const confirmedSales = filteredSales.filter(sale => sale.salePrice > 0);
+    const vatSummary = {
+      confirmedSales: confirmedSales.length,
+      vatAmountCents: confirmedSales.reduce((sum, sale) => {
+        const profit = getSaleCycleNetProfitCents(sale);
+        return sum + (profit > 0 ? Math.round(profit * settings.vat_rate / 100) : 0);
+      }, 0),
+    };
 
     // Capital deployed (COGS of active inventory)
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
     return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed, vatSummary };
-  }, [filteredInventory, settings.watch_register_fee]);
+  }, [filteredInventory, filteredSales, inventory, settings.vat_rate]);
 
   const compareFilteredInventory = useMemo(() => {
     if (!inventory || !compareMode) return [];
     if (comparePeriodPreset === "all") return inventory;
     return filterByDateRange(inventory, compareDateRange, compareMonthFilter, compareYearFilter, comparePeriodPreset);
   }, [inventory, compareMode, comparePeriodPreset, compareDateRange, compareMonthFilter, compareYearFilter]);
+  const compareFilteredSales = useMemo(
+    () => filterSaleCyclesByDateRange(sales, compareDateRange, compareMonthFilter, compareYearFilter, comparePeriodPreset),
+    [sales, compareDateRange, compareMonthFilter, compareYearFilter, comparePeriodPreset],
+  );
 
   const compareMetrics = useMemo(() => {
     if (!compareMode) return null;
     
-    const soldItems = compareFilteredInventory.filter((i) => i.status === "sold" && getSoldDate(i));
+    const profits = compareFilteredSales.map(sale => toAnalyticsSaleItem(
+      sale,
+      inventory?.find(watch => watch.id === sale.inventoryId),
+    ));
+    const soldItems = profits;
     const activeItems = compareFilteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
-    const salesSummary = summarizeWatchSales(soldItems, settings.watch_register_fee);
+    const salesSummary = summarizeSalesLifecycle(compareFilteredSales);
     const totalRevenue = salesSummary.revenueCents;
     const totalCOGS = salesSummary.purchaseCostsCents;
-    const totalFees = salesSummary.watchCostsCents;
+    const totalFees = salesSummary.saleCostsCents + salesSummary.otherAcquisitionCostsCents;
     const totalNetIncome = salesSummary.netProfitCents;
-    const averageMargin = salesSummary.averageMarginPercent;
+    const averageMargin = totalRevenue > 0 ? (totalNetIncome / totalRevenue) * 100 : 0;
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
     let daysInPeriod = compareDateRange.daysInPeriod;
@@ -408,13 +500,14 @@ export default function Analytics() {
       totalFees,
       totalNetIncome,
       averageMargin,
+      profits,
       capitalDeployed,
       profitPerDay,
       daysInPeriod,
       periodLabel: compareDateRange.label,
       watchesSold: soldItems.length
     };
-  }, [compareMode, compareFilteredInventory, compareDateRange, comparePeriodPreset, settings.watch_register_fee]);
+  }, [compareMode, compareFilteredInventory, compareFilteredSales, compareDateRange, comparePeriodPreset, inventory]);
 
   const profitPerDayData = useMemo(() => {
     const { soldItems, today, totalNetIncome } = calculatedMetrics;
@@ -510,9 +603,8 @@ export default function Analytics() {
     if (!brandStats[item.brand]) {
       brandStats[item.brand] = { sold: 0, revenue: 0, profit: 0 };
     }
-    const revenue = getSaleAmount(item) ?? 0;
-    const fees = getItemFees(item);
-    const profit = revenue - item.purchasePrice - fees;
+    const revenue = item.netRevenue;
+    const profit = item.profit;
     brandStats[item.brand].sold += 1;
     brandStats[item.brand].revenue += revenue;
     brandStats[item.brand].profit += profit;
@@ -864,6 +956,46 @@ export default function Analytics() {
                 <div className="p-2 bg-emerald-50 rounded-full">
                   <TrendingUp className="h-5 w-5 text-emerald-600" />
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-slate-200 md:col-span-3" data-testid="card-return-rate">
+            <CardContent className="pt-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Overall Return Rate</p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">
+                    {allTimeReturnSummary.returnRatePercent.toFixed(1)}%
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {allTimeReturnSummary.returnedSaleCount} of {allTimeReturnSummary.saleCount} sale cycles · counted when the watch is received
+                  </p>
+                </div>
+                <Link href="/returns" className="inline-flex min-h-9 items-center gap-2 self-start rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  View return cases <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </div>
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <p className="text-sm font-medium text-slate-700">Returns by month received</p>
+                {monthlyReturnCounts.length ? (
+                  <div className="mt-3 grid h-28 grid-flow-col auto-cols-fr items-end gap-2 sm:gap-3" aria-label="Monthly returns received in the last 12 active months">
+                    {monthlyReturnCounts.map(({ month, count }) => {
+                      const maxCount = Math.max(...monthlyReturnCounts.map(entry => entry.count), 1);
+                      const height = count ? Math.max(8, (count / maxCount) * 100) : 3;
+                      const label = formatDate(new Date(`${month}-01T00:00:00Z`), "MMM yy");
+                      return (
+                        <div key={month} className="flex h-full min-w-0 flex-col items-center justify-end gap-1" title={`${label}: ${count} ${count === 1 ? "return" : "returns"}`}>
+                          <span className="text-[10px] font-medium text-slate-600">{count || ""}</span>
+                          <div className="w-full max-w-10 rounded-t bg-emerald-600" style={{ height: `${height}%` }} />
+                          <span className="truncate text-[10px] text-slate-500">{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">No watches have been received back yet.</p>
+                )}
               </div>
             </CardContent>
           </Card>

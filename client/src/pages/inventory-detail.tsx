@@ -60,6 +60,7 @@ import { PurchaseInformationCard } from "@/components/watch-details/purchase-inf
 import { DealOverviewCard } from "@/components/watch-details/deal-overview-card";
 import { BuyerDeliverySummary } from "@/components/watch-details/buyer-delivery-summary";
 import { BuyerContactCard } from "@/components/watch-details/buyer-contact-card";
+import { SalesHistoryCard } from "@/components/watch-details/sales-history-card";
 import {
   PurchaseAndPreparationFields,
   SaleDetailsFields,
@@ -1296,6 +1297,8 @@ export default function InventoryDetail() {
             isLoading={clientsLoading}
             isUnavailable={clientsUnavailable}
           />
+
+          <SalesHistoryCard item={item} />
 
           <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">

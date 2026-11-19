@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "node:crypto";
 import { setupAuth, isAuthenticated } from "./auth";
-import { storage, SaleBuyerSaveError, NotebookSnapshotError } from "./storage";
+import { storage, SaleBuyerSaveError, NotebookSnapshotError, ReturnCaseError } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { registerRetentionRoutes, RetentionError } from "./retention";
@@ -304,6 +304,64 @@ export async function registerRoutes(
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Could not update this price history entry. Please try again." });
+    }
+  });
+
+  app.get(api.sales.list.path, isAuthenticated, async (_req, res) => {
+    try {
+      res.json(await storage.getSales());
+    } catch (err) {
+      console.error("Could not load sale history", err);
+      res.status(500).json({ message: "Could not load sale history. Please try again." });
+    }
+  });
+
+  app.get(api.sales.forWatch.path, isAuthenticated, async (req, res) => {
+    const inventoryId = Number(req.params.id);
+    if (!Number.isInteger(inventoryId) || inventoryId < 1) {
+      return res.status(400).json({ message: "Invalid watch ID." });
+    }
+    try {
+      const watch = await storage.getInventoryItem(inventoryId);
+      if (!watch) return res.status(404).json({ message: "Watch not found." });
+      res.json(await storage.getSales(inventoryId));
+    } catch (err) {
+      console.error("Could not load this watch's sale history", err);
+      res.status(500).json({ message: "Could not load this watch's sale history. Please try again." });
+    }
+  });
+
+  app.post(api.sales.createReturn.path, isAuthenticated, async (req, res) => {
+    const saleId = Number(req.params.saleId);
+    if (!Number.isInteger(saleId) || saleId < 1) {
+      return res.status(400).json({ message: "Invalid sale record." });
+    }
+    try {
+      const input = api.sales.createReturn.input.parse(req.body);
+      const record = await storage.createInventoryReturn(saleId, input);
+      res.status(201).json(record);
+    } catch (err) {
+      if (err instanceof ReturnCaseError) return res.status(err.status).json({ message: err.message });
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Could not create return case", err);
+      res.status(500).json({ message: "Could not create the return case. Please try again." });
+    }
+  });
+
+  app.patch(api.returns.update.path, isAuthenticated, async (req, res) => {
+    const returnId = Number(req.params.id);
+    if (!Number.isInteger(returnId) || returnId < 1) {
+      return res.status(400).json({ message: "Invalid return case." });
+    }
+    try {
+      const input = api.returns.update.input.parse(req.body);
+      const record = await storage.updateInventoryReturn(returnId, input);
+      res.json(record);
+    } catch (err) {
+      if (err instanceof ReturnCaseError) return res.status(err.status).json({ message: err.message });
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Could not update return case", err);
+      res.status(500).json({ message: "Could not update the return case. Please try again." });
     }
   });
 

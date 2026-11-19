@@ -47,6 +47,7 @@ const PersonalCollectionEdit = lazy(() =>
   })),
 );
 const Warranties = lazy(() => import("@/pages/warranties"));
+const Returns = lazy(() => import("@/pages/returns"));
 
 function RouteLoading({ fullScreen = false }: { fullScreen?: boolean }) {
   return (
@@ -133,6 +134,9 @@ function Router() {
       </Route>
       <Route path="/warranties">
         <ProtectedRoute component={Warranties} />
+      </Route>
+      <Route path="/returns">
+        <ProtectedRoute component={Returns} />
       </Route>
       <Route path="/watch-universe">
         <ProtectedRoute component={WatchUniverse} />
