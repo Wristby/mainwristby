@@ -5,6 +5,7 @@ const harness = vi.hoisted(() => ({
   states: [] as unknown[],
   index: 0,
   brands: ["Rolex", "Omega", "Cartier"],
+  collection: [] as any[],
 }));
 
 vi.mock("react", async (importOriginal) => ({
@@ -31,6 +32,7 @@ vi.mock("@/hooks/use-settings", () => ({
 }));
 
 vi.mock("@/hooks/use-personal-collection", () => ({
+  usePersonalCollection: () => ({ data: harness.collection, isLoading: false, isError: false, refetch: vi.fn() }),
   usePersonalCollectionWatch: () => ({ data: null, isLoading: false, isError: false }),
   useCreatePersonalCollectionWatch: () => ({ isPending: false, isSuccess: false, mutateAsync: vi.fn() }),
   useUpdatePersonalCollectionWatch: () => ({ isPending: false, isSuccess: false, mutateAsync: vi.fn() }),
@@ -40,7 +42,7 @@ vi.mock("@/hooks/use-personal-collection", () => ({
   useDeletePersonalCollectionWatch: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
 
-import { PersonalCollectionFormPage } from "./personal-collection";
+import PersonalCollection, { PersonalCollectionFormPage } from "./personal-collection";
 
 function nodes(node: ReactNode): ReactElement<any>[] {
   if (Array.isArray(node)) return node.flatMap(nodes);
@@ -62,6 +64,7 @@ describe("personal collection intake", () => {
   beforeEach(() => {
     harness.states = [];
     harness.index = 0;
+    harness.collection = [];
   });
 
   it("uses the Settings brand list and omits the wholesale-box checkbox", () => {
@@ -76,5 +79,30 @@ describe("personal collection intake", () => {
     expect(nodes(brandSelect).filter((option) => option.type === "option").map((option) => option.props.value))
       .toEqual(["", ...harness.brands]);
     expect(text(tree)).not.toContain("Box for wholesale");
+  });
+
+  it("shows total investment from purchase prices and intake fees, not current estimates", () => {
+    harness.collection = [{
+      id: 1,
+      manufacturer: "Rolex",
+      model: "Submariner",
+      referenceNumber: "126610LN",
+      purchasePrice: 200_000,
+      estimatedValue: 500_000,
+      intakeFees: [{ label: "Service", amount: 15_000 }],
+    }];
+
+    const tree = PersonalCollection();
+    const investmentCard = nodes(tree).find((node) =>
+      node.type === "div" &&
+      node.props.className === "pc-stat" &&
+      text(node).includes("TOTAL INVESTMENT"),
+    );
+    const content = text(investmentCard ?? null);
+
+    expect(investmentCard).toBeDefined();
+    expect(content).toContain("Recorded purchase price + fees");
+    expect(content).toContain("2.150,00\u00a0€");
+    expect(content).not.toContain("5.000,00\u00a0€");
   });
 });
