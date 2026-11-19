@@ -60,8 +60,13 @@
 .pc-check { display:flex; gap:8px; align-items:center; color:#52665a; font-size:13px; }
 .pc-check input { accent-color:#356a53; width:16px; height:16px; }
 .pc-fee-row { display:grid; grid-template-columns:1fr 160px auto; gap:9px; margin:9px 0; }
-.pc-fee-row button { width:40px; border:1px solid #ead4ca; border-radius:8px; background:#fff7f3; color:#873d34; }
-.pc-add-fee { margin-top:10px; border:0; background:transparent; color:#356a53; font-size:13px; font-weight:700; }
+.pc-fee-row button { display:grid; place-items:center; align-self:center; box-sizing:border-box; width:40px; height:44px; padding:0; line-height:1; border:1px solid #ead4ca; border-radius:8px; background:#fff7f3; color:#873d34; }
+.pc-fee-row button svg { display:block; }
+.pc-intake-fees { margin-top:20px; }
+.pc-fees-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.pc-fees-heading > b { font-size:13px; }
+.pc-add-fee { display:inline-flex; flex-direction:row; align-items:center; justify-content:center; gap:5px; width:max-content; margin-top:10px; border:0; background:transparent; color:#356a53; font-size:13px; font-weight:700; line-height:1.2; white-space:nowrap; cursor:pointer; }
+.pc-fees-heading .pc-add-fee { margin:0; }
 .pc-form-footer { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:8px 0 22px; }
 .pc-form-footer > div { display:flex; gap:9px; }
 .pc-error { margin:12px 0; padding:11px 13px; border-radius:8px; color:#823c33; background:#fff0eb; font-size:13px; }
