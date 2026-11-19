@@ -106,7 +106,24 @@ function ReturnEditor({ item, sale }: { item: InventoryReturn; sale: InventorySa
         nextAction,
         platformFeeRefunded,
       };
-      await apiJson("PATCH", path, body);
+      const saved = await apiJson<InventoryReturn>("PATCH", path, body);
+      setStatus(saved.status);
+      setRequestDate(saved.requestDate);
+      setReason(saved.reason ?? "");
+      setReturnShippedDate(saved.returnShippedDate ?? "");
+      setReceivedDate(saved.receivedDate ?? "");
+      setCarrier(saved.carrier ?? "");
+      setTrackingNumber(saved.trackingNumber ?? "");
+      setShippingCost(toEuroInput(saved.shippingCostCents));
+      setShippingPayer(saved.shippingPayer);
+      setRefundAmount(toEuroInput(saved.refundAmountCents));
+      setRefundDate(saved.refundDate ?? "");
+      setInspectionCondition(saved.inspectionCondition ?? "");
+      setMissingItems(saved.missingItems ?? "");
+      setInspectionNotes(saved.inspectionNotes ?? "");
+      setInspectionCost(toEuroInput(saved.inspectionCostCents));
+      setNextAction(saved.nextAction);
+      setPlatformFeeRefunded(saved.platformFeeRefunded);
       await queryClient.invalidateQueries({ queryKey: [...salesQueryKey] });
       if (sale.inventoryId != null) {
         await queryClient.invalidateQueries({ queryKey: [`/api/inventory/${sale.inventoryId}/sales`] });
@@ -216,9 +233,16 @@ function ReturnEditor({ item, sale }: { item: InventoryReturn; sale: InventorySa
 
 export default function ReturnsPage() {
   const { data: sales = [], isLoading, isError, error } = useSales();
-  const [filter, setFilter] = useState<Filter>("open");
+  const [filter, setFilter] = useState<Filter>(() => {
+    if (typeof window === "undefined") return "open";
+    return new URLSearchParams(window.location.search).has("returnId") ? "all" : "open";
+  });
   const [search, setSearch] = useState("");
-  const [editingReturnId, setEditingReturnId] = useState<number | null>(null);
+  const [editingReturnId, setEditingReturnId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const id = Number(new URLSearchParams(window.location.search).get("returnId"));
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  });
 
   const allReturns = useMemo(() => sales.flatMap(sale =>
     sale.returns.map(record => ({ sale, record })),
@@ -301,7 +325,7 @@ export default function ReturnsPage() {
               const adjustment = getReturnAdjustmentCents(sale, [record]);
               const net = getSaleCycleNetProfitCents({ ...sale, returns: [record] });
               return (
-                <article key={record.id} className="rounded-xl border border-slate-200 p-4 sm:p-5">
+                <article id={`return-${record.id}`} key={record.id} className="rounded-xl border border-slate-200 p-4 sm:p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">

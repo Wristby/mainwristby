@@ -188,20 +188,13 @@ function toAnalyticsSaleItem(
   sale: InventorySaleWithReturns,
   currentWatch: InventoryItem | undefined,
 ) {
-  const activeReturns = sale.returns.filter(record => !["cancelled", "declined"].includes(record.status));
-  const refunds = activeReturns.reduce((sum, record) => sum + record.refundAmountCents, 0);
-  const refundedFee = activeReturns.some(record => record.platformFeeRefunded) ? sale.platformFees : 0;
-  const returnShipping = activeReturns.reduce((sum, record) =>
-    sum + (record.shippingPayer === "seller" ? record.shippingCostCents : 0), 0);
-  const inspectionCost = activeReturns.reduce((sum, record) => sum + record.inspectionCostCents, 0);
+  const lifecycle = summarizeSalesLifecycle([sale]);
   const saleDate = toReportDate(sale.soldDate);
   const acquisitionDate = toReportDate(sale.dateListedSnapshot) ?? toReportDate(sale.purchaseDateSnapshot);
   const profit = getSaleCycleNetProfitCents(sale);
-  const netRevenue = sale.salePrice - refunds;
-  const totalSaleCosts = sale.platformFees - refundedFee + sale.shippingFee + sale.insuranceFee + returnShipping + inspectionCost;
-  const effectiveAcquisitionCosts = Math.max(0, sale.acquisitionCostCents - activeReturns
-    .filter(record => record.receivedDate)
-    .reduce((sum, record) => sum + record.cogsRestoredCents, 0));
+  const netRevenue = lifecycle.revenueCents;
+  const totalSaleCosts = lifecycle.saleCostsCents;
+  const effectiveAcquisitionCosts = lifecycle.acquisitionCostsCents;
   const base = currentWatch ?? ({} as InventoryItem);
   const purchasePrice = sale.purchasePriceSnapshot;
   const remainingOtherAcquisitionCost = Math.max(0, effectiveAcquisitionCosts - purchasePrice);
@@ -209,6 +202,7 @@ function toAnalyticsSaleItem(
   return {
     ...base,
     id: sale.inventoryId ?? -sale.id,
+    saleCycleNumber: sale.cycleNumber,
     brand: sale.brandSnapshot,
     model: sale.modelSnapshot,
     referenceNumber: sale.referenceNumberSnapshot,
@@ -223,9 +217,10 @@ function toAnalyticsSaleItem(
     soldPrice: netRevenue,
     soldTo: sale.soldTo,
     buyerId: sale.buyerId,
-    platformFees: Math.max(0, sale.platformFees - refundedFee),
-    shippingFee: sale.shippingFee + returnShipping,
-    insuranceFee: sale.insuranceFee + inspectionCost,
+    platformFees: Math.max(0, sale.platformFees - (sale.returns.some(record => record.platformFeeRefunded) ? sale.platformFees : 0)),
+    shippingFee: sale.shippingFee + sale.returns.reduce((sum, record) =>
+      sum + (record.shippingPayer === "seller" ? record.shippingCostCents : 0), 0),
+    insuranceFee: sale.insuranceFee + sale.returns.reduce((sum, record) => sum + record.inspectionCostCents, 0),
     soldDate: sale.soldDate,
     dateSold: sale.soldDate,
     soldPlatform: sale.soldPlatform,
@@ -243,6 +238,7 @@ function toAnalyticsSaleItem(
     daysOnMarket: number;
     netRevenue: number;
     netFees: number;
+    saleCycleNumber: number;
   };
 }
 
@@ -343,7 +339,14 @@ export default function Analytics() {
   const fmtMoney = (cents: number) => (cents / 100).toFixed(2);
   const fmtDate = (d: string | Date | null | undefined) => d ? formatDate(new Date(d), "yyyy-MM-dd") : "";
 
-  type EnrichedItem = InventoryItem & { profit: number; roi: number; daysOnMarket: number; netRevenue: number; netFees: number };
+  type EnrichedItem = InventoryItem & {
+    profit: number;
+    roi: number;
+    daysOnMarket: number;
+    netRevenue: number;
+    netFees: number;
+    saleCycleNumber: number;
+  };
   const buildWatchRows = (items: EnrichedItem[]) => {
     const header = [
       "Brand","Model","Reference Number","Serial Number",
@@ -784,8 +787,7 @@ export default function Analytics() {
         )}
       </div>
       <SalesPatternsPreview
-        inventory={filteredInventory.filter((item) => item.status === "sold")}
-        watchRegisterFeeCents={settings.watch_register_fee}
+        sales={filteredSales}
         periodLabel={primaryDateRange.label}
       />
       {/* Comparison View */}
@@ -1307,10 +1309,10 @@ export default function Analytics() {
             ) : (
               topPerformers.map((item, index) => (
                 <Link
-                  key={item.id}
+                  key={`${item.id}-${item.saleCycleNumber}`}
                   href={`/inventory/${item.id}`}
                   className="group flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 transition-colors hover:bg-emerald-50/60 hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-                  data-testid={`top-performer-watch-${item.id}`}
+                  data-testid={`top-performer-watch-${item.id}-cycle-${item.saleCycleNumber}`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 font-bold text-sm border border-amber-100">
@@ -1320,7 +1322,7 @@ export default function Analytics() {
                       <p className="font-medium text-slate-900 text-sm">
                         {item.brand} {item.model}
                       </p>
-                      <p className="text-xs text-slate-500">{item.referenceNumber}</p>
+                      <p className="text-xs text-slate-500">{item.referenceNumber} · Sale cycle {item.saleCycleNumber}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -1347,10 +1349,10 @@ export default function Analytics() {
             ) : (
               underperformers.map((item, index) => (
                 <Link
-                  key={item.id}
+                  key={`${item.id}-${item.saleCycleNumber}`}
                   href={`/inventory/${item.id}`}
                   className="group flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 transition-colors hover:bg-emerald-50/60 hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-                  data-testid={`underperformer-watch-${item.id}`}
+                  data-testid={`underperformer-watch-${item.id}-cycle-${item.saleCycleNumber}`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-200">
@@ -1360,7 +1362,7 @@ export default function Analytics() {
                       <p className="font-medium text-slate-900 text-sm">
                         {item.brand} {item.model}
                       </p>
-                      <p className="text-xs text-slate-500">{item.referenceNumber}</p>
+                      <p className="text-xs text-slate-500">{item.referenceNumber} · Sale cycle {item.saleCycleNumber}</p>
                     </div>
                   </div>
                   <div className="text-right">

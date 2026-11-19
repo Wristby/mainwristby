@@ -79,7 +79,12 @@ export function SalesHistoryCard({ item }: { item: InventoryItem }) {
                         <div key={record.id} className="rounded-md bg-white p-2.5 text-xs">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-slate-800">{returnStatusLabels[record.status]}</span>
-                            <span className="text-slate-500">Requested {formatDate(record.requestDate)}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-500">Requested {formatDate(record.requestDate)}</span>
+                              <Link href={`/returns?returnId=${record.id}`} className="font-medium text-emerald-800 hover:underline">
+                                Manage
+                              </Link>
+                            </div>
                           </div>
                           {record.receivedDate && <p className="mt-1 text-slate-600">Watch received {formatDate(record.receivedDate)}</p>}
                           {record.refundAmountCents > 0 && <p className="mt-1 text-slate-600">Refund: {formatMoney(record.refundAmountCents)}</p>}

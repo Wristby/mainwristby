@@ -135,8 +135,7 @@ describe("Sales Patterns page", () => {
   it("shows a live month-by-month preview and a link from Analytics", () => {
     harness.index = 0;
     const preview = SalesPatternsPreview({
-      inventory: harness.inventory as unknown as import("@shared/schema").InventoryItem[],
-      watchRegisterFeeCents: 600,
+      sales: [{ soldDate: new Date("2025-01-12T00:00:00.000Z") }],
       periodLabel: "2025",
     });
     expect(text(preview)).toContain("1 sale · 2025");

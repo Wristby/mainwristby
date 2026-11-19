@@ -94,6 +94,23 @@ describe("sales lifecycle accounting", () => {
     expect(getReturnAdjustmentCents(sale(), [item])).toBe(-1000000 - 5000);
   });
 
+  it("keeps actual refunds in profit while excluding unreceived cancellations from the return rate", () => {
+    const cancelled = returnCase({
+      status: "cancelled",
+      receivedDate: null,
+      refundAmountCents: 250000,
+      refundDate: "2026-02-04",
+      shippingCostCents: 0,
+      cogsRestoredCents: 0,
+      platformFeeRefunded: false,
+    });
+    const item = saleWithReturns({ returns: [cancelled] });
+    const summary = summarizeSalesLifecycle([item]);
+    expect(getReturnAdjustmentCents(item, [cancelled])).toBe(-250000);
+    expect(summary.returnedSaleCount).toBe(0);
+    expect(summary.returnRatePercent).toBe(0);
+  });
+
   it("keeps the original purchase cost and counts it once after resale", () => {
     const firstCycle = saleWithReturns({ returns: [returnCase()] });
     const resale = saleWithReturns({
