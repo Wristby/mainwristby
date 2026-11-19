@@ -52,6 +52,7 @@ import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOf
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
 import { getChrono24CertificationStats, getChrono24CertificationWatches } from "@/lib/chrono24-certification";
+import { summarizeConfirmedSalesVat } from "@/lib/analytics-vat";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -343,6 +344,7 @@ export default function Analytics() {
     const totalFees = salesSummary.watchCostsCents;
     const totalNetIncome = salesSummary.netProfitCents;
     const averageMargin = salesSummary.averageMarginPercent;
+    const vatSummary = summarizeConfirmedSalesVat(soldItems, settings.vat_rate, settings.watch_register_fee);
 
     const profits = soldItems.map((item) => {
       const { profitCents: profit, roiPercent: roi } =
@@ -361,7 +363,7 @@ export default function Analytics() {
     // Capital deployed (COGS of active inventory)
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
-    return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed };
+    return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed, vatSummary };
   }, [filteredInventory, settings.watch_register_fee]);
 
   const compareFilteredInventory = useMemo(() => {
@@ -452,7 +454,7 @@ export default function Analytics() {
   }
 
   // Destructure calculated metrics for use in render
-  const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed } = calculatedMetrics;
+  const { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed, vatSummary } = calculatedMetrics;
 
   const primaryPeriodLabel = primaryDateRange.label;
   const comparePeriodLabel = compareDateRange.label;
@@ -830,6 +832,25 @@ export default function Analytics() {
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-slate-600">Additional Metrics</h2>
         <div className="grid gap-4 md:grid-cols-3">
+          <Card className="bg-white border-slate-200" data-testid="card-vat-on-confirmed-sales">
+            <CardContent className="pt-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Estimated VAT on Confirmed Sales</p>
+                  <p className="text-3xl font-bold text-amber-700 mt-1 tabular-nums">
+                    {formatCurrency(vatSummary.vatAmountCents)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {vatSummary.confirmedSales} confirmed {vatSummary.confirmedSales === 1 ? "sale" : "sales"} · positive net profit only · {settings.vat_rate}% rate
+                  </p>
+                </div>
+                <div className="p-2 bg-amber-50 rounded-full">
+                  <Receipt className="h-5 w-5 text-amber-700" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="bg-white border-slate-200">
             <CardContent className="pt-5">
               <div className="flex items-start justify-between">
