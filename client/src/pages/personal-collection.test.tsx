@@ -91,6 +91,10 @@ describe("personal collection intake", () => {
       .toEqual(["", "Mint", "Excellent", "Very Good", "Good", "Fair", "Poor"]);
     expect(text(conditionSelect)).toContain("Select condition");
     expect(nodes(conditionSelect).some((option) => option.type === "option" && option.props.children === "Not graded")).toBe(false);
+
+    const driveFolderUrl = "https://drive.google.com/drive/folders/1vdzLtMtKb8Nwk8ii-Tlnk6FdW5sPiapx?usp=drive_link";
+    expect(nodes(tree).some((node) => node.type === "a" && node.props.href === driveFolderUrl && text(node).includes("Open Folder"))).toBe(true);
+    expect(nodes(tree).some((node) => node.type === "input" && node.props.id === "personal-gdrive-link")).toBe(true);
   });
 
   it("shows total investment from purchase prices and intake fees, not current estimates", () => {

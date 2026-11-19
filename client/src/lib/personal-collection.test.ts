@@ -91,6 +91,7 @@ describe("personal collection", () => {
       dateBought: "2024-04-12",
       purchasePrice: 1_234_500,
       estimatedValue: 1_500_000,
+      gdriveLink: "https://drive.google.com/drive/folders/1vdzLtMtKb8Nwk8ii-Tlnk6FdW5sPiapx?usp=drive_link",
       intakeFees: [{ label: "Inbound shipping", amount: 2_500 }],
       technicalDetails: { caliber: "3235" },
     };
@@ -98,8 +99,10 @@ describe("personal collection", () => {
       referenceNumber: "126610LN",
       manufacturer: "Rolex",
       purchasePrice: 1_234_500,
+      gdriveLink: "https://drive.google.com/drive/folders/1vdzLtMtKb8Nwk8ii-Tlnk6FdW5sPiapx?usp=drive_link",
       intakeFees: [{ label: "Inbound shipping", amount: 2_500 }],
     });
+    expect(api.personalCollection.create.input.safeParse({ ...input, gdriveLink: "javascript:alert(1)" }).success).toBe(false);
     expect(api.personalCollection.create.input.safeParse({ ...input, dateBought: "2026-02-30" }).success).toBe(false);
     expect(api.personalCollection.create.input.safeParse({ ...input, purchasePrice: -1 }).success).toBe(false);
     expect(api.personalCollection.create.input.safeParse({ ...input, referenceNumber: " " }).success).toBe(false);

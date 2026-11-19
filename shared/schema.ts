@@ -262,6 +262,7 @@ export const personalCollectionWatches = pgTable("personal_collection_watches", 
   intakeFees: jsonb("intake_fees").$type<PersonalCollectionFee[]>().notNull().default([]),
   notes: text("notes"),
   technicalDetails: jsonb("technical_details").$type<PersonalCollectionTechnicalDetails>().notNull().default({}),
+  gdriveLink: text("gdrive_link"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

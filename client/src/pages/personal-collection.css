@@ -62,6 +62,12 @@
 .pc-fee-row { display:grid; grid-template-columns:1fr 160px auto; gap:9px; margin:9px 0; }
 .pc-fee-row button { display:grid; place-items:center; align-self:center; box-sizing:border-box; width:40px; height:44px; padding:0; line-height:1; border:1px solid #ead4ca; border-radius:8px; background:#fff7f3; color:#873d34; }
 .pc-fee-row button svg { display:block; }
+.pc-drive-field-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:7px; }
+.pc-drive-field-heading label { color:#40594b; font-size:12px; font-weight:700; }
+.pc-drive-field-heading a, .pc-drive-detail a { display:inline-flex; align-items:center; gap:5px; color:#356a53; font-size:12px; font-weight:700; text-decoration:none; }
+.pc-drive-field-heading a:hover, .pc-drive-detail a:hover { text-decoration:underline; }
+.pc-drive-detail { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:18px; padding-top:14px; border-top:1px solid #e6ece4; }
+.pc-drive-detail > span { color:#7b887f; font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
 .pc-intake-fees { margin-top:20px; }
 .pc-fees-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .pc-fees-heading > b { font-size:13px; }

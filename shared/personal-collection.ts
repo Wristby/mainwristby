@@ -13,6 +13,15 @@ const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date
 const optionalDate = calendarDate.nullable().optional();
 const optionalMoney = z.number().int().min(0).max(2_000_000_000).nullable().optional();
 const nullableText = (maxLength = 1000) => z.string().trim().max(maxLength).nullable().optional();
+const googleDriveLink = z.string().trim().max(2048).nullable().optional().refine((value) => {
+  if (value == null || value === "") return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && ["drive.google.com", "docs.google.com"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}, "Enter a valid Google Drive link.");
 
 export const personalCollectionFeeSchema = z.object({
   label: z.string().trim().min(1).max(100),
@@ -49,6 +58,7 @@ export const personalCollectionInputSchema = insertPersonalCollectionWatchSchema
   estimatedValue: optionalMoney,
   msrp: optionalMoney,
   intakeFees: z.array(personalCollectionFeeSchema).max(50).optional(),
+  gdriveLink: googleDriveLink,
   notes: nullableText(5000),
   technicalDetails: z.record(z.string().trim().max(300)).optional(),
 });

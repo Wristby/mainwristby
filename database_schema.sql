@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS personal_collection_watches (
     intake_fees JSONB NOT NULL DEFAULT '[]'::jsonb,
     notes TEXT,
     technical_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    gdrive_link TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
