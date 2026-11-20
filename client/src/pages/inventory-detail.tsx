@@ -370,6 +370,7 @@ export default function InventoryDetail() {
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [listingTitleValue, setListingTitleValue] = useState("");
   const [isSavingListingTitle, setIsSavingListingTitle] = useState(false);
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [captionValue, setCaptionValue] = useState("");
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
@@ -431,6 +432,32 @@ export default function InventoryDetail() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setIsSavingListingTitle(false);
+    }
+  };
+
+  const handleGenerateListingTitle = async () => {
+    if (!item) return;
+    setIsGeneratingTitle(true);
+    try {
+      const result = await apiRequest("POST", "/api/ai/generate-title", {
+        brand: item.brand,
+        model: item.model,
+        referenceNumber: item.referenceNumber,
+        year: item.year,
+        condition: item.condition,
+        box: item.box,
+        papers: item.papers,
+      });
+      const data = await readApiJson<{ title?: string; message?: string }>(result);
+      if (data.title) {
+        setListingTitleValue(data.title);
+      } else {
+        toast({ title: "Error", description: data.message || "No title generated.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsGeneratingTitle(false);
     }
   };
 
@@ -1459,7 +1486,20 @@ export default function InventoryDetail() {
           {/* Listing Title Card */}
           {activeSection === "ai" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-listing-title">
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg text-slate-900">Listing Title</CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-lg text-slate-900">Listing Title</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleGenerateListingTitle}
+                  disabled={isGeneratingTitle}
+                  data-testid="button-generate-listing-title"
+                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                >
+                  {isGeneratingTitle ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {isGeneratingTitle ? "Generating..." : "Generate"}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <Input

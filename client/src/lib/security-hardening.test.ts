@@ -163,6 +163,38 @@ describe("AI secret isolation", () => {
     expect(String(providerUrl)).not.toMatch(/key=|isolated-dummy-ai-key/);
     expect(options?.headers).toMatchObject({ "x-goog-api-key": "isolated-dummy-ai-key" });
   });
+
+  it("returns a short keyword-style listing title and limits its length", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "isolated-dummy-ai-key");
+    const app = express();
+    app.use(express.json());
+    await registerRoutes(createServer(app), app);
+    const url = await serve(app);
+    const request = globalThis.fetch;
+    const login = await request(`${url}/api/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "test-account", password: "correct-test-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "Title: Rolex Submariner Date 126610LN 2022 Excellent Condition Automatic Steel Bracelet Black Dial Original Box Papers Collector Watch" }] } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    const response = await request(`${url}/api/ai/generate-title`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        brand: "Rolex", model: "Submariner Date", referenceNumber: "126610LN",
+        year: 2022, condition: "Excellent", box: true, papers: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.title).toBe("Rolex Submariner Date 126610LN 2022 Excellent Condition Automatic Steel Bracelet Black");
+    expect(result.title.split(/\s+/).length).toBeLessThanOrEqual(12);
+    expect(result.title.length).toBeLessThanOrEqual(90);
+  });
 });
 
 describe("persistent login throttling", () => {
