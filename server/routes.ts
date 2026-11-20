@@ -1011,17 +1011,27 @@ Condition: {{condition}}
 Original Box: {{box}}
 Papers/Cards: {{papers}}`;
 
-    const prompt = promptTemplate
+    const hasFullSet = box === true && papers === true;
+    const accessoryRule = hasFullSet
+      ? 'Both the original box and papers are present. Explicitly use the exact phrase "Full Set" in the description.'
+      : 'Only use the phrase "Full Set" when both the original box and papers are present.';
+    const prompt = `${promptTemplate
       .replace(/\{\{brand\}\}/g, brand)
       .replace(/\{\{model\}\}/g, model)
       .replace(/\{\{referenceNumber\}\}/g, referenceNumber || "Not specified")
       .replace(/\{\{year\}\}/g, year || "Not specified")
       .replace(/\{\{condition\}\}/g, condition || "Not specified")
       .replace(/\{\{box\}\}/g, box ? "Yes" : "No")
-      .replace(/\{\{papers\}\}/g, papers ? "Yes" : "No");
+      .replace(/\{\{papers\}\}/g, papers ? "Yes" : "No")}
+
+Accessory wording: ${accessoryRule}`;
 
     try {
-      const description = await generateGeminiText(apiKey, aiModel, prompt);
+      let description = await generateGeminiText(apiKey, aiModel, prompt);
+
+      if (hasFullSet && !/\bfull\s+set\b/i.test(description)) {
+        description = `This watch is offered as a Full Set with its original box and papers.\n\n${description}`;
+      }
 
       if (!description) {
         return res.status(502).json({ message: "No description returned from AI." });
@@ -1297,7 +1307,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   ai_listing_title_prompt_template: DEFAULT_LISTING_TITLE_PROMPT,
   ai_movement_prompt_template: DEFAULT_MOVEMENT_PROMPT,
   ai_instagram_prompt_template: DEFAULT_INSTAGRAM_PROMPT,
-  ai_prompt_template: `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats.
+  ai_prompt_template: `You are a professional luxury watch dealer. Write a compelling 2-3 paragraph marketplace listing description for the following watch. Focus on the specifications, condition, and appeal to serious collectors. Be factual, concise, and write in first person from the seller's perspective. Do not include pricing. Suitable for platforms like Chrono24 or Marktplaats. If both the original box and papers are included, explicitly call it a "Full Set"; do not use that term unless both are included.
 
 Brand: {{brand}}
 Model: {{model}}

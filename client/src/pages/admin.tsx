@@ -860,7 +860,7 @@ export default function Admin() {
             <div>
               <Label className="text-sm font-semibold text-slate-700">Listing Description Prompt</Label>
               <p className="text-xs text-slate-400 mt-1 mb-2">
-                Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}, {"{{box}}"}, {"{{papers}}"}
+                Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}, {"{{box}}"}, {"{{papers}}"}. The generator uses “Full Set” only when both box and papers are present.
               </p>
               <PromptEditor
                 value={settings.ai_prompt_template}

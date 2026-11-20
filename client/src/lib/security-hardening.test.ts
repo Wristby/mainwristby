@@ -202,6 +202,41 @@ describe("AI secret isolation", () => {
     expect(providerPrompt).toContain("Custom title format. Brand=Rolex Model=Submariner Date Reference=126610LN");
     expect(providerPrompt).toContain("at most 12 words and 90 characters");
   });
+
+  it("uses Full Set in listing descriptions only when both box and papers are present", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "isolated-dummy-ai-key");
+    fixture.settings.ai_prompt_template = "Custom listing description instructions.";
+    const app = express();
+    app.use(express.json());
+    await registerRoutes(createServer(app), app);
+    const url = await serve(app);
+    const request = globalThis.fetch;
+    const login = await request(`${url}/api/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "test-account", password: "correct-test-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const providerFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "A well-kept Rolex Submariner Date in excellent condition." }] } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    const response = await request(`${url}/api/ai/generate-description`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        brand: "Rolex", model: "Submariner Date", referenceNumber: "126610LN",
+        year: 2022, condition: "Excellent", box: true, papers: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.description).toContain("Full Set");
+    expect(result.description).toContain("original box and papers");
+    const providerPrompt = JSON.parse(String(providerFetch.mock.calls[0][1]?.body)).contents[0].parts[0].text;
+    expect(providerPrompt).toContain("Custom listing description instructions.");
+    expect(providerPrompt).toContain('Explicitly use the exact phrase "Full Set"');
+  });
 });
 
 describe("persistent login throttling", () => {
