@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { queryClient, apiJson } from "@/lib/queryClient";
 import { refreshData } from "@/lib/refresh-data";
 import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
+import { DEFAULT_LISTING_TITLE_PROMPT } from "@shared/ai-prompts";
 
 export type QuickEstimatePlatformFee = {
   id: string;
@@ -29,6 +30,7 @@ export interface AppSettings {
   paid_with_methods: { name: string; isCredit: boolean }[];
   expense_categories: { value: string; label: string }[];
   ai_model: string;
+  ai_listing_title_prompt_template: string;
   ai_prompt_template: string;
   ai_movement_prompt_template: string;
   ai_instagram_prompt_template: string;
@@ -79,6 +81,7 @@ const DEFAULTS: AppSettings = {
     { value: "other", label: "Other" },
   ],
   ai_model: "gemini-3.5-flash-lite",
+  ai_listing_title_prompt_template: DEFAULT_LISTING_TITLE_PROMPT,
   ai_prompt_template: "",
   ai_movement_prompt_template: "",
   ai_instagram_prompt_template: "",

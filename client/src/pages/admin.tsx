@@ -835,7 +835,7 @@ export default function Admin() {
           <div className="space-y-6">
             <div>
               <Label className="text-sm font-semibold text-slate-700">AI Model</Label>
-              <p className="text-xs text-slate-400 mt-1 mb-2">Applies to all AI features (Listing Description, Movement Specs &amp; Instagram Caption)</p>
+              <p className="text-xs text-slate-400 mt-1 mb-2">Applies to all AI features (Listing Title, Listing Description, Movement Specs &amp; Instagram Caption)</p>
               <ModelPicker
                 value={settings.ai_model}
                 models={(aiModels?.models || []).map((m) => ({
@@ -847,6 +847,17 @@ export default function Admin() {
               />
             </div>
             <div>
+              <Label className="text-sm font-semibold text-slate-700">Listing Title Prompt</Label>
+              <p className="text-xs text-slate-400 mt-1 mb-2">
+                Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}, {"{{box}}"}, {"{{papers}}"}. Output is always limited to 12 words and 90 characters.
+              </p>
+              <PromptEditor
+                value={settings.ai_listing_title_prompt_template}
+                onSave={(v) => saveSetting("ai_listing_title_prompt_template", v)}
+                testId="listing-title"
+              />
+            </div>
+            <div>
               <Label className="text-sm font-semibold text-slate-700">Listing Description Prompt</Label>
               <p className="text-xs text-slate-400 mt-1 mb-2">
                 Available placeholders: {"{{brand}}"}, {"{{model}}"}, {"{{referenceNumber}}"}, {"{{year}}"}, {"{{condition}}"}, {"{{box}}"}, {"{{papers}}"}
@@ -854,6 +865,7 @@ export default function Admin() {
               <PromptEditor
                 value={settings.ai_prompt_template}
                 onSave={(v) => saveSetting("ai_prompt_template", v)}
+                testId="listing-description"
               />
             </div>
             <div>
@@ -864,6 +876,7 @@ export default function Admin() {
               <PromptEditor
                 value={settings.ai_movement_prompt_template}
                 onSave={(v) => saveSetting("ai_movement_prompt_template", v)}
+                testId="movement"
               />
             </div>
             <div>
@@ -874,6 +887,7 @@ export default function Admin() {
               <PromptEditor
                 value={settings.ai_instagram_prompt_template}
                 onSave={(v) => saveSetting("ai_instagram_prompt_template", v)}
+                testId="instagram"
               />
             </div>
           </div>
@@ -980,7 +994,7 @@ function NumberSetting({ label, value, onSave, prefix, suffix, step = 1, testId 
   );
 }
 
-function PromptEditor({ value, onSave }: { value: string; onSave: (value: string) => void }) {
+function PromptEditor({ value, onSave, testId }: { value: string; onSave: (value: string) => void; testId: string }) {
   const [text, setText] = useState(value);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -995,10 +1009,10 @@ function PromptEditor({ value, onSave }: { value: string; onSave: (value: string
         value={text}
         onChange={(e) => { setText(e.target.value); setIsDirty(true); }}
         className="bg-white border-slate-200 min-h-[200px] font-mono text-sm"
-        data-testid="textarea-ai-prompt"
+        data-testid={`textarea-ai-prompt-${testId}`}
       />
       {isDirty && (
-        <Button onClick={() => { onSave(text); setIsDirty(false); }} className="bg-emerald-600 hover:bg-emerald-500 text-white" size="sm" data-testid="button-save-prompt">
+        <Button onClick={() => { onSave(text); setIsDirty(false); }} className="bg-emerald-600 hover:bg-emerald-500 text-white" size="sm" data-testid={`button-save-prompt-${testId}`}>
           <Save className="w-4 h-4 mr-1" /> Save Prompt
         </Button>
       )}

@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:http";
 const fixture = vi.hoisted(() => ({
   query: vi.fn(),
   userExists: true,
+  settings: {} as Record<string, unknown>,
 }));
 vi.mock("../../../server/db", () => ({
   pool: { query: fixture.query },
@@ -28,7 +29,7 @@ vi.mock("bcryptjs", () => ({
 }));
 vi.mock("../../../server/storage", () => ({
   storage: {
-    getSetting: async () => undefined,
+    getSetting: async (key: string) => fixture.settings[key],
     getClients: async () => [{ id: 1 }],
     getAllSettings: async () => ({}),
     upsertSetting: async () => undefined,
@@ -53,6 +54,7 @@ beforeEach(() => {
   vi.stubEnv("SESSION_SECRET", "isolated-test-secret-not-a-real-credential");
   vi.stubEnv("NODE_ENV", "test");
   fixture.userExists = true;
+  fixture.settings = {};
   fixture.query.mockReset();
   fixture.query.mockResolvedValue({ rows: [] });
 });
@@ -166,6 +168,8 @@ describe("AI secret isolation", () => {
 
   it("returns a short keyword-style listing title and limits its length", async () => {
     vi.stubEnv("GEMINI_API_KEY", "isolated-dummy-ai-key");
+    fixture.settings.ai_listing_title_prompt_template =
+      "Custom title format. Brand={{brand}} Model={{model}} Reference={{referenceNumber}}";
     const app = express();
     app.use(express.json());
     await registerRoutes(createServer(app), app);
@@ -176,7 +180,7 @@ describe("AI secret isolation", () => {
       body: JSON.stringify({ username: "test-account", password: "correct-test-password" }),
     });
     const cookie = login.headers.get("set-cookie")!.split(";")[0];
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+    const providerFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       candidates: [{ content: { parts: [{ text: "Title: Rolex Submariner Date 126610LN 2022 Excellent Condition Automatic Steel Bracelet Black Dial Original Box Papers Collector Watch" }] } }],
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
 
@@ -194,6 +198,9 @@ describe("AI secret isolation", () => {
     expect(result.title).toBe("Rolex Submariner Date 126610LN 2022 Excellent Condition Automatic Steel Bracelet Black");
     expect(result.title.split(/\s+/).length).toBeLessThanOrEqual(12);
     expect(result.title.length).toBeLessThanOrEqual(90);
+    const providerPrompt = JSON.parse(String(providerFetch.mock.calls[0][1]?.body)).contents[0].parts[0].text;
+    expect(providerPrompt).toContain("Custom title format. Brand=Rolex Model=Submariner Date Reference=126610LN");
+    expect(providerPrompt).toContain("at most 12 words and 90 characters");
   });
 });
 
