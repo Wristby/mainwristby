@@ -1,13 +1,23 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { InventoryItem } from "@shared/schema";
+import { api } from "@shared/routes";
 import { watchEditFormDefaults, type WatchEditFormValues } from "@/lib/watch-form-contract";
 import { DealOverviewCard } from "./deal-overview-card";
 import { PurchaseInformationCard } from "./purchase-information-card";
 import { WatchIdentityCard } from "./identity-card";
 import { WarrantyFields, WatchIdentityFields } from "./watch-edit-fields";
 import { ServiceHistoryCard } from "./service-history-card";
+import { SalesHistoryCard } from "./sales-history-card";
+
+vi.mock("wouter", () => ({
+  Link: ({ href, className, children }: { href: string; className?: string; children?: ReactNode }) => (
+    <a href={href} className={className}>{children}</a>
+  ),
+}));
 
 const item = {
   id: 31,
@@ -135,5 +145,50 @@ describe("Watch Details sections", () => {
     expect(html).toContain("Regulated timing");
     expect(html).toContain("Total recorded visit costs");
     expect(html).toContain("€205.50");
+  });
+
+  it("shows a neutral empty state for sold watches without a saved sale snapshot", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+    });
+    const salesPath = api.sales.forWatch.path.replace(":id", String(item.id));
+    queryClient.setQueryData([salesPath], []);
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <SalesHistoryCard item={item} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("No sale history has been recorded for this watch yet.");
+    expect(html).toContain("text-slate-500");
+    expect(html).not.toContain("text-red-700");
+  });
+
+  it("treats a sale without return records as normal history", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+    });
+    const salesPath = api.sales.forWatch.path.replace(":id", String(item.id));
+    queryClient.setQueryData([salesPath], [{
+      id: 10,
+      inventoryId: item.id,
+      cycleNumber: 1,
+      soldDate: "2026-11-01T00:00:00.000Z",
+      salePrice: 1_500_000,
+      profitAtSaleCents: 395_000,
+      soldTo: "Alexandra",
+      returns: [],
+    }]);
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <SalesHistoryCard item={item} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("Sale cycle 1");
+    expect(html).toContain("No return recorded for this sale.");
+    expect(html).not.toContain("Could not load sale history.");
   });
 });

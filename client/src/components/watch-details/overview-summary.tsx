@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { normalizeWatchCondition } from "@/lib/watch-condition";
 
-type SectionId = "overview" | "watch" | "financials" | "sale" | "notes";
+type SectionId = "overview" | "watch" | "financials" | "sale" | "notes" | "ai";
 
 type OverviewSummaryProps = {
   item: InventoryItem;
@@ -185,11 +185,14 @@ export function OverviewSummary({
                     : "Receipt date not recorded"}
             </p>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-              <Button variant="link" className="h-auto p-0 text-sm text-emerald-900" onClick={() => onOpenSection("watch")}>
+              <Button variant="ghost" className="h-auto p-0 text-sm text-emerald-900" onClick={() => onOpenSection("watch")}>
                 <Watch className="mr-1.5 h-4 w-4" aria-hidden="true" /> Watch details
               </Button>
-              <Button variant="link" className="h-auto p-0 text-sm text-emerald-900" onClick={() => onOpenSection("sale")}>
-                <ShieldCheck className="mr-1.5 h-4 w-4" aria-hidden="true" /> Sale &amp; coverage
+              <Button variant="ghost" className="h-auto p-0 text-sm text-emerald-900" onClick={() => onOpenSection("sale")}>
+                <ShieldCheck className="mr-1.5 h-4 w-4" aria-hidden="true" /> Warranty
+              </Button>
+              <Button variant="ghost" className="h-auto p-0 text-sm text-emerald-900" onClick={() => onOpenSection("ai")}>
+                AI tools
               </Button>
             </div>
           </div>

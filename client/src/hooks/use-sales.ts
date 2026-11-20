@@ -17,6 +17,7 @@ export function useWatchSales(inventoryId: number | undefined) {
   return useQuery<InventorySaleWithReturns[]>({
     queryKey: path ? [path] : ["/api/inventory/unselected/sales"],
     enabled: Boolean(path),
+    meta: { errorTone: "neutral" },
   });
 }
 

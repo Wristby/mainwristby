@@ -1,14 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { Watch } from "lucide-react";
 import { getNextWatchDetailsSectionId, SectionTabs } from "./section-tabs";
 
-const TestIcon = () => <svg aria-hidden="true" />;
 const sections = [
-  { id: "overview", label: "Overview", icon: TestIcon },
-  { id: "watch", label: "Watch details", icon: TestIcon },
-  { id: "financials", label: "Financials", icon: TestIcon },
-  { id: "sale", label: "Sale & coverage", icon: TestIcon },
-  { id: "notes", label: "Notes & tools", icon: TestIcon },
+  { id: "overview", label: "Overview", icon: Watch },
+  { id: "watch", label: "Watch details", icon: Watch },
+  { id: "financials", label: "Financials", icon: Watch },
+  { id: "sale", label: "Warranty", icon: Watch },
+  { id: "notes", label: "Notes & tools", icon: Watch },
+  { id: "ai", label: "AI", icon: Watch },
 ] as const;
 
 describe("Watch Details section tabs", () => {
@@ -25,17 +26,17 @@ describe("Watch Details section tabs", () => {
     expect(html).toContain('aria-selected="true"');
     expect(html).toContain('role="tabpanel"');
     expect(html).toContain("Financial breakdown");
-    expect(html.match(/role="tabpanel"/g)).toHaveLength(5);
+    expect(html.match(/role="tabpanel"/g)).toHaveLength(6);
     expect(html).toContain('hidden=""');
   });
 
   it("supports wrapping arrow navigation and Home/End keyboard shortcuts", () => {
     const ids = sections.map((section) => section.id);
-    expect(getNextWatchDetailsSectionId(ids, "overview", "ArrowLeft")).toBe("notes");
-    expect(getNextWatchDetailsSectionId(ids, "notes", "ArrowRight")).toBe("overview");
+    expect(getNextWatchDetailsSectionId(ids, "overview", "ArrowLeft")).toBe("ai");
+    expect(getNextWatchDetailsSectionId(ids, "notes", "ArrowRight")).toBe("ai");
     expect(getNextWatchDetailsSectionId(ids, "financials", "ArrowRight")).toBe("sale");
     expect(getNextWatchDetailsSectionId(ids, "financials", "Home")).toBe("overview");
-    expect(getNextWatchDetailsSectionId(ids, "financials", "End")).toBe("notes");
+    expect(getNextWatchDetailsSectionId(ids, "financials", "End")).toBe("ai");
     expect(getNextWatchDetailsSectionId(ids, "overview", "Enter")).toBeNull();
   });
 });

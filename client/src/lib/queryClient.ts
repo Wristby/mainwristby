@@ -114,7 +114,7 @@ export const queryClient = new QueryClient({
       toast({
         title: hasCachedData ? "Could not refresh saved data" : "Could not load data",
         description: hasCachedData ? `${error.message} Displayed data may be out of date.` : error.message,
-        variant: "destructive",
+        variant: query.meta?.errorTone === "neutral" ? "default" : "destructive",
       });
     },
   }),

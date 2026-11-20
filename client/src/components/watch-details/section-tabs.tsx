@@ -1,15 +1,16 @@
-import { useId, useRef, type ComponentType, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 
 export type WatchDetailsSection = {
   id: string;
   label: string;
-  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon: LucideIcon;
 };
 
 type SectionTabsProps = {
   selectedSectionId: string;
   onChange: (sectionId: string) => void;
-  sections: readonly [WatchDetailsSection, WatchDetailsSection, WatchDetailsSection, WatchDetailsSection, WatchDetailsSection];
+  sections: readonly WatchDetailsSection[];
   children?: ReactNode;
 };
 
@@ -90,7 +91,7 @@ export function SectionTabs({ selectedSectionId, onChange, sections, children }:
                   : "border-transparent text-[#64736c] hover:border-[#c5d3ca] hover:text-[#253f35]"
               }`}
             >
-              <Icon className={`h-4 w-4 shrink-0 ${isSelected ? "text-[#16715a]" : "text-[#788a80]"}`} aria-hidden="true" />
+              <Icon className={`h-4 w-4 shrink-0 ${isSelected ? "text-[#16715a]" : "text-[#788a80]"}`} aria-hidden={true} />
               <span>{label}</span>
             </button>
           );

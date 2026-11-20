@@ -21,7 +21,7 @@ function formatDate(value: Date | string | null) {
 
 export function SalesHistoryCard({ item }: { item: InventoryItem }) {
   const { data: sales = [], isLoading, isError } = useWatchSales(item.id);
-  if (!isLoading && !isError && sales.length === 0) return null;
+  if (!isLoading && !isError && sales.length === 0 && item.status !== "sold") return null;
   const latestSale = sales.reduce<typeof sales[number] | null>((latest, sale) =>
     !latest || sale.cycleNumber > latest.cycleNumber ? sale : latest, null);
 
@@ -40,10 +40,13 @@ export function SalesHistoryCard({ item }: { item: InventoryItem }) {
       <CardContent>
         {isLoading ? (
           <p className="text-sm text-slate-500">Loading sale history…</p>
-        ) : isError ? (
-          <p className="text-sm text-red-700">Could not load sale history.</p>
+        ) : isError && sales.length === 0 ? (
+          <p className="text-sm text-slate-500">Could not load sale history. Refresh to try again.</p>
+        ) : sales.length === 0 ? (
+          <p className="text-sm text-slate-500">No sale history has been recorded for this watch yet.</p>
         ) : (
           <div className="space-y-4">
+            {isError && <p className="text-sm text-slate-500">Showing saved history; the latest refresh failed.</p>}
             {sales.slice().sort((a, b) => a.cycleNumber - b.cycleNumber).map((sale) => {
               const adjustment = getReturnAdjustmentCents(sale, sale.returns);
               const net = getSaleCycleNetProfitCents(sale);
@@ -96,6 +99,9 @@ export function SalesHistoryCard({ item }: { item: InventoryItem }) {
                         <p className="text-slate-500"><Wallet className="mr-1 inline h-3.5 w-3.5" />Net outcome <strong className={net < 0 ? "text-red-700" : "text-emerald-700"}>{formatMoney(net)}</strong></p>
                       </div>
                     </div>
+                  )}
+                  {returns.length === 0 && (
+                    <p className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-500">No return recorded for this sale.</p>
                   )}
                 </section>
               );

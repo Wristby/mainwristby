@@ -108,9 +108,10 @@ const WATCH_DETAILS_SECTIONS = [
   { id: "overview", label: "Overview", icon: Watch },
   { id: "watch", label: "Watch details", icon: ClipboardList },
   { id: "financials", label: "Financials", icon: Coins },
-  { id: "sale", label: "Sale & coverage", icon: ShieldCheck },
+  { id: "sale", label: "Warranty", icon: ShieldCheck },
   { id: "notes", label: "Notes & tools", icon: FileText },
-] as const satisfies readonly [WatchDetailsSection, WatchDetailsSection, WatchDetailsSection, WatchDetailsSection, WatchDetailsSection];
+  { id: "ai", label: "AI", icon: Sparkles },
+] as const satisfies readonly WatchDetailsSection[];
 
 export default function InventoryDetail() {
   const [match, params] = useRoute("/inventory/:id");
@@ -932,7 +933,10 @@ export default function InventoryDetail() {
       >
       <div className={cn("grid grid-cols-1 gap-6", ["overview", "watch"].includes(activeSection) && "lg:grid-cols-3")}>
         {/* Main Info Columns */}
-        <div className={cn("space-y-6", ["overview", "watch"].includes(activeSection) && "lg:col-span-2")}>
+        <div className={cn(
+          activeSection === "ai" ? "grid grid-cols-1 gap-6 xl:grid-cols-2" : "space-y-6",
+          ["overview", "watch"].includes(activeSection) && "lg:col-span-2",
+        )}>
           {activeSection === "overview" && (
             <Card className="border-[#d8e2dc] bg-[#fbfcf8] shadow-sm">
               <CardHeader className="pb-3">
@@ -946,7 +950,7 @@ export default function InventoryDetail() {
                 <div className="sm:col-span-2 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
                   <Button type="button" variant="outline" onClick={() => setActiveSection("watch")}>View watch details</Button>
                   <Button type="button" variant="outline" onClick={() => setActiveSection("financials")}>Open financial breakdown</Button>
-                  <Button type="button" variant="outline" onClick={() => setActiveSection("sale")}>Review sale &amp; coverage</Button>
+                  <Button type="button" variant="outline" onClick={() => setActiveSection("sale")}>Review warranty</Button>
                 </div>
               </CardContent>
             </Card>
@@ -1391,7 +1395,7 @@ export default function InventoryDetail() {
           </Card>}
 
           {/* Movement Specs Card */}
-          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-movement-specs">
+          {activeSection === "ai" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-movement-specs">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Movement Specs</CardTitle>
@@ -1453,7 +1457,7 @@ export default function InventoryDetail() {
           </Card>}
 
           {/* Listing Title Card */}
-          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-listing-title">
+          {activeSection === "ai" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-listing-title">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg text-slate-900">Listing Title</CardTitle>
             </CardHeader>
@@ -1481,7 +1485,7 @@ export default function InventoryDetail() {
           </Card>}
 
           {/* Listing Description Card */}
-          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm">
+          {activeSection === "ai" && <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Listing Description</CardTitle>
@@ -1541,7 +1545,7 @@ export default function InventoryDetail() {
           </Card>}
 
           {/* Instagram Caption Card */}
-          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-instagram-caption">
+          {activeSection === "ai" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-instagram-caption">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Instagram Caption</CardTitle>
