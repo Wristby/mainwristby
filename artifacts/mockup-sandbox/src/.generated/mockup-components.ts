@@ -10,6 +10,7 @@ export const modules: ModuleMap = {
   "./components/mockups/wristby-login/RoundedSignIn.tsx": () => import("../components/mockups/wristby-login/RoundedSignIn.tsx"),
   "./components/mockups/wristby-watch-details/Current.tsx": () => import("../components/mockups/wristby-watch-details/Current.tsx"),
   "./components/mockups/wristby-watch-details/LifecycleFirst.tsx": () => import("../components/mockups/wristby-watch-details/LifecycleFirst.tsx"),
+  "./components/mockups/wristby-watch-details/OperationalDossier.tsx": () => import("../components/mockups/wristby-watch-details/OperationalDossier.tsx"),
   "./components/mockups/wristby-watch-details/OverviewTabs.tsx": () => import("../components/mockups/wristby-watch-details/OverviewTabs.tsx"),
   "./components/mockups/wristby-watch-details/PersistentSummary.tsx": () => import("../components/mockups/wristby-watch-details/PersistentSummary.tsx"),
   "./components/mockups/wristby-watch-details/Shell.tsx": () => import("../components/mockups/wristby-watch-details/Shell.tsx"),
