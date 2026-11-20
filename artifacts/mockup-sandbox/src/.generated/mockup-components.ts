@@ -7,5 +7,11 @@ export const modules: ModuleMap = {
   "./components/mockups/wristby-light/Workspace.tsx": () => import("../components/mockups/wristby-light/Workspace.tsx"),
   "./components/mockups/wristby-light/WorkspaceRecentlySold.tsx": () => import("../components/mockups/wristby-light/WorkspaceRecentlySold.tsx"),
   "./components/mockups/wristby-login/Current.tsx": () => import("../components/mockups/wristby-login/Current.tsx"),
-  "./components/mockups/wristby-login/RoundedSignIn.tsx": () => import("../components/mockups/wristby-login/RoundedSignIn.tsx")
+  "./components/mockups/wristby-login/RoundedSignIn.tsx": () => import("../components/mockups/wristby-login/RoundedSignIn.tsx"),
+  "./components/mockups/wristby-watch-details/Current.tsx": () => import("../components/mockups/wristby-watch-details/Current.tsx"),
+  "./components/mockups/wristby-watch-details/LifecycleFirst.tsx": () => import("../components/mockups/wristby-watch-details/LifecycleFirst.tsx"),
+  "./components/mockups/wristby-watch-details/OverviewTabs.tsx": () => import("../components/mockups/wristby-watch-details/OverviewTabs.tsx"),
+  "./components/mockups/wristby-watch-details/PersistentSummary.tsx": () => import("../components/mockups/wristby-watch-details/PersistentSummary.tsx"),
+  "./components/mockups/wristby-watch-details/Shell.tsx": () => import("../components/mockups/wristby-watch-details/Shell.tsx"),
+  "./components/mockups/wristby-watch-details/WatchDetailsContent.tsx": () => import("../components/mockups/wristby-watch-details/WatchDetailsContent.tsx")
 };
