@@ -180,6 +180,32 @@ describe("atomic watch buyer persistence", () => {
     expect(state.inventory[0]).toMatchObject({ buyerId: null, soldTo: "Historical name" });
     expect(state.clients).toHaveLength(1);
   });
+  it("does not refresh a sold watch's sale snapshot when only service history is added", async () => {
+    state.inventory[0].serviceFee = 500;
+    state.inventory[0].polishFee = 0;
+    state.inventory_sales.push({
+      id: 30,
+      inventoryId: 11,
+      cycleNumber: 1,
+      serviceFeeSnapshot: 500,
+      acquisitionCostCents: 100_500,
+      profitAtSaleCents: 19_500,
+    });
+    const originalSaleSnapshot = structuredClone(state.inventory_sales[0]);
+    await storage.updateInventoryItem(11, {
+      serviceHistory: [{
+        startDate: "2026-08-01",
+        completedDate: "2026-08-03",
+        costCents: 12000,
+        notes: "Recorded service visit",
+      }],
+      serviceFee: 500,
+    } as any);
+
+    expect(state.inventory[0].serviceFee).toBe(500);
+    expect(state.inventory[0].serviceHistory).toHaveLength(1);
+    expect(state.inventory_sales).toEqual([originalSaleSnapshot]);
+  });
   it("clears only the buyer when explicitly removing a buyer association", async () => {
     state.inventory[0].buyerId = 91;
     await storage.updateInventoryItem(11, {}, { mode: "none" });

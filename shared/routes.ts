@@ -10,6 +10,7 @@ import { personalCollectionInputSchema, personalCollectionValuationInputSchema }
 import { personalCollectionValuations, personalCollectionWatches, type PersonalCollectionWatch } from './schema';
 import { isCalendarDate } from './delivery';
 import { storeWarrantyMonthsSchema } from './warranty';
+import { serviceVisitSchema } from './service-history';
 
 // Helper to transform date strings to Date objects or null
 const dateStringToDate = z.union([
@@ -31,6 +32,7 @@ const inventoryInputSchema = insertInventorySchema.extend({
   serviceStartDate: dateStringToDate,
   dateSentToService: dateStringToDate,
   dateReturnedFromService: dateStringToDate,
+  serviceHistory: z.array(serviceVisitSchema).optional(),
   dateShipped: dateStringToDate,
   deliveredDate: z.string().superRefine((value, context) => {
     const message = deliveryDateError(value);

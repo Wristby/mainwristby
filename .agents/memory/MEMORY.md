@@ -16,3 +16,4 @@
 - [Watch Details boundaries](watch-details-boundaries.md) — isolate identity, sourcing, financials, buyer/delivery/warranty, pricing history, and editor sections
 - [Dependency consistency](dependency-installation-consistency.md) — after a restore, compare installed validation packages with the lockfile before rewriting forms
 - [Request and refresh boundaries](request-refresh-boundaries.md) — distinguish saved writes from failed refreshes; do not retry writes or regenerate saved Notebook history
+- [Service history accounting boundary](service-history-accounting-boundary.md) — visit history records repair dates, notes, and costs without changing existing acquisition COGS or sale snapshots

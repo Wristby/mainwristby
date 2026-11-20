@@ -7,6 +7,7 @@ import { DealOverviewCard } from "./deal-overview-card";
 import { PurchaseInformationCard } from "./purchase-information-card";
 import { WatchIdentityCard } from "./identity-card";
 import { WarrantyFields, WatchIdentityFields } from "./watch-edit-fields";
+import { ServiceHistoryCard } from "./service-history-card";
 
 const item = {
   id: 31,
@@ -113,5 +114,26 @@ describe("Watch Details sections", () => {
     const visibleHtml = renderToStaticMarkup(<WarrantyFieldsHarness visible />);
     expect(visibleHtml).toContain("Store Warranty Term");
     expect(visibleHtml).toContain("Manufacturer Warranty Ends");
+  });
+
+  it("shows each saved service visit and their separate total", () => {
+    const html = renderToStaticMarkup(
+      <ServiceHistoryCard
+        item={{
+          ...item,
+          serviceHistory: [
+            { startDate: "2025-02-03", completedDate: "2025-02-06", costCents: 12_550, notes: "Movement cleaned" },
+            { startDate: "2026-06-10", completedDate: null, costCents: 8_000, notes: "Regulated timing" },
+          ],
+        }}
+        formatCurrency={formatCurrency}
+      />,
+    );
+
+    expect(html).toContain("Service History");
+    expect(html).toContain("Movement cleaned");
+    expect(html).toContain("Regulated timing");
+    expect(html).toContain("Total recorded visit costs");
+    expect(html).toContain("€205.50");
   });
 });

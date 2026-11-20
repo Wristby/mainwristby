@@ -87,6 +87,17 @@ const FEE_TYPES = [
   { field: 'watchRegister', category: 'other' as const, label: 'Watch Register Fee', isBoolean: true },
 ] as const;
 
+function sameInventoryValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return false;
+  if (left instanceof Date || right instanceof Date) {
+    const leftTime = left instanceof Date ? left.getTime() : new Date(left as string).getTime();
+    const rightTime = right instanceof Date ? right.getTime() : new Date(right as string).getTime();
+    return Number.isFinite(leftTime) && leftTime === rightTime;
+  }
+  return false;
+}
+
 export interface IStorage {
   // Clients
   getClients(): Promise<Client[]>;
@@ -691,7 +702,9 @@ export class DatabaseStorage implements IStorage {
         "polishFee", "watchRegister", "watchRegisterFeeSnapshot", "purchaseDate", "dateListed",
         "brand", "model", "referenceNumber", "serialNumber",
       ];
-      if (saleBuyer || saleCycleFields.some(field => Object.prototype.hasOwnProperty.call(normalizedUpdates, field))) {
+      if (saleBuyer || saleCycleFields.some(field =>
+        Object.prototype.hasOwnProperty.call(normalizedUpdates, field)
+        && !sameInventoryValue((current as any)[field], (normalizedUpdates as any)[field]))) {
         await this.recordCurrentSaleCycle(tx, item, current);
       }
       return item;

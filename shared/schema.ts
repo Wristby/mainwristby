@@ -9,6 +9,7 @@ import type {
   NotebookInventorySnapshot,
   NotebookReport,
 } from "./dealers-notebook";
+import type { ServiceVisit } from "./service-history";
 
 export * from "./models/auth";
 
@@ -131,6 +132,7 @@ export const inventory = pgTable("inventory", {
   dateSentToService: timestamp("date_sent_to_service"),
   dateReturnedFromService: timestamp("date_returned_from_service"),
   serviceNotes: text("service_notes"),
+  serviceHistory: jsonb("service_history").$type<ServiceVisit[]>().notNull().default([]),
   
   // Sale Details (stored in cents)
   salePrice: integer("sale_price").default(0),

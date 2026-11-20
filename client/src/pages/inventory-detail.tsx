@@ -60,6 +60,7 @@ import { DealOverviewCard } from "@/components/watch-details/deal-overview-card"
 import { BuyerDeliverySummary } from "@/components/watch-details/buyer-delivery-summary";
 import { BuyerContactCard } from "@/components/watch-details/buyer-contact-card";
 import { SalesHistoryCard } from "@/components/watch-details/sales-history-card";
+import { ServiceHistoryCard } from "@/components/watch-details/service-history-card";
 import { OverviewSummary } from "@/components/watch-details/overview-summary";
 import { SectionTabs, type WatchDetailsSection } from "@/components/watch-details/section-tabs";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
@@ -79,6 +80,7 @@ import {
   watchEditFormSchema,
   type WatchEditFormValues,
 } from "@/lib/watch-form-contract";
+import { serviceHistoryToFormValues } from "@/lib/service-history";
 
 const PAID_WITH_OPTIONS_DEFAULT = ["Credit", "Debit", "Wire"];
 
@@ -292,7 +294,7 @@ export default function InventoryDetail() {
         || !!item.manufacturerWarrantyExpires
         || !!item.manufacturerWarrantyCardPresent
         || !!item.manufacturerWarrantyDetails;
-      const hasServiceData = (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).serviceStartDate || (item as any).dateReturnedFromService;
+      const hasServiceData = item.serviceHistory?.length > 0 || (item as any).serviceFee > 0 || (item as any).polishFee > 0 || (item as any).serviceStartDate || (item as any).dateReturnedFromService;
       const hasShippingData = item.shippingPartner || item.trackingNumber || item.chrono24CertificationSent;
       setShowSaleDetails(hasSaleData);
       setShowWarrantyDetails(hasWarrantyData);
@@ -342,6 +344,7 @@ export default function InventoryDetail() {
         serviceFee: ((item as any).serviceFee || 0) / 100,
         polishFee: ((item as any).polishFee || 0) / 100,
         serviceNotes: (item as any).serviceNotes || "",
+        serviceVisits: serviceHistoryToFormValues(item),
         shippingPartner: item.shippingPartner || "",
         trackingNumber: item.trackingNumber || "",
         chrono24CertificationSent: item.chrono24CertificationSent ?? false,
@@ -362,9 +365,6 @@ export default function InventoryDetail() {
   const [isDateReceivedOpen, setIsDateReceivedOpen] = useState(false);
   const [isDateListedOpen, setIsDateListedOpen] = useState(false);
   const [isDateSoldOpen, setIsDateSoldOpen] = useState(false);
-  const [isDateServiceStartOpen, setIsDateServiceStartOpen] = useState(false);
-  const [isDateReturnedOpen, setIsDateReturnedOpen] = useState(false);
-
   const [descriptionValue, setDescriptionValue] = useState((item as any)?.description || "");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [listingTitleValue, setListingTitleValue] = useState("");
@@ -878,8 +878,6 @@ export default function InventoryDetail() {
                   form={form}
                   showServiceDetails={showServiceDetails}
                   setShowServiceDetails={setShowServiceDetails}
-                  serviceStartDatePopover={{ open: isDateServiceStartOpen, onOpenChange: setIsDateServiceStartOpen }}
-                  serviceCompletedDatePopover={{ open: isDateReturnedOpen, onOpenChange: setIsDateReturnedOpen }}
                 />
 
                 <ShippingFields form={form} showShippingDetails={showShippingDetails} setShowShippingDetails={setShowShippingDetails} />
@@ -957,6 +955,7 @@ export default function InventoryDetail() {
             <>
               <WatchIdentityCard item={item} holdTime={holdTime} daysInService={daysInService} daysListed={daysListed} />
               <PurchaseInformationCard item={item} formatCurrency={formatCurrency} />
+              <ServiceHistoryCard item={item} formatCurrency={formatCurrency} />
             </>
           )}
 

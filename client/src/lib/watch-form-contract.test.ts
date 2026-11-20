@@ -9,6 +9,7 @@ import {
   watchEditFormDefaults,
   watchEditFormSchema,
 } from "./watch-form-contract";
+import { serviceHistoryToFormValues } from "./service-history";
 
 describe("shared Add Watch and Edit Watch contract", () => {
   it("uses shared field defaults, condition validation, and warranty date validation", () => {
@@ -144,5 +145,56 @@ describe("shared Add Watch and Edit Watch contract", () => {
     });
     expect(parsed.purchasedFrom).toBe("");
     expect(parsed.paidWith).toBe("");
+  });
+
+  it("saves multiple service visits independently without changing legacy COGS fields", () => {
+    const values = watchEditFormSchema.parse({
+      ...watchEditFormDefaults,
+      brand: "Rolex",
+      model: "Explorer",
+      referenceNumber: "124270",
+      purchasePrice: 1000,
+      serviceFee: 250,
+      serviceVisits: [
+        { startDate: "2025-02-03", completedDate: "2025-02-06", cost: 125.5, notes: "Movement cleaned" },
+        { startDate: "2026-06-10", completedDate: "", cost: 80, notes: "Regulated timing" },
+      ],
+    });
+    const payload = buildWatchEditPayload(values, "in_stock");
+
+    expect(payload.serviceFee).toBe(25_000);
+    expect(payload.serviceHistory).toEqual([
+      {
+        startDate: "2025-02-03",
+        completedDate: "2025-02-06",
+        costCents: 12_550,
+        notes: "Movement cleaned",
+      },
+      {
+        startDate: "2026-06-10",
+        completedDate: null,
+        costCents: 8_000,
+        notes: "Regulated timing",
+      },
+    ]);
+    expect(api.inventory.update.input.parse(payload).serviceHistory).toHaveLength(2);
+  });
+
+  it("shows legacy single-visit data when no migrated history is present", () => {
+    const visits = serviceHistoryToFormValues({
+      serviceHistory: [],
+      serviceStartDate: new Date("2024-04-02T00:00:00.000Z"),
+      dateSentToService: null,
+      dateReturnedFromService: new Date("2024-04-07T00:00:00.000Z"),
+      serviceFee: 17500,
+      serviceNotes: "Full service",
+    } as any);
+
+    expect(visits).toEqual([{
+      startDate: "2024-04-02",
+      completedDate: "2024-04-07",
+      cost: 175,
+      notes: "Full service",
+    }]);
   });
 });

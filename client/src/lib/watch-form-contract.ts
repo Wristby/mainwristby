@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { storeWarrantyMonthsSchema } from "@shared/warranty";
 import { WATCH_DETAIL_CONDITIONS, serializeWatchCondition } from "./watch-condition";
+import { serviceVisitSchema } from "@shared/service-history";
 
 const optionalString = z.string().optional().nullable();
 const optionalInteger = z.preprocess(
@@ -122,6 +123,12 @@ export const watchEditFormSchema = commonWatchFormSchema.extend({
     .optional()
     .nullable(),
   serviceStartDate: optionalString,
+  serviceVisits: z.array(z.object({
+    startDate: z.string(),
+    completedDate: z.string(),
+    cost: z.coerce.number().min(0),
+    notes: z.string(),
+  })).default([]),
   chrono24CertificationSent: z.boolean().default(false),
   listPrice: z.coerce.number().optional().nullable(),
 }).superRefine(validateManufacturerWarrantyDates);
@@ -132,6 +139,7 @@ export const watchEditFormDefaults: WatchEditFormValues = {
   ...commonWatchFormDefaults,
   chrono24FeeRate: undefined,
   serviceStartDate: "",
+  serviceVisits: [],
   chrono24CertificationSent: false,
   listPrice: null,
 };
@@ -238,6 +246,14 @@ export function buildWatchEditPayload(
     }),
     chrono24FeeRate: values.chrono24FeeRate != null ? Math.round(values.chrono24FeeRate * 100) : null,
     serviceStartDate: nullable(values.serviceStartDate),
+    serviceHistory: values.serviceVisits
+      .filter(visit => visit.startDate || visit.completedDate || visit.cost > 0 || visit.notes.trim())
+      .map(visit => serviceVisitSchema.parse({
+        startDate: visit.startDate || null,
+        completedDate: visit.completedDate || null,
+        costCents: Math.round(visit.cost * 100),
+        notes: visit.notes.trim(),
+      })),
     chrono24CertificationSent: values.chrono24CertificationSent ?? false,
     listPrice: values.listPrice != null && Number.isFinite(values.listPrice) && values.listPrice > 0
       ? Math.round(values.listPrice * 100)

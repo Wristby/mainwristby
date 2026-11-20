@@ -16,7 +16,7 @@ import { SaleBuyerFields } from "@/components/sale-buyer-fields";
 import { cn, parsePriceInput } from "@/lib/utils";
 import { WATCH_DETAIL_CONDITIONS } from "@/lib/watch-condition";
 import { Calendar as CalendarIcon, ExternalLink, Plus } from "lucide-react";
-import { Controller } from "react-hook-form";
+import { Controller, useFieldArray } from "react-hook-form";
 import { format } from "date-fns";
 
 type WatchEditForm = UseFormReturn<WatchEditFormValues>;
@@ -523,15 +523,13 @@ export function ServiceMaintenanceFields({
   form,
   showServiceDetails,
   setShowServiceDetails,
-  serviceStartDatePopover,
-  serviceCompletedDatePopover,
 }: {
   form: WatchEditForm;
   showServiceDetails: boolean;
   setShowServiceDetails: (show: boolean) => void;
-  serviceStartDatePopover: DatePopoverProps;
-  serviceCompletedDatePopover: DatePopoverProps;
 }) {
+  const serviceVisits = useFieldArray({ control: form.control, name: "serviceVisits" });
+
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between border-b border-slate-200 pb-2">
@@ -543,48 +541,60 @@ export function ServiceMaintenanceFields({
       </div>
       {showServiceDetails && (
         <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Service Start Date</Label>
-              <Popover open={serviceStartDatePopover.open} onOpenChange={serviceStartDatePopover.onOpenChange}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("serviceStartDate") && "text-muted-foreground")} data-testid="button-service-start-date">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {form.watch("serviceStartDate") ? format(new Date(form.watch("serviceStartDate")!), "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                  <Calendar mode="single" selected={form.watch("serviceStartDate") ? new Date(form.watch("serviceStartDate")!) : undefined} onSelect={date => {
-                    form.setValue("serviceStartDate", date ? date.toISOString() : null);
-                    if (date) form.setValue("status", "servicing");
-                    serviceStartDatePopover.onOpenChange(false);
-                  }} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="space-y-2">
-              <Label>Date Service Completed</Label>
-              <Popover open={serviceCompletedDatePopover.open} onOpenChange={serviceCompletedDatePopover.onOpenChange}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-white border-slate-200", !form.watch("dateReturnedFromService") && "text-muted-foreground")}>
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {form.watch("dateReturnedFromService") ? format(new Date(form.watch("dateReturnedFromService")!), "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white border-slate-200">
-                  <Calendar mode="single" selected={form.watch("dateReturnedFromService") ? new Date(form.watch("dateReturnedFromService")!) : undefined} onSelect={date => {
-                    form.setValue("dateReturnedFromService", date ? date.toISOString() : null);
-                    serviceCompletedDatePopover.onOpenChange(false);
-                  }} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <MoneyField form={form} name="serviceFee" label="Service Fee" placeholder="0,00" />
-            <MoneyField form={form} name="polishFee" label="Polish Fee" placeholder="0,00" />
+          <div className="space-y-4">
+            {serviceVisits.fields.map((visit, index) => (
+              <div key={visit.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-4">
+                <h4 className="text-sm font-semibold text-slate-700">Service visit {index + 1}</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor={`service-visit-${index}-start`}>Service Start Date</Label>
+                    <Input id={`service-visit-${index}-start`} type="date" {...form.register(`serviceVisits.${index}.startDate`)} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`service-visit-${index}-completed`}>Date Service Completed</Label>
+                    <Input id={`service-visit-${index}-completed`} type="date" {...form.register(`serviceVisits.${index}.completedDate`)} className="bg-white border-slate-200" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`service-visit-${index}-cost`}>Visit Cost (€)</Label>
+                    <Input
+                      id={`service-visit-${index}-cost`}
+                      type="text"
+                      inputMode="decimal"
+                      {...form.register(`serviceVisits.${index}.cost`, {
+                        setValueAs: value => value === "" ? 0 : parsePriceInput(value),
+                      })}
+                      onBlur={event => {
+                        const value = parsePriceInput(event.target.value);
+                        form.setValue(`serviceVisits.${index}.cost`, parseFloat(value.toFixed(2)));
+                      }}
+                      className="bg-white border-slate-200"
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`service-visit-${index}-notes`}>Work Notes</Label>
+                  <Textarea
+                    id={`service-visit-${index}-notes`}
+                    {...form.register(`serviceVisits.${index}.notes`)}
+                    className="bg-white border-slate-200 min-h-[80px]"
+                    placeholder="Work performed during this visit..."
+                  />
+                </div>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => serviceVisits.append({ startDate: "", completedDate: "", cost: 0, notes: "" })}
+              data-testid="button-add-service-visit"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Add Service Visit
+            </Button>
+            <p className="text-xs text-slate-500">Visit costs are kept in this history; the existing acquisition COGS and sale snapshots are unchanged.</p>
           </div>
-          <div className="space-y-2">
-            <Label>Service Notes</Label>
-            <Textarea {...form.register("serviceNotes")} className="bg-white border-slate-200 min-h-[80px]" placeholder="Notes about service work performed..." />
+          <div className="max-w-sm">
+            <MoneyField form={form} name="polishFee" label="Polish Fee" placeholder="0,00" />
           </div>
         </div>
       )}
