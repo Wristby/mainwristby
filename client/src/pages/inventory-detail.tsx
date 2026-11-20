@@ -32,7 +32,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Loader2, ArrowLeft, Trash2, Pencil, Archive, Calendar as CalendarIcon, Box, FileText, Check, ExternalLink, Wrench, Plus, Sparkles, Copy, ChevronDown } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Archive, Calendar as CalendarIcon, Box, FileText, Check, Wrench, Plus, Sparkles, Copy, ChevronDown, Watch, ClipboardList, Coins, ShieldCheck } from "lucide-react";
 import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -54,13 +54,15 @@ import { normalizeWatchSerial } from "@shared/serial-match";
 import { SerialMatchNotice } from "@/components/watch-intake/serial-match-notice";
 import { PriceHistoryCard } from "@/components/price-history-card";
 import { normalizeWatchCondition } from "@/lib/watch-condition";
-import { getTrackingUrl } from "@/lib/tracking-url";
 import { WatchIdentityCard } from "@/components/watch-details/identity-card";
 import { PurchaseInformationCard } from "@/components/watch-details/purchase-information-card";
 import { DealOverviewCard } from "@/components/watch-details/deal-overview-card";
 import { BuyerDeliverySummary } from "@/components/watch-details/buyer-delivery-summary";
 import { BuyerContactCard } from "@/components/watch-details/buyer-contact-card";
 import { SalesHistoryCard } from "@/components/watch-details/sales-history-card";
+import { OverviewSummary } from "@/components/watch-details/overview-summary";
+import { SectionTabs, type WatchDetailsSection } from "@/components/watch-details/section-tabs";
+import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import {
   PurchaseAndPreparationFields,
   SaleDetailsFields,
@@ -100,11 +102,20 @@ const expenseFormSchema = insertExpenseSchema.extend({
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
+const WATCH_DETAILS_SECTIONS = [
+  { id: "overview", label: "Overview", icon: Watch },
+  { id: "watch", label: "Watch details", icon: ClipboardList },
+  { id: "financials", label: "Financials", icon: Coins },
+  { id: "sale", label: "Sale & coverage", icon: ShieldCheck },
+  { id: "notes", label: "Notes & tools", icon: FileText },
+] as const satisfies readonly [WatchDetailsSection, WatchDetailsSection, WatchDetailsSection, WatchDetailsSection, WatchDetailsSection];
+
 export default function InventoryDetail() {
   const [match, params] = useRoute("/inventory/:id");
   const id = params ? parseInt(params.id) : 0;
   const [, navigate] = useLocation();
-  const { data: item, isLoading } = useInventoryItem(id);
+  const itemQuery = useInventoryItem(id);
+  const { data: item, isLoading, isError, refetch } = itemQuery;
   const priceHistoryQuery = useInventoryPriceHistory(id);
   const { data: allInventory } = useInventory(undefined, true);
   const { data: clients, isLoading: clientsLoading, isError: clientsUnavailable } = useClients();
@@ -121,6 +132,11 @@ export default function InventoryDetail() {
   const deleteExpenseMutation = useDeleteExpense();
   const { toast } = useToast();
   const { settings } = useSettings();
+  const now = useAmsterdamClock();
+  const [activeSection, setActiveSection] = useState("overview");
+  useEffect(() => {
+    setActiveSection("overview");
+  }, [id]);
   const WATCH_BRANDS = settings.watch_brands;
   const SOLD_ON_OPTIONS = settings.sales_platforms;
   const PURCHASE_CHANNEL_OPTIONS = settings.purchase_channels;
@@ -596,8 +612,24 @@ export default function InventoryDetail() {
     }
   };
 
-  if (isLoading) return <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
-  if (!item) return <div className="text-slate-600">Item not found</div>;
+  if (isLoading) return <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-label="Loading watch details"><Loader2 className="animate-spin text-emerald-700" /></div>;
+  if (isError) return (
+    <section className="mx-auto max-w-xl rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm" role="alert">
+      <h1 className="text-lg font-semibold text-slate-900">Watch details could not be loaded</h1>
+      <p className="mt-2 text-sm text-slate-600">Check your connection and try again. Your saved watch record has not been changed.</p>
+      <Button type="button" variant="outline" className="mt-4 border-slate-300" onClick={() => refetch()} disabled={itemQuery.isFetching}>
+        {itemQuery.isFetching && <Loader2 className="h-4 w-4 animate-spin" />}
+        Try again
+      </Button>
+    </section>
+  );
+  if (!item) return (
+    <section className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm" role="status">
+      <h1 className="text-lg font-semibold text-slate-900">Watch not found</h1>
+      <p className="mt-2 text-sm text-slate-600">This watch may have been removed or you may not have access to it.</p>
+      <Link href="/inventory" className="mt-4 inline-flex text-sm font-medium text-emerald-800 hover:underline">Back to inventory</Link>
+    </section>
+  );
 
   const handleDelete = () => {
     if (confirm(`Delete ${item.brand} ${item.model}? Only this watch record will be removed. Linked expenses and transaction records will remain but become unlinked. This cannot be undone.`)) {
@@ -757,27 +789,17 @@ export default function InventoryDetail() {
     : null;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
+    <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4 border-b border-slate-200 pb-5">
         <Link href="/inventory">
-          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-600">
+          <Button variant="ghost" size="icon" aria-label="Back to inventory" className="text-slate-400 hover:text-slate-600">
             <ArrowLeft className="w-5 h-5" />
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex flex-wrap items-center gap-3">
-            {item.brand} {item.model}
-            <Badge variant="outline" className="px-3 py-1 text-sm font-semibold text-emerald-600 border-emerald-200 bg-emerald-50">
-              {item.referenceNumber}
-            </Badge>
-            {item.archivedAt && (
-              <Badge variant="outline" className="border-slate-300 bg-slate-100 text-slate-700">
-                Archived
-              </Badge>
-            )}
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">ID: #{item.id} • Serial: {item.serialNumber || 'N/A'}</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Inventory / Watch {item.id}</p>
+          <p className="mt-1 text-sm text-slate-600">Record #{item.id} · {item.serialNumber || "Serial not recorded"}</p>
         </div>
         <div className="ml-auto flex gap-3">
           <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
@@ -893,13 +915,52 @@ export default function InventoryDetail() {
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <OverviewSummary
+        item={item}
+        buyer={linkedBuyer}
+        buyerLoading={clientsLoading}
+        buyerUnavailable={clientsUnavailable}
+        now={now}
+        salePrice={salePrice}
+        profit={profit}
+        margin={margin}
+        formatCurrency={formatCurrency}
+        onOpenSection={section => setActiveSection(section)}
+      />
+      <SectionTabs
+        selectedSectionId={activeSection}
+        onChange={setActiveSection}
+        sections={WATCH_DETAILS_SECTIONS}
+      >
+      <div className={cn("grid grid-cols-1 gap-6", ["overview", "watch"].includes(activeSection) && "lg:grid-cols-3")}>
         {/* Main Info Columns */}
-        <div className="lg:col-span-2 space-y-6">
-          <WatchIdentityCard item={item} holdTime={holdTime} daysInService={daysInService} daysListed={daysListed} />
-          <PurchaseInformationCard item={item} formatCurrency={formatCurrency} />
+        <div className={cn("space-y-6", ["overview", "watch"].includes(activeSection) && "lg:col-span-2")}>
+          {activeSection === "overview" && (
+            <Card className="border-[#d8e2dc] bg-[#fbfcf8] shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg text-slate-900">Record at a glance</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Purchase date</p><p className="mt-1 text-sm font-medium text-slate-800">{item.purchaseDate ? format(new Date(item.purchaseDate), "dd MMM yyyy") : "Not recorded"}</p></div>
+                <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date received</p><p className="mt-1 text-sm font-medium text-slate-800">{item.dateReceived ? format(new Date(item.dateReceived), "dd MMM yyyy") : "Not recorded"}</p></div>
+                <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date listed</p><p className="mt-1 text-sm font-medium text-slate-800">{item.dateListed ? format(new Date(item.dateListed), "dd MMM yyyy") : "Not listed"}</p></div>
+                <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hold time</p><p className="mt-1 text-sm font-medium text-slate-800">{item.dateReceived ? `${holdTime} days` : "Not recorded"}</p></div>
+                <div className="sm:col-span-2 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setActiveSection("watch")}>View watch details</Button>
+                  <Button type="button" variant="outline" onClick={() => setActiveSection("financials")}>Open financial breakdown</Button>
+                  <Button type="button" variant="outline" onClick={() => setActiveSection("sale")}>Review sale &amp; coverage</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {activeSection === "watch" && (
+            <>
+              <WatchIdentityCard item={item} holdTime={holdTime} daysInService={daysInService} daysListed={daysListed} />
+              <PurchaseInformationCard item={item} formatCurrency={formatCurrency} />
+            </>
+          )}
 
-          <DealOverviewCard
+          {activeSection === "financials" && <DealOverviewCard
             item={item}
             salePrice={salePrice}
             profit={profit}
@@ -910,45 +971,7 @@ export default function InventoryDetail() {
             effectiveRegisterFee={effectiveWrFee}
             chrono24Commission={settings.chrono24_commission}
             formatCurrency={formatCurrency}
-            buyerDelivery={item.status === "sold" ? (
-              <BuyerDeliverySummary item={item} buyer={linkedBuyer} clientsUnavailable={clientsUnavailable} />
-            ) : undefined}
           >
-
-              {/* Shipping Details - shows when info exists and item is not sold (sold items show in Transaction pillar) */}
-              {item.status !== 'sold' && (item.shippingPartner || item.trackingNumber || item.chrono24CertificationSent) && (
-                <div className="pt-4 border-t border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Shipping Details</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Shipper</span>
-                      <span className="font-medium">{item.shippingPartner || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Tracking #</span>
-                      {item.trackingNumber ? (
-                        getTrackingUrl(item.shippingPartner, item.trackingNumber) ? (
-                          <a href={getTrackingUrl(item.shippingPartner, item.trackingNumber)!} target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-600 hover:underline inline-flex items-center gap-1" data-testid="link-tracking-shipping">
-                            {item.trackingNumber} <ExternalLink className="w-3 h-3" />
-                          </a>
-                        ) : (
-                          <span className="font-medium">{item.trackingNumber}</span>
-                        )
-                      ) : (
-                        <span className="font-medium">N/A</span>
-                      )}
-                    </div>
-                    {item.chrono24CertificationSent && (
-                      <div className="col-span-2 flex justify-between text-sm">
-                        <span className="text-slate-500">Chrono24 Certification</span>
-                        <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
-                          <Check className="h-3.5 w-3.5" aria-hidden="true" />Sent
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* Additional Expenses Section */}
               <div className="pt-4 border-t border-slate-100">
@@ -1040,13 +1063,13 @@ export default function InventoryDetail() {
                   )}
                 </div>
               </div>
-          </DealOverviewCard>
+          </DealOverviewCard>}
 
         </div>
 
         {/* Right Sidebar */}
         <div className="space-y-6">
-          <Card className="border-slate-200 bg-white shadow-sm">
+          {activeSection === "overview" && <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-lg text-slate-900">Status</CardTitle>
             </CardHeader>
@@ -1277,9 +1300,9 @@ export default function InventoryDetail() {
                 )}
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
-          <PriceHistoryCard
+          {activeSection === "watch" && <PriceHistoryCard
             history={priceHistoryQuery.data}
             currentListPrice={item.listPrice ?? null}
             isLoading={priceHistoryQuery.isLoading}
@@ -1289,18 +1312,20 @@ export default function InventoryDetail() {
               await updatePriceHistoryMutation.mutateAsync({ historyId, listPrice });
               toast({ title: "Price corrected", description: "The historical price entry was updated." });
             }}
-          />
+          />}
 
-          <BuyerContactCard
+          {activeSection === "sale" && <BuyerDeliverySummary item={item} buyer={linkedBuyer} clientsUnavailable={clientsUnavailable} />}
+
+          {activeSection === "sale" && <BuyerContactCard
             item={item}
             buyer={linkedBuyer}
             isLoading={clientsLoading}
             isUnavailable={clientsUnavailable}
-          />
+          />}
 
-          <SalesHistoryCard item={item} />
+          {activeSection === "sale" && <SalesHistoryCard item={item} />}
 
-          <Card className="border-slate-200 bg-white shadow-sm">
+          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Notes</CardTitle>
@@ -1364,10 +1389,10 @@ export default function InventoryDetail() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* Movement Specs Card */}
-          <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-movement-specs">
+          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-movement-specs">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Movement Specs</CardTitle>
@@ -1426,10 +1451,10 @@ export default function InventoryDetail() {
                 </p>
               )}
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* Listing Title Card */}
-          <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-listing-title">
+          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-listing-title">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg text-slate-900">Listing Title</CardTitle>
             </CardHeader>
@@ -1454,10 +1479,10 @@ export default function InventoryDetail() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* Listing Description Card */}
-          <Card className="border-slate-200 bg-white shadow-sm">
+          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Listing Description</CardTitle>
@@ -1514,10 +1539,10 @@ export default function InventoryDetail() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
           {/* Instagram Caption Card */}
-          <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-instagram-caption">
+          {activeSection === "notes" && <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-instagram-caption">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg text-slate-900">Instagram Caption</CardTitle>
@@ -1574,13 +1599,13 @@ export default function InventoryDetail() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
 
-          <QuickEstimate initialBuyPriceCents={item.purchasePrice} />
+          {activeSection === "notes" && <QuickEstimate initialBuyPriceCents={item.purchasePrice} />}
         </div>
       </div>
       {/* Historicals Section */}
-      {historicals.length > 0 && (
+      {activeSection === "financials" && (historicals.length > 0 ? (
         <Card className="border-slate-200 bg-white shadow-sm" data-testid="card-historicals">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
@@ -1667,7 +1692,15 @@ export default function InventoryDetail() {
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : (
+        <Card className="border-slate-200 bg-white shadow-sm">
+          <CardContent className="py-8 text-center">
+            <h2 className="font-semibold text-slate-900">No previous sales for this reference</h2>
+            <p className="mt-1 text-sm text-slate-500">Comparable sold watches will appear here when available.</p>
+          </CardContent>
+        </Card>
+      ))}
+      </SectionTabs>
       <Dialog open={isQuickAddClientOpen} onOpenChange={(open) => { setIsQuickAddClientOpen(open); if (!open) quickClientForm.reset(); }}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto bg-white border-slate-200 text-slate-900 sm:max-w-[680px]" data-testid="dialog-quick-add-client">
           <DialogHeader><DialogTitle>Add New Client</DialogTitle></DialogHeader>
