@@ -3,7 +3,6 @@ import { Check, ExternalLink } from "lucide-react";
 import { DeliveryStatus } from "@/components/delivery-status";
 import { Separator } from "@/components/ui/separator";
 import { getTrackingUrl } from "@/lib/tracking-url";
-import { WatchWarrantySummary } from "./warranty-summary";
 import { Link } from "wouter";
 
 type BuyerDeliverySummaryProps = {
@@ -61,7 +60,6 @@ export function BuyerDeliverySummary({ item, buyer, clientsUnavailable }: BuyerD
           </div>
         )}
         <DeliveryStatus key={item.id} id={item.id} deliveredDate={item.deliveredDate} />
-        <WatchWarrantySummary item={item} />
       </div>
     </div>
   );

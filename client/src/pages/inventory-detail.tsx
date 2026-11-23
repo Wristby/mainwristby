@@ -59,6 +59,7 @@ import { PurchaseInformationCard } from "@/components/watch-details/purchase-inf
 import { DealOverviewCard } from "@/components/watch-details/deal-overview-card";
 import { BuyerDeliverySummary } from "@/components/watch-details/buyer-delivery-summary";
 import { BuyerContactCard } from "@/components/watch-details/buyer-contact-card";
+import { WatchWarrantySummary } from "@/components/watch-details/warranty-summary";
 import { SalesHistoryCard } from "@/components/watch-details/sales-history-card";
 import { ServiceHistoryCard } from "@/components/watch-details/service-history-card";
 import { OverviewSummary } from "@/components/watch-details/overview-summary";
@@ -987,6 +988,13 @@ export default function InventoryDetail() {
               <WatchIdentityCard item={item} holdTime={holdTime} daysInService={daysInService} daysListed={daysListed} />
               <PurchaseInformationCard item={item} formatCurrency={formatCurrency} />
               <ServiceHistoryCard item={item} formatCurrency={formatCurrency} />
+              <BuyerDeliverySummary item={item} buyer={linkedBuyer} clientsUnavailable={clientsUnavailable} />
+              <BuyerContactCard
+                item={item}
+                buyer={linkedBuyer}
+                isLoading={clientsLoading}
+                isUnavailable={clientsUnavailable}
+              />
             </>
           )}
 
@@ -1344,14 +1352,11 @@ export default function InventoryDetail() {
             }}
           />}
 
-          {activeSection === "sale" && <BuyerDeliverySummary item={item} buyer={linkedBuyer} clientsUnavailable={clientsUnavailable} />}
-
-          {activeSection === "sale" && <BuyerContactCard
-            item={item}
-            buyer={linkedBuyer}
-            isLoading={clientsLoading}
-            isUnavailable={clientsUnavailable}
-          />}
+          {activeSection === "sale" && (
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <WatchWarrantySummary item={item} />
+            </div>
+          )}
 
           {activeSection === "sale" && <SalesHistoryCard item={item} />}
 

@@ -36,7 +36,7 @@ export function WatchWarrantySummary({ item }: { item: InventoryItem }) {
     : days === 0 ? " · expires today" : ` · ${days} days remaining`;
 
   return (
-    <section className="mt-4 border-t border-slate-100 pt-4" data-testid="watch-warranty-summary">
+    <section className="space-y-3" data-testid="watch-warranty-summary">
       <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-700">Warranty Coverage</h4>
       <div className="space-y-2 text-sm">
         <p className="flex flex-wrap justify-between gap-x-4 gap-y-1"><span className="text-slate-500">Store warranty</span><strong>{term} · {storeStatus}{remaining(store.daysRemaining)}</strong></p>
