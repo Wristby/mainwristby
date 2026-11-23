@@ -986,7 +986,6 @@ export default function InventoryDetail() {
           {activeSection === "watch" && (
             <>
               <WatchIdentityCard item={item} holdTime={holdTime} daysInService={daysInService} daysListed={daysListed} />
-              <PurchaseInformationCard item={item} formatCurrency={formatCurrency} />
               <ServiceHistoryCard item={item} formatCurrency={formatCurrency} />
               <BuyerDeliverySummary item={item} buyer={linkedBuyer} clientsUnavailable={clientsUnavailable} />
               <BuyerContactCard
@@ -998,18 +997,21 @@ export default function InventoryDetail() {
             </>
           )}
 
-          {activeSection === "financials" && <DealOverviewCard
-            item={item}
-            salePrice={salePrice}
-            profit={profit}
-            margin={margin}
-            totalFees={totalFees}
-            netAfterVat={netAfterVat}
-            vatAmount={vatAmount}
-            effectiveRegisterFee={effectiveWrFee}
-            chrono24Commission={settings.chrono24_commission}
-            formatCurrency={formatCurrency}
-          >
+          {activeSection === "financials" && (
+            <>
+              <PurchaseInformationCard item={item} formatCurrency={formatCurrency} />
+              <DealOverviewCard
+                item={item}
+                salePrice={salePrice}
+                profit={profit}
+                margin={margin}
+                totalFees={totalFees}
+                netAfterVat={netAfterVat}
+                vatAmount={vatAmount}
+                effectiveRegisterFee={effectiveWrFee}
+                chrono24Commission={settings.chrono24_commission}
+                formatCurrency={formatCurrency}
+              >
 
               {/* Additional Expenses Section */}
               <div className="pt-4 border-t border-slate-100">
@@ -1101,7 +1103,9 @@ export default function InventoryDetail() {
                   )}
                 </div>
               </div>
-          </DealOverviewCard>}
+              </DealOverviewCard>
+            </>
+          )}
 
         </div>
 
