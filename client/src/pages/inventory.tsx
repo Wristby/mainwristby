@@ -28,6 +28,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { compareSoldDates } from "@/lib/sold-date";
+import { matchesInventoryStatus } from "@/lib/inventory-status-filter";
 import { RowLink } from "@/components/row-link";
 import { differenceInDays, endOfDay, endOfMonth, format, startOfDay, startOfMonth, subMonths } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -181,6 +182,22 @@ export default function Inventory() {
     };
   }, [inventory, marginRate]);
 
+  const showInventoryStatus = (status: string) => {
+    setStatusFilter(status);
+    setSearch("");
+    setBrandFilter("all");
+    setDateRange(undefined);
+    setSelectedMonth("all");
+    setHasBoxFilter(null);
+    setHasPapersFilter(null);
+    setReturnWindowFilter("all");
+    setSortField("id");
+    setSortOrder("desc");
+    requestAnimationFrame(() => {
+      document.getElementById("inventory-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   const getHoldTime = (item: any) => {
     const startDate = item.dateReceived ? new Date(item.dateReceived) : null;
     if (!startDate) return 0;
@@ -222,7 +239,7 @@ export default function Inventory() {
         item.referenceNumber.toLowerCase().includes(term) ||
         (item.serialNumber?.toLowerCase().includes(term) ?? false);
       
-      const matchesStatus = statusFilter === "all" || item.status === statusFilter;
+      const matchesStatus = matchesInventoryStatus(item.status, statusFilter);
       const matchesReturnWindow = statusFilter !== "sold" || matchesReturnWindowFilter(item, returnWindowFilter, now);
       const matchesBrand = brandFilter === "all" || item.brand === brandFilter;
       const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : null;
@@ -476,21 +493,28 @@ export default function Inventory() {
       </div>
       {/* Metrics Row */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Listed Value</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(metrics.listedValue)}
-                </p>
+        <button
+          type="button"
+          className="w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+          onClick={() => showInventoryStatus("in_stock")}
+          aria-label="Show listed watches"
+        >
+          <Card className="h-full border-slate-200 bg-white shadow-sm transition-colors hover:border-emerald-300">
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">Listed Value</p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">
+                    {formatCurrency(metrics.listedValue)}
+                  </p>
+                </div>
+                <div className="rounded-full bg-emerald-50 p-2">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
+                </div>
               </div>
-              <div className="p-2 bg-emerald-50 rounded-full">
-                <TrendingUp className="h-5 w-5 text-emerald-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </button>
 
         <Card className="bg-white border-slate-200 shadow-sm">
           <CardContent className="pt-5 pb-5">
@@ -508,21 +532,28 @@ export default function Inventory() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-500">Incoming/Received Value</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1 tabular-nums">
-                  {formatCurrency(metrics.incomingValue)}
-                </p>
+        <button
+          type="button"
+          className="w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+          onClick={() => showInventoryStatus("incoming_received")}
+          aria-label="Show incoming and received watches"
+        >
+          <Card className="h-full border-slate-200 bg-white shadow-sm transition-colors hover:border-emerald-300">
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">Incoming/Received Value</p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">
+                    {formatCurrency(metrics.incomingValue)}
+                  </p>
+                </div>
+                <div className="rounded-full bg-amber-50 p-2">
+                  <Box className="h-5 w-5 text-amber-600" />
+                </div>
               </div>
-              <div className="p-2 bg-amber-50 rounded-full">
-                <Box className="h-5 w-5 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </button>
       </div>
       <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
@@ -559,6 +590,7 @@ export default function Inventory() {
             <SelectContent className="bg-white border-slate-200 text-slate-900">
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="in_stock">Listed</SelectItem>
+              <SelectItem value="incoming_received">Incoming/Received</SelectItem>
               <SelectItem value="servicing">In Service</SelectItem>
               <SelectItem value="incoming">Incoming</SelectItem>
               <SelectItem value="received">Received</SelectItem>
@@ -665,7 +697,7 @@ export default function Inventory() {
           </Popover>
         </div>
       </div>
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+      <div id="inventory-results" className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
         <Table>
           <TableHeader className="bg-slate-50/50">
             <TableRow>
