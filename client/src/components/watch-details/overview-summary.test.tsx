@@ -13,6 +13,7 @@ const baseItem = {
   condition: "Very Good",
   status: "sold",
   purchaseDate: "2026-04-12",
+  dateReceived: "2026-04-15",
   dateListed: "2026-04-20",
   soldDate: "2026-11-01",
   deliveredDate: "2026-11-10",
@@ -21,6 +22,8 @@ const baseItem = {
   listPrice: 150_000,
   purchasePrice: 100_000,
   salePrice: 120_000,
+  box: true,
+  papers: true,
   storeWarrantyMonths: 12,
   manufacturerPurchaseDate: null,
   manufacturerWarrantyExpires: null,
@@ -35,6 +38,7 @@ const render = (item: InventoryItem, buyer?: { id: number; name: string }) => re
     buyerLoading={false}
     buyerUnavailable={false}
     now={new Date("2026-11-20T12:00:00Z")}
+    holdTime={item.dateReceived ? 200 : null}
     salePrice={120_000}
     profit={20_000}
     margin={16.7}
@@ -53,8 +57,8 @@ describe("Watch Details overview summary", () => {
     expect(html).toContain("Net profit");
     expect(html).toContain("€1200.00");
     expect(html).toContain("€200.00");
-    expect(html).toContain("4 days remaining");
-    expect(html).toContain("Store warranty · Active");
+    expect(html).toContain("Full Set");
+    expect(html).toContain("Hold time · 200 days");
     expect(html).not.toContain("Rolex Submariner");
   });
 
@@ -68,15 +72,17 @@ describe("Watch Details overview summary", () => {
       soldTo: null,
       salePrice: 0,
       listPrice: 150_000,
+      papers: false,
     } as unknown as InventoryItem;
     const html = render(unsold);
-    expect(html).toContain("Return window · not applicable");
+    expect(html).toContain("Box only");
+    expect(html).toContain("Hold time");
     expect(html).toContain("COGS");
     expect(html).toContain("Asking price");
     expect(html).toContain("€1000.00");
     expect(html).toContain("€1500.00");
     expect(html).not.toContain("Net profit");
     expect(html).not.toContain("Sale price");
-    expect(html).toContain("Awaiting delivery");
+    expect(html).not.toContain("Return window · not applicable");
   });
 });

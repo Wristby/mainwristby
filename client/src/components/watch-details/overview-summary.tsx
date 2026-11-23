@@ -1,8 +1,8 @@
 import type { Client, InventoryItem } from "@shared/schema";
 import { amsterdamToday, formatDeliveryDate, returnWindow } from "@shared/delivery";
 import { getSoldDate } from "@shared/sold-date";
-import { getManufacturerWarrantyCoverage, getStoreWarrantyCoverage } from "@shared/warranty";
-import { ArrowRight, CalendarDays, Check, ShieldCheck, Watch } from "lucide-react";
+import { getManufacturerWarrantyCoverage } from "@shared/warranty";
+import { ArrowRight, Box, CalendarDays, Check, Clock3, ShieldCheck, Watch } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { normalizeWatchCondition } from "@/lib/watch-condition";
@@ -15,6 +15,7 @@ type OverviewSummaryProps = {
   buyerLoading: boolean;
   buyerUnavailable: boolean;
   now: Date;
+  holdTime: number | null;
   salePrice: number;
   profit: number;
   margin: number;
@@ -69,6 +70,7 @@ export function OverviewSummary({
   buyerLoading,
   buyerUnavailable,
   now,
+  holdTime,
   salePrice,
   profit,
   margin,
@@ -77,7 +79,6 @@ export function OverviewSummary({
 }: OverviewSummaryProps) {
   const returnState = item.status === "sold" ? returnWindow(item.deliveredDate, now) : null;
   const today = amsterdamToday(now);
-  const storeWarranty = getStoreWarrantyCoverage(item.storeWarrantyMonths, item.deliveredDate, today);
   const manufacturerWarranty = getManufacturerWarrantyCoverage(
     item.manufacturerPurchaseDate,
     item.manufacturerWarrantyExpires,
@@ -129,12 +130,13 @@ export function OverviewSummary({
                 ? item.deliveredDate ? `Delivered ${formatRecordDate(item.deliveredDate)}` : "Delivery not confirmed"
                 : `Status · ${statusLabel(item.status)}`}
             </span>
-            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-amber-300/70 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-900" data-testid="watch-return-state">
-              {item.status !== "sold" ? "Return window · not applicable" : returnState?.label ?? "Return window · delivery not confirmed"}
+            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-emerald-900/10 bg-white/75 px-3 py-1.5 text-xs font-medium text-emerald-950" data-testid="watch-set-state">
+              <Box className="h-3.5 w-3.5" aria-hidden="true" />
+              {item.box && item.papers ? "Full Set" : item.box ? "Box only" : item.papers ? "Papers only" : "No box or papers"}
             </span>
-            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-emerald-900/10 bg-white/75 px-3 py-1.5 text-xs font-medium text-emerald-950" data-testid="watch-warranty-state">
-              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-              Store warranty · {warrantyLabel(storeWarranty.status, storeWarranty.daysRemaining)}
+            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-emerald-900/10 bg-white/75 px-3 py-1.5 text-xs font-medium text-emerald-950" data-testid="watch-hold-time">
+              <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+              {holdTime == null ? "Hold time · Not recorded" : `Hold time · ${holdTime} ${holdTime === 1 ? "day" : "days"}`}
             </span>
             {manufacturerWarranty.status !== "not_recorded" && (
               <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-emerald-900/10 bg-white/75 px-3 py-1.5 text-xs font-medium text-emerald-950">

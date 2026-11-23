@@ -947,6 +947,7 @@ export default function InventoryDetail() {
         buyerLoading={clientsLoading}
         buyerUnavailable={clientsUnavailable}
         now={now}
+        holdTime={item.dateReceived ? holdTime : null}
         salePrice={salePrice}
         profit={profit}
         margin={margin}
