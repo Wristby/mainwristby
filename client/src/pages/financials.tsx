@@ -1,6 +1,8 @@
 import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/use-expenses";
 import { useInventory } from "@/hooks/use-inventory";
+import { useSales } from "@/hooks/use-sales";
 import { calculateWatchCostBreakdown } from "@shared/watch-financials";
+import { calculateSaleAvailability } from "@shared/sale-availability";
 import { getSoldDate } from "@shared/sold-date";
 import {
   getSaleAmount,
@@ -78,6 +80,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { aggregateVat } from "@/lib/vat-calculations";
+import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
+import { SaleAvailabilityCard } from "@/components/financials/sale-availability-card";
 
 const MONTHS = [
   { value: "all", label: "All Months" },
@@ -131,7 +135,14 @@ export default function Financials() {
 
   const { data: expenses, isLoading: expensesLoading } = useExpenses();
   const { data: inventory, isLoading: inventoryLoading } = useInventory(undefined, true);
+  const { data: sales, isLoading: salesLoading, isError: salesError } = useSales();
+  const amsterdamNow = useAmsterdamClock();
   const { toast } = useToast();
+
+  const saleAvailability = useMemo(
+    () => calculateSaleAvailability(sales ?? [], amsterdamNow),
+    [sales, amsterdamNow],
+  );
   
   const createMutation = useCreateExpense();
   const updateMutation = useUpdateExpense();
@@ -694,6 +705,12 @@ export default function Financials() {
           </div>
         </CardContent>
       </Card>
+      <SaleAvailabilityCard
+        summary={saleAvailability}
+        isLoading={salesLoading}
+        isError={salesError}
+        formatCurrency={formatCurrency}
+      />
       <Card className="bg-white border-slate-200">
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
