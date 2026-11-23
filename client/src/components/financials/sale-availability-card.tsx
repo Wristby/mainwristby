@@ -212,9 +212,9 @@ export function SaleAvailabilityCard({
             <Wallet className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-slate-900">Sale Availability</h3>
+            <h3 className="text-lg font-semibold text-slate-900">Incoming Sale Proceeds</h3>
             <p className="text-xs text-slate-500">
-              Sale price after marketplace fees. This return-window estimate is not your bank balance.
+              Expected money from sold watches after marketplace fees, shown as it moves toward payout.
             </p>
           </div>
           <Badge variant="outline" className="ml-auto shrink-0 border-slate-200 bg-slate-50 text-slate-600">

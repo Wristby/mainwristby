@@ -49,11 +49,11 @@ describe("SaleAvailabilityCard", () => {
     const html = renderToStaticMarkup(
       <SaleAvailabilityCard summary={summary} isLoading={false} isError={false} formatCurrency={formatCurrency} />,
     );
-    expect(html).toContain("Sale Availability");
+    expect(html).toContain("Incoming Sale Proceeds");
     expect(html).toContain("Inside return window");
     expect(html).toContain("€9350.00");
     expect(html).toContain("Available 17 Mar 2026 · 7 days");
-    expect(html).toContain("not your bank balance");
+    expect(html).toContain("shown as it moves toward payout");
     expect(html).toContain("Delivery-to-release timeline");
     expect(html).toContain("Return period · day 8 · 7 days until release");
     expect(html).toContain("Day 14 · return period ends");
