@@ -20,6 +20,7 @@ export interface SaleAvailabilityEntry {
   soldDate: Date | string | null;
   proceedsCents: number | null;
   state: SaleAvailabilityState;
+  daysSinceDelivered: number | null;
   daysUntilAvailable: number | null;
   releaseDate: string | null;
 }
@@ -66,6 +67,7 @@ export function calculateSaleAvailability(
       model: sale.modelSnapshot,
       referenceNumber: sale.referenceNumberSnapshot,
       soldDate: sale.soldDate,
+      daysSinceDelivered: null,
       daysUntilAvailable: null,
       releaseDate: null,
     } satisfies Omit<SaleAvailabilityEntry, "proceedsCents" | "state">;
@@ -92,16 +94,18 @@ export function calculateSaleAvailability(
       continue;
     }
     const releaseDate = nextCalendarDate(window.deadline);
+    const daysSinceDelivered = 14 - window.daysRemaining;
     if (window.daysRemaining >= 0) {
       inReturnWindow.push({
         ...baseEntry,
         proceedsCents,
         state: "in_return_window",
+        daysSinceDelivered,
         daysUntilAvailable: window.daysRemaining + 1,
         releaseDate,
       });
     } else if (window.daysRemaining >= -PAYOUT_WINDOW_DAYS_AFTER_RETURN) {
-      available.push({ ...baseEntry, proceedsCents, state: "available", releaseDate });
+      available.push({ ...baseEntry, proceedsCents, state: "available", daysSinceDelivered, releaseDate });
     }
   }
 

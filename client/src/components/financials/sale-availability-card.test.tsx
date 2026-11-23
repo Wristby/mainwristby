@@ -54,6 +54,11 @@ describe("SaleAvailabilityCard", () => {
     expect(html).toContain("€9350.00");
     expect(html).toContain("Available 17 Mar 2026 · 7 days");
     expect(html).toContain("not your bank balance");
+    expect(html).toContain("Delivery-to-release timeline");
+    expect(html).toContain("Return period · day 8 · 7 days until release");
+    expect(html).toContain("Day 14 · return period ends");
+    expect(html).toContain("Day 17 · payout ends");
+    expect(html).toContain('data-testid="sale-timeline-entry-1"');
   });
 
   it("shows clear error and no-sale states", () => {
