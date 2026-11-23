@@ -490,11 +490,6 @@ export function TimingTab({ item }: Props) {
         </CardContent>
       </Card>
 
-      <div className="rounded-lg border border-[#dce5df] bg-white px-4 py-3 text-xs leading-relaxed text-slate-500">
-        These readings are a reference, not a calibration certificate. Amplitude depends on the correct lift angle, microphone placement, and a stable recording.
-        Printing uses your browser’s print dialog; choose a receipt/thermal printer there when available.
-      </div>
-
       {printReading && (
         <div className="timing-printable hidden">
           <div className="mx-auto max-w-2xl font-sans text-slate-950">

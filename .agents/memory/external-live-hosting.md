@@ -7,6 +7,6 @@ must follow the documented manual SQL release process; Replit's development
 `db:push` does not update or verify cPanel, and app startup must not run
 migrations.
 
-**Why:** The user stated that their live hosting and database are on cPanel and confirmed that the Notebook loading error occurred on the live cPanel website.
+**Why:** The user stated that their live hosting and database are on cPanel and confirmed that the Notebook loading error occurred on the live cPanel website. The Timing warning cleared after applying its migration to Replit development, confirming that preview and live schema states can differ.
 
-**How to apply:** Do not treat successful Replit development checks or Replit production database queries as verification of the cPanel database. Confirm the target and authorization before changing the external database. Source-code updates alone do not demonstrate that database schema changes were applied there; verify cPanel's applied migration state before choosing pending SQL.
+**How to apply:** Apply SQL to Replit development for preview testing, then separately follow the manual SQL release process for cPanel live. Do not treat successful Replit checks as verification of cPanel. Confirm the target and authorization before changing the external database; app startup must never run migrations.
