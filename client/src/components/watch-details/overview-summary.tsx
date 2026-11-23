@@ -2,7 +2,7 @@ import type { Client, InventoryItem } from "@shared/schema";
 import { amsterdamToday, formatDeliveryDate, returnWindow } from "@shared/delivery";
 import { getSoldDate } from "@shared/sold-date";
 import { getManufacturerWarrantyCoverage } from "@shared/warranty";
-import { ArrowRight, Box, CalendarDays, Check, Clock3, ShieldCheck, Watch } from "lucide-react";
+import { ArrowRight, Box, CalendarDays, Check, Clock3, ExternalLink, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { normalizeWatchCondition } from "@/lib/watch-condition";
@@ -194,9 +194,16 @@ export function OverviewSummary({
                     : "Receipt date not recorded"}
             </p>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-              <Button variant="ghost" className="h-auto p-0 text-sm text-emerald-900" onClick={() => onOpenSection("watch")}>
-                <Watch className="mr-1.5 h-4 w-4" aria-hidden="true" /> Watch details
-              </Button>
+              {item.gdriveLink && (
+                <a
+                  href={item.gdriveLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-auto items-center text-sm text-emerald-900 hover:underline"
+                >
+                  Google Drive folder <ExternalLink className="ml-1.5 h-4 w-4" aria-hidden="true" />
+                </a>
+              )}
               <Button variant="ghost" className="h-auto p-0 text-sm text-emerald-900" onClick={() => onOpenSection("sale")}>
                 <ShieldCheck className="mr-1.5 h-4 w-4" aria-hidden="true" /> Warranty
               </Button>

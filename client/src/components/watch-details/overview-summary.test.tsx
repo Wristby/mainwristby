@@ -29,6 +29,7 @@ const baseItem = {
   manufacturerWarrantyExpires: null,
   manufacturerWarrantyCardPresent: false,
   manufacturerWarrantyDetails: null,
+  gdriveLink: "https://drive.google.com/drive/folders/watch-42",
 } as unknown as InventoryItem;
 
 const render = (item: InventoryItem, buyer?: { id: number; name: string }) => renderToStaticMarkup(
@@ -59,7 +60,16 @@ describe("Watch Details overview summary", () => {
     expect(html).toContain("€200.00");
     expect(html).toContain("Full Set");
     expect(html).toContain("Hold time · 200 days");
+    expect(html).toContain('href="https://drive.google.com/drive/folders/watch-42"');
+    expect(html).toContain("Google Drive folder");
+    expect(html).not.toContain("Watch details</button>");
     expect(html).not.toContain("Rolex Submariner");
+  });
+
+  it("hides the Drive shortcut when no folder is saved", () => {
+    const itemWithoutDriveFolder = { ...baseItem, gdriveLink: null } as unknown as InventoryItem;
+    const html = render(itemWithoutDriveFolder);
+    expect(html).not.toContain("Google Drive folder");
   });
 
   it("keeps unsold and missing-sale details distinct from a realized sale", () => {
