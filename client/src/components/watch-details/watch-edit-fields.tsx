@@ -360,13 +360,13 @@ export function SaleDetailsFields({
   const soldPlatform = form.watch("soldPlatform");
   return (
     <div className="space-y-4" ref={salesSectionRef}>
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+      <Label htmlFor="edit-showSale" className="flex w-full cursor-pointer items-center justify-between border-b border-slate-200 pb-2">
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Sale Details</h3>
         <div className="flex items-center space-x-2">
-          <Label htmlFor="edit-showSale" className="text-sm font-medium text-slate-500">Show Sale Fields</Label>
-          <Switch id="edit-showSale" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
+          <span className="text-sm font-medium text-slate-500">Show Sale Fields</span>
+          <Switch id="edit-showSale" aria-label="Show Sale Fields" checked={showSaleDetails} onCheckedChange={setShowSaleDetails} />
         </div>
-      </div>
+      </Label>
       {showSaleDetails && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="space-y-2">
@@ -471,13 +471,13 @@ export function WarrantyFields({
 }) {
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+      <Label htmlFor="edit-showWarranty" className="flex w-full cursor-pointer items-center justify-between border-b border-slate-200 pb-2">
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Warranty Coverage</h3>
         <div className="flex items-center space-x-2">
-          <Label htmlFor="edit-showWarranty" className="text-sm font-medium text-slate-500">Show Warranty Fields</Label>
-          <Switch id="edit-showWarranty" checked={showWarrantyDetails} onCheckedChange={setShowWarrantyDetails} />
+          <span className="text-sm font-medium text-slate-500">Show Warranty Fields</span>
+          <Switch id="edit-showWarranty" aria-label="Show Warranty Fields" checked={showWarrantyDetails} onCheckedChange={setShowWarrantyDetails} />
         </div>
-      </div>
+      </Label>
       {showWarrantyDetails && (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 animate-in fade-in slide-in-from-top-2 duration-300">
         <div className="space-y-2">
@@ -532,13 +532,13 @@ export function ServiceMaintenanceFields({
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+      <Label htmlFor="edit-showService" className="flex w-full cursor-pointer items-center justify-between border-b border-slate-200 pb-2">
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service &amp; Maintenance</h3>
         <div className="flex items-center space-x-2">
-          <Label htmlFor="edit-showService" className="text-sm font-medium text-slate-500">Show Service Fields</Label>
-          <Switch id="edit-showService" checked={showServiceDetails} onCheckedChange={setShowServiceDetails} />
+          <span className="text-sm font-medium text-slate-500">Show Service Fields</span>
+          <Switch id="edit-showService" aria-label="Show Service Fields" checked={showServiceDetails} onCheckedChange={setShowServiceDetails} />
         </div>
-      </div>
+      </Label>
       {showServiceDetails && (
         <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="space-y-4">
@@ -613,13 +613,13 @@ export function ShippingFields({
 }) {
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+      <Label htmlFor="edit-showShipping" className="flex w-full cursor-pointer items-center justify-between border-b border-slate-200 pb-2">
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Shipping &amp; Tracking</h3>
         <div className="flex items-center space-x-2">
-          <Label htmlFor="edit-showShipping" className="text-sm font-medium text-slate-500">Show Shipping Fields</Label>
-          <Switch id="edit-showShipping" checked={showShippingDetails} onCheckedChange={setShowShippingDetails} />
+          <span className="text-sm font-medium text-slate-500">Show Shipping Fields</span>
+          <Switch id="edit-showShipping" aria-label="Show Shipping Fields" checked={showShippingDetails} onCheckedChange={setShowShippingDetails} />
         </div>
-      </div>
+      </Label>
       {showShippingDetails && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="space-y-2">

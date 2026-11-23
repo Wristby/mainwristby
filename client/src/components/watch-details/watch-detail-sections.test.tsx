@@ -119,6 +119,8 @@ describe("Watch Details sections", () => {
     const hiddenHtml = renderToStaticMarkup(<WarrantyFieldsHarness visible={false} />);
     expect(hiddenHtml).toContain("Warranty Coverage");
     expect(hiddenHtml).toContain("Show Warranty Fields");
+    expect(hiddenHtml).toContain('aria-label="Show Warranty Fields"');
+    expect(hiddenHtml).toContain("flex w-full cursor-pointer items-center justify-between border-b border-slate-200 pb-2");
     expect(hiddenHtml).not.toContain("Store Warranty Term");
 
     const visibleHtml = renderToStaticMarkup(<WarrantyFieldsHarness visible />);

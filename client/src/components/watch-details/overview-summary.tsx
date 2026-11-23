@@ -199,7 +199,7 @@ export function OverviewSummary({
                   href={item.gdriveLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex h-auto items-center text-sm text-emerald-900 hover:underline"
+                  className="inline-flex h-auto items-center text-sm font-medium text-emerald-900 hover:underline"
                 >
                   Google Drive folder <ExternalLink className="ml-1.5 h-4 w-4" aria-hidden="true" />
                 </a>
