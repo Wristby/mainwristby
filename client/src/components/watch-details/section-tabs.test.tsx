@@ -4,7 +4,6 @@ import { Watch } from "lucide-react";
 import { getNextWatchDetailsSectionId, SectionTabs } from "./section-tabs";
 
 const sections = [
-  { id: "overview", label: "Overview", icon: Watch },
   { id: "watch", label: "Watch details", icon: Watch },
   { id: "financials", label: "Financials", icon: Watch },
   { id: "sale", label: "Warranty", icon: Watch },
@@ -26,16 +25,16 @@ describe("Watch Details section tabs", () => {
     expect(html).toContain('aria-selected="true"');
     expect(html).toContain('role="tabpanel"');
     expect(html).toContain("Financial breakdown");
-    expect(html.match(/role="tabpanel"/g)).toHaveLength(6);
+    expect(html.match(/role="tabpanel"/g)).toHaveLength(5);
     expect(html).toContain('hidden=""');
   });
 
   it("supports wrapping arrow navigation and Home/End keyboard shortcuts", () => {
     const ids = sections.map((section) => section.id);
-    expect(getNextWatchDetailsSectionId(ids, "overview", "ArrowLeft")).toBe("ai");
+    expect(getNextWatchDetailsSectionId(ids, "watch", "ArrowLeft")).toBe("ai");
     expect(getNextWatchDetailsSectionId(ids, "notes", "ArrowRight")).toBe("ai");
     expect(getNextWatchDetailsSectionId(ids, "financials", "ArrowRight")).toBe("sale");
-    expect(getNextWatchDetailsSectionId(ids, "financials", "Home")).toBe("overview");
+    expect(getNextWatchDetailsSectionId(ids, "financials", "Home")).toBe("watch");
     expect(getNextWatchDetailsSectionId(ids, "financials", "End")).toBe("ai");
     expect(getNextWatchDetailsSectionId(ids, "overview", "Enter")).toBeNull();
   });

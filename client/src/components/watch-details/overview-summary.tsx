@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { normalizeWatchCondition } from "@/lib/watch-condition";
 
-type SectionId = "overview" | "watch" | "financials" | "sale" | "notes" | "ai";
+type SectionId = "watch" | "financials" | "sale" | "notes" | "ai";
 
 type OverviewSummaryProps = {
   item: InventoryItem;

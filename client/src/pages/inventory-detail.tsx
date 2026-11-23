@@ -105,7 +105,6 @@ const expenseFormSchema = insertExpenseSchema.extend({
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
 const WATCH_DETAILS_SECTIONS = [
-  { id: "overview", label: "Overview", icon: Watch },
   { id: "watch", label: "Watch details", icon: ClipboardList },
   { id: "financials", label: "Financials", icon: Coins },
   { id: "sale", label: "Warranty", icon: ShieldCheck },
@@ -136,9 +135,9 @@ export default function InventoryDetail() {
   const { toast } = useToast();
   const { settings } = useSettings();
   const now = useAmsterdamClock();
-  const [activeSection, setActiveSection] = useState("overview");
+  const [activeSection, setActiveSection] = useState("watch");
   useEffect(() => {
-    setActiveSection("overview");
+    setActiveSection("watch");
   }, [id]);
   const WATCH_BRANDS = settings.watch_brands;
   const SOLD_ON_OPTIONS = settings.sales_platforms;
