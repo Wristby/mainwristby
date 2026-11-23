@@ -54,6 +54,9 @@ import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { RecentlySold } from "@/components/recently-sold";
 import { COUNTRIES } from "@/lib/countries";
+import { useSales } from "@/hooks/use-sales";
+import { calculateSaleAvailability } from "@shared/sale-availability";
+import { SaleAvailabilityCard } from "@/components/financials/sale-availability-card";
 
 const createExpenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
@@ -145,6 +148,7 @@ export default function Dashboard() {
   const { data: inventory, isLoading: inventoryLoading, isError: inventoryError } = useQuery<InventoryItem[]>({
     queryKey: ["/api/inventory"],
   });
+  const { data: sales, isLoading: salesLoading, isError: salesError } = useSales();
 
   const isLoading = statsLoading || inventoryLoading;
 
@@ -159,6 +163,10 @@ export default function Dashboard() {
 
   const today = useAmsterdamClock();
   const formattedDate = format(today, "EEEE, MMMM d, yyyy");
+  const saleAvailability = useMemo(
+    () => calculateSaleAvailability(sales ?? [], today),
+    [sales, today],
+  );
 
   // Active inventory is used for stock value and listing-based aging.
   const activeInventory = inventory?.filter(
@@ -372,6 +380,13 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>}
+      <SaleAvailabilityCard
+        summary={saleAvailability}
+        isLoading={salesLoading}
+        isError={salesError}
+        formatCurrency={formatCurrency}
+        compact
+      />
       {isSectionVisible("quick_actions") && <Card className="bg-white border-slate-200">
         <CardHeader className="pb-4">
           <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>

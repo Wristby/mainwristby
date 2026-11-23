@@ -73,4 +73,16 @@ describe("SaleAvailabilityCard", () => {
     );
     expect(emptyHtml).toContain("No sale proceeds to track yet");
   });
+
+  it("renders only the quick-glance summary in compact mode", () => {
+    const summary = calculateSaleAvailability([sale()], new Date("2026-03-10T12:00:00.000Z"));
+    const html = renderToStaticMarkup(
+      <SaleAvailabilityCard summary={summary} isLoading={false} isError={false} formatCurrency={formatCurrency} compact />,
+    );
+    expect(html).toContain("Awaiting delivery");
+    expect(html).toContain("Inside return window");
+    expect(html).toContain("Cleared from return hold");
+    expect(html).not.toContain("Delivery-to-release timeline");
+    expect(html).not.toContain("Upcoming releases");
+  });
 });

@@ -10,6 +10,7 @@ type SaleAvailabilityCardProps = {
   isLoading: boolean;
   isError: boolean;
   formatCurrency: (cents: number) => string;
+  compact?: boolean;
 };
 
 function Metric({
@@ -203,6 +204,7 @@ export function SaleAvailabilityCard({
   isLoading,
   isError,
   formatCurrency,
+  compact = false,
 }: SaleAvailabilityCardProps) {
   return (
     <Card className="border-slate-200 bg-white shadow-sm" data-testid="sale-availability-card">
@@ -241,6 +243,8 @@ export function SaleAvailabilityCard({
               <Metric title="Inside return window" amount={formatCurrency(summary.inReturnWindowCents)} count={summary.inReturnWindow.length} tone="amber" />
               <Metric title="Cleared from return hold" amount={formatCurrency(summary.availableCents)} count={summary.available.length} tone="emerald" />
             </div>
+            {!compact && (
+              <>
             <p className="text-xs text-slate-500">
               Cleared proceeds stay here through delivery day 17, then drop off automatically.
             </p>
@@ -302,6 +306,8 @@ export function SaleAvailabilityCard({
                 <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                 {summary.available.length} {summary.available.length === 1 ? "sale has" : "sales have"} passed the tracked return window. Actual marketplace payout timing may differ.
               </p>
+            )}
+              </>
             )}
           </>
         )}
