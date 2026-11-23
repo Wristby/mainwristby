@@ -832,6 +832,8 @@ export class DatabaseStorage implements IStorage {
       await tx.update(expenses).set({ inventoryId: null }).where(eq(expenses.inventoryId, id));
       await tx.update(transactionParties).set({ inventoryId: null }).where(eq(transactionParties.inventoryId, id));
       await tx.update(inventoryPriceHistory).set({ inventoryId: null }).where(eq(inventoryPriceHistory.inventoryId, id));
+      // Timing settings and readings remain attached while archived. Their
+      // migration-defined cascade removes them only with permanent watch deletion.
       await tx.delete(inventory).where(eq(inventory.id, id));
     });
   }

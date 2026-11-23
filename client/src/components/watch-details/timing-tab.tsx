@@ -14,6 +14,7 @@ import {
 import { format } from "date-fns";
 import type { InventoryItem, InventoryTimingReading } from "@shared/schema";
 import type { CreateInventoryTimingReading } from "@shared/timing";
+import wristbyLogo from "@assets/WRISTBY-login-logo_1770424094780.png";
 import { useToast } from "@/hooks/use-toast";
 import {
   useCreateInventoryTimingReading,
@@ -492,24 +493,29 @@ export function TimingTab({ item }: Props) {
 
       {printReading && (
         <div className="timing-printable hidden">
-          <div className="mx-auto max-w-2xl font-sans text-slate-950">
-            <div className="border-b-2 border-slate-900 pb-4">
-              <p className="text-xs font-bold uppercase tracking-[0.2em]">WRISTBY · WATCH TIMING</p>
-              <h1 className="mt-3 text-2xl font-bold">{item.brand} {item.model}</h1>
-              <p className="mt-1 text-sm">Reference {item.referenceNumber || "—"}{item.serialNumber ? ` · Serial ${item.serialNumber}` : ""}</p>
-              <p className="mt-2 text-sm">{format(new Date(printReading.measuredAt), "dd MMM yyyy, HH:mm")}</p>
-            </div>
-            <div className="mt-5 grid grid-cols-1 gap-y-4">
+          <div className="timing-print-receipt font-sans text-slate-950">
+            <header className="timing-print-brand">
+              <img src={wristbyLogo} alt="WRISTBY" className="timing-print-logo" />
+              <span>WRISTBY</span>
+            </header>
+            <p className="timing-print-kicker">WATCH TIMING RECORD</p>
+            <section className="timing-print-watch">
+              <h1>{item.brand} {item.model}</h1>
+              <p>Reference {item.referenceNumber || "—"}{item.serialNumber ? ` · Serial ${item.serialNumber}` : ""}</p>
+            </section>
+            <dl className="timing-print-metrics">
+              <PrintMetric label="Beat rate" value={formatBeatRate(printReading.beatRateVph)} />
               <PrintMetric label="Rate" value={formatRate(printReading.rateSecondsPerDay)} />
               <PrintMetric label="Amplitude" value={formatAngle(printReading.amplitudeDegrees)} />
               <PrintMetric label="Beat error" value={formatBeatError(printReading.beatErrorMs)} />
-              <PrintMetric label="Frequency" value={formatBeatRate(printReading.beatRateVph)} />
-              <PrintMetric label="Lift angle" value={formatAngle(printReading.liftAngleDegrees)} />
-              <PrintMetric label="Capture duration" value={`${Math.round(printReading.durationSeconds)} sec`} />
-            </div>
-            <div className="mt-6 border-t border-slate-300 pt-3 text-xs text-slate-600">
-              Browser-based timing reference · {printReading.sampleRateHz.toLocaleString()} Hz input
-              {!printReading.watchHeard && <p className="mt-2">No stable watch beat was recognized in this capture.</p>}
+              <PrintMetric label="Lift angle" value={`${printReading.liftAngleDegrees.toFixed(1)}°`} />
+              <PrintMetric label="Date" value={format(new Date(printReading.measuredAt), "dd MMM yyyy")} />
+              <PrintMetric label="Time" value={format(new Date(printReading.measuredAt), "HH:mm:ss")} />
+              <PrintMetric label="Capture" value={`${Math.round(printReading.durationSeconds)} sec`} />
+            </dl>
+            <div className="timing-print-footer">
+              {printReading.sampleRateHz.toLocaleString("en-US")} Hz microphone input
+              {!printReading.watchHeard && <p>Beat not confirmed in this capture</p>}
             </div>
           </div>
         </div>
@@ -554,9 +560,9 @@ function TimingHistoryRow({ row, onPrint }: { row: InventoryTimingReading; onPri
 
 function PrintMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b border-slate-200 pb-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+    <div className="timing-print-row">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
 }

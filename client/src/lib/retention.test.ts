@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { expiry, scheduleInputSchema, type RetentionSchedule } from "@shared/retention";
 
 const harness = vi.hoisted(() => ({
@@ -57,7 +58,22 @@ vi.mock("../../../server/db", () => {
 vi.mock("../../../server/auth", () => ({ isAuthenticated: vi.fn() }));
 import { clearClient, previewClient, readSchedule } from "../../../server/retention";
 import { DatabaseStorage } from "../../../server/storage";
-import { clients, expenses, inventory, inventoryPriceHistory, retentionAudit, retentionHolds, transactionParties } from "@shared/schema";
+import {
+  clients,
+  expenses,
+  inventory,
+  inventoryPriceHistory,
+  inventoryTimingReadings,
+  inventoryTimingSettingsTable,
+  retentionAudit,
+  retentionHolds,
+  transactionParties,
+} from "@shared/schema";
+
+const timingMigration = readFileSync(
+  new URL("../../../migrations/0022_inventory_timing_readings.sql", import.meta.url),
+  "utf8",
+);
 
 const approved: RetentionSchedule = {
   rules: {
@@ -203,7 +219,7 @@ describe("reviewable profile cleanup", () => {
       { table: inventory, deleted: true },
     ]);
   });
-  it("archives and restores a watch without changing its other fields", async () => {
+  it("archives and restores a watch without detaching its timing records", async () => {
     const storage = new DatabaseStorage();
     const original = { ...watch, archivedAt: null };
     const archivedAt = new Date("2026-10-26T12:00:00.000Z");
@@ -216,6 +232,9 @@ describe("reviewable profile cleanup", () => {
       { table: inventory, values: { archivedAt: expect.any(Date) } },
       { table: retentionAudit, values: { action: "watch_archived", recordId: 11 } },
     ]);
+    expect(harness.writes.some(({ table }) =>
+      table === inventoryTimingSettingsTable || table === inventoryTimingReadings
+    )).toBe(false);
 
     harness.writes = [];
     harness.rows.push([{ ...original, archivedAt }]);
@@ -226,8 +245,11 @@ describe("reviewable profile cleanup", () => {
       { table: inventory, values: { archivedAt: null } },
       { table: retentionAudit, values: { action: "watch_restored", recordId: 11 } },
     ]);
+    expect(harness.writes.some(({ table }) =>
+      table === inventoryTimingSettingsTable || table === inventoryTimingReadings
+    )).toBe(false);
   });
-  it("deletes only the watch and keeps linked expense and transaction-party records detached", async () => {
+  it("permanently deletes timing rows through the database cascade, not manual cleanup", async () => {
     const storage = new DatabaseStorage();
     harness.rows.push([{ id: 11 }], []);
     await expect(storage.deleteInventoryItem(11)).resolves.toBeUndefined();
@@ -237,6 +259,15 @@ describe("reviewable profile cleanup", () => {
       { table: inventoryPriceHistory, values: { inventoryId: null } },
       { table: inventory, deleted: true },
     ]);
+    expect(harness.writes.some(({ table }) =>
+      table === inventoryTimingSettingsTable || table === inventoryTimingReadings
+    )).toBe(false);
+    expect(timingMigration).toMatch(
+      /inventory_id INTEGER PRIMARY KEY REFERENCES inventory\(id\) ON DELETE CASCADE/i,
+    );
+    expect(timingMigration).toMatch(
+      /inventory_id INTEGER NOT NULL REFERENCES inventory\(id\) ON DELETE CASCADE/i,
+    );
   });
   it("deletes one expense row and leaves linked records alone", async () => {
     const storage = new DatabaseStorage();

@@ -86,6 +86,11 @@
     margin: 5mm;
   }
 
+  @page timing-receipt {
+    size: 80mm auto;
+    margin: 0;
+  }
+
   body.timing-print-active * {
     visibility: hidden !important;
   }
@@ -98,10 +103,106 @@
   body.timing-print-active .timing-printable {
     display: block !important;
     position: fixed;
-    inset: 0;
-    width: 100%;
-    padding: 2mm;
+    inset: 0 auto auto 0;
+    page: timing-receipt;
+    box-sizing: border-box;
+    width: 80mm;
+    padding: 3mm 4mm;
     background: #fff;
     color: #0f172a;
+  }
+
+  .timing-print-receipt {
+    width: 100%;
+    max-width: none;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10px;
+    line-height: 1.3;
+  }
+
+  .timing-print-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
+    padding-bottom: 2mm;
+    border-bottom: 0.4mm solid #1d382e;
+    color: #1d382e;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+  }
+
+  .timing-print-logo {
+    display: block;
+    width: 9mm;
+    height: 9mm;
+    object-fit: contain;
+    filter: grayscale(1);
+  }
+
+  .timing-print-kicker {
+    margin: 2mm 0 3mm;
+    text-align: center;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+
+  .timing-print-watch {
+    margin-bottom: 1mm;
+    padding-bottom: 2mm;
+    border-bottom: 0.25mm solid #9ca3af;
+  }
+
+  .timing-print-watch h1 {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .timing-print-watch p {
+    margin-top: 1mm;
+    font-size: 9px;
+    overflow-wrap: anywhere;
+  }
+
+  .timing-print-metrics {
+    margin: 0;
+  }
+
+  .timing-print-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 3mm;
+    padding: 1.7mm 0;
+    border-bottom: 0.2mm solid #d1d5db;
+  }
+
+  .timing-print-row dt {
+    font-size: 10px;
+  }
+
+  .timing-print-row dd {
+    margin: 0;
+    text-align: right;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .timing-print-footer {
+    margin-top: 2mm;
+    text-align: center;
+    color: #4b5563;
+    font-size: 8px;
+  }
+
+  .timing-print-footer p {
+    margin-top: 1mm;
+    font-weight: 700;
   }
 }
