@@ -128,7 +128,7 @@ export function SaleAvailabilityCard({
           <div className="min-w-0">
             <h3 className="text-lg font-semibold text-slate-900">Sale Availability</h3>
             <p className="text-xs text-slate-500">
-              Sale price after marketplace fees. Cleared amounts are cumulative, not your current bank balance.
+              Sale price after marketplace fees. This return-window estimate is not your bank balance.
             </p>
           </div>
           <Badge variant="outline" className="ml-auto shrink-0 border-slate-200 bg-slate-50 text-slate-600">
@@ -155,6 +155,9 @@ export function SaleAvailabilityCard({
               <Metric title="Inside return window" amount={formatCurrency(summary.inReturnWindowCents)} count={summary.inReturnWindow.length} tone="amber" />
               <Metric title="Cleared from return hold" amount={formatCurrency(summary.availableCents)} count={summary.available.length} tone="emerald" />
             </div>
+            <p className="text-xs text-slate-500">
+              Cleared proceeds stay here through delivery day 17, then drop off automatically.
+            </p>
 
             {(summary.returnExcludedCount > 0 || summary.needsReview.length > 0) && (
               <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-500">

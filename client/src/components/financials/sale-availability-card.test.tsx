@@ -53,7 +53,7 @@ describe("SaleAvailabilityCard", () => {
     expect(html).toContain("Inside return window");
     expect(html).toContain("€9350.00");
     expect(html).toContain("Available 17 Mar 2026 · 7 days");
-    expect(html).toContain("not your current bank balance");
+    expect(html).toContain("not your bank balance");
   });
 
   it("shows clear error and no-sale states", () => {

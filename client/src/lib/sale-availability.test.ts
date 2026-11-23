@@ -92,6 +92,20 @@ describe("sale availability", () => {
     expect(afterWindow.available[0].state).toBe("available");
   });
 
+  it("keeps cleared proceeds only through delivery day 17", () => {
+    const delivered = sale({ deliveredDate: "2026-03-02" });
+
+    const day15 = calculateSaleAvailability([delivered], new Date("2026-03-17T12:00:00.000Z"));
+    expect(day15.availableCents).toBe(935_000);
+
+    const day17 = calculateSaleAvailability([delivered], new Date("2026-03-19T12:00:00.000Z"));
+    expect(day17.availableCents).toBe(935_000);
+
+    const day18 = calculateSaleAvailability([delivered], new Date("2026-03-20T12:00:00.000Z"));
+    expect(day18.available).toHaveLength(0);
+    expect(day18.availableCents).toBe(0);
+  });
+
   it("counts each resale cycle separately", () => {
     const firstCycle = sale({ id: 10, cycleNumber: 1, deliveredDate: "2026-03-02" });
     const secondCycle = sale({ id: 11, cycleNumber: 2, deliveredDate: "2026-03-03" });

@@ -1,6 +1,8 @@
 import type { InventorySaleWithReturns } from "./sales-lifecycle";
 import { returnWindow } from "./delivery";
 
+const PAYOUT_WINDOW_DAYS_AFTER_RETURN = 3;
+
 export type SaleAvailabilityState =
   | "awaiting_delivery"
   | "in_return_window"
@@ -98,7 +100,7 @@ export function calculateSaleAvailability(
         daysUntilAvailable: window.daysRemaining + 1,
         releaseDate,
       });
-    } else {
+    } else if (window.daysRemaining >= -PAYOUT_WINDOW_DAYS_AFTER_RETURN) {
       available.push({ ...baseEntry, proceedsCents, state: "available", releaseDate });
     }
   }
