@@ -17,3 +17,4 @@
 - [Dependency consistency](dependency-installation-consistency.md) — after a restore, compare installed validation packages with the lockfile before rewriting forms
 - [Request and refresh boundaries](request-refresh-boundaries.md) — distinguish saved writes from failed refreshes; do not retry writes or regenerate saved Notebook history
 - [Service history accounting boundary](service-history-accounting-boundary.md) — visit history records repair dates, notes, and costs without changing existing acquisition COGS or sale snapshots
+- [Timegrapher timing scope](timegrapher-timing-scope.md) — the user wants a private, local timing integration for personal use, not distribution
