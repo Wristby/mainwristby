@@ -436,9 +436,14 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold text-slate-900 tabular-nums">
-                    {formatCurrency(currentMonthProfit)} / {formatCurrency(monthlyGoal)}
-                  </span>
+                  <div className="text-right">
+                    <span className="text-lg font-bold text-slate-900 tabular-nums">
+                      {formatCurrency(currentMonthProfit)} / {formatCurrency(monthlyGoal)}
+                    </span>
+                    <p className="text-xs font-medium text-slate-500">
+                      {monthSoldCount} {monthSoldCount === 1 ? "watch" : "watches"} sold
+                    </p>
+                  </div>
                   <Button size="icon" variant="ghost" onClick={handleGoalEdit} className="h-8 w-8">
                     <Pencil className="h-3.5 w-3.5 text-slate-400" />
                   </Button>
