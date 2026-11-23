@@ -94,7 +94,8 @@ export function OverviewSummary({
         : "Not recorded"
   );
   const askingPrice = item.listPrice != null && item.listPrice > 0 ? item.listPrice : null;
-  const isRealizedSale = item.status === "sold" && salePrice > 0;
+  const isSold = item.status === "sold";
+  const isRealizedSale = isSold && salePrice > 0;
 
   return (
     <section
@@ -145,16 +146,22 @@ export function OverviewSummary({
           <div className="mt-6 flex flex-wrap items-end gap-x-10 gap-y-4 border-t border-emerald-900/10 pt-5">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">
-                {isRealizedSale ? "Sale price" : item.status === "sold" ? "Sale price" : "Asking price"}
+                {isSold ? "Sale price" : "COGS"}
               </p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
-                {isRealizedSale ? formatCurrency(salePrice) : item.status === "sold" ? "Not recorded" : askingPrice ? formatCurrency(askingPrice) : "Not listed"}
+                {isSold
+                  ? isRealizedSale ? formatCurrency(salePrice) : "Not recorded"
+                  : formatCurrency(item.purchasePrice)}
               </p>
             </div>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Net profit</p>
-              <p className={`mt-1 text-2xl font-semibold tabular-nums ${isRealizedSale ? profit >= 0 ? "text-emerald-800" : "text-red-700" : "text-slate-500"}`}>
-                {isRealizedSale ? <>{formatCurrency(profit)} <span className="text-sm font-medium">· {margin.toFixed(1)}%</span></> : "Not realized"}
+              <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">
+                {isSold ? "Net profit" : "Asking price"}
+              </p>
+              <p className={`mt-1 text-2xl font-semibold tabular-nums ${isSold ? isRealizedSale ? profit >= 0 ? "text-emerald-800" : "text-red-700" : "text-slate-500" : "text-slate-900"}`}>
+                {isSold
+                  ? isRealizedSale ? <>{formatCurrency(profit)} <span className="text-sm font-medium">· {margin.toFixed(1)}%</span></> : "Not recorded"
+                  : askingPrice ? formatCurrency(askingPrice) : "Not listed"}
               </p>
             </div>
             <Button onClick={() => onOpenSection(item.status === "sold" ? "sale" : "financials")} className="ml-auto h-10 gap-2 bg-emerald-900 text-white hover:bg-emerald-800">

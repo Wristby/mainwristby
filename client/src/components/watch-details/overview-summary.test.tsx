@@ -49,6 +49,8 @@ describe("Watch Details overview summary", () => {
     expect(html).toContain("Omega Seamaster");
     expect(html).toContain("210.30.42.20.01.001");
     expect(html).toContain("Morgan Buyer");
+    expect(html).toContain("Sale price");
+    expect(html).toContain("Net profit");
     expect(html).toContain("€1200.00");
     expect(html).toContain("€200.00");
     expect(html).toContain("4 days remaining");
@@ -64,12 +66,17 @@ describe("Watch Details overview summary", () => {
       deliveredDate: null,
       buyerId: null,
       soldTo: null,
-      listPrice: null,
+      salePrice: 0,
+      listPrice: 150_000,
     } as unknown as InventoryItem;
     const html = render(unsold);
     expect(html).toContain("Return window · not applicable");
-    expect(html).toContain("Not realized");
-    expect(html).toContain("Not listed");
+    expect(html).toContain("COGS");
+    expect(html).toContain("Asking price");
+    expect(html).toContain("€1000.00");
+    expect(html).toContain("€1500.00");
+    expect(html).not.toContain("Net profit");
+    expect(html).not.toContain("Sale price");
     expect(html).toContain("Awaiting delivery");
   });
 });
