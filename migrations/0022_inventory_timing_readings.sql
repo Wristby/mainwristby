@@ -1,6 +1,9 @@
-ALTER TABLE inventory
-  ADD COLUMN IF NOT EXISTS timing_lift_angle_degrees REAL NOT NULL DEFAULT 52,
-  ADD COLUMN IF NOT EXISTS timing_beat_rate_vph INTEGER;
+CREATE TABLE IF NOT EXISTS inventory_timing_settings (
+  inventory_id INTEGER PRIMARY KEY REFERENCES inventory(id) ON DELETE CASCADE,
+  lift_angle_degrees REAL NOT NULL DEFAULT 52,
+  beat_rate_vph INTEGER,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS inventory_timing_readings (
   id SERIAL PRIMARY KEY,

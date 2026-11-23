@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   useCreateInventoryTimingReading,
   useInventoryTimingReadings,
+  useInventoryTimingSettings,
   useUpdateInventoryTimingSettings,
 } from "@/hooks/use-inventory";
 import { useTimegrapherCapture } from "@/hooks/use-timegrapher-capture";
@@ -132,13 +133,15 @@ function historyPrintRecord(row: InventoryTimingReading): PrintableReading {
 export function TimingTab({ item }: Props) {
   const { toast } = useToast();
   const history = useInventoryTimingReadings(item.id);
+  const settingsQuery = useInventoryTimingSettings(item.id);
   const createReading = useCreateInventoryTimingReading(item.id);
   const updateSettings = useUpdateInventoryTimingSettings(item.id);
-  const [liftAngleText, setLiftAngleText] = useState(String(item.timingLiftAngleDegrees ?? 52));
-  const [beatRateText, setBeatRateText] = useState(item.timingBeatRateVph?.toString() ?? "");
+  const [liftAngleText, setLiftAngleText] = useState("52");
+  const [beatRateText, setBeatRateText] = useState("");
   const [savedThisRun, setSavedThisRun] = useState(false);
   const [printReading, setPrintReading] = useState<PrintableReading | null>(null);
 
+  const savedSettings = settingsQuery.data ?? { liftAngleDegrees: 52, beatRateVph: null };
   const liftAngle = Number(liftAngleText);
   const beatRate = beatRateText.trim() ? Number(beatRateText) : null;
   const settingsValid = Number.isFinite(liftAngle)
@@ -146,8 +149,8 @@ export function TimingTab({ item }: Props) {
     && liftAngle <= 70
     && (beatRate === null || (Number.isInteger(beatRate) && beatRate >= 3_600 && beatRate <= 60_000));
   const settingsDirty = settingsValid && (
-    liftAngle !== (item.timingLiftAngleDegrees ?? 52)
-    || beatRate !== (item.timingBeatRateVph ?? null)
+    liftAngle !== savedSettings.liftAngleDegrees
+    || beatRate !== savedSettings.beatRateVph
   );
   const capture = useTimegrapherCapture(
     settingsValid ? liftAngle : 52,
@@ -175,9 +178,10 @@ export function TimingTab({ item }: Props) {
   }, [capture.status, reading?.finding_beat, reading?.watch_heard, snapshot]);
 
   useEffect(() => {
-    setLiftAngleText(String(item.timingLiftAngleDegrees ?? 52));
-    setBeatRateText(item.timingBeatRateVph?.toString() ?? "");
-  }, [item.id, item.timingBeatRateVph, item.timingLiftAngleDegrees]);
+    if (!settingsQuery.data) return;
+    setLiftAngleText(String(settingsQuery.data.liftAngleDegrees));
+    setBeatRateText(settingsQuery.data.beatRateVph?.toString() ?? "");
+  }, [item.id, settingsQuery.data?.beatRateVph, settingsQuery.data?.liftAngleDegrees]);
 
   useEffect(() => {
     const cleanup = () => document.body.classList.remove("timing-print-active");
@@ -192,6 +196,7 @@ export function TimingTab({ item }: Props) {
     if (!settingsValid) return;
     updateSettings.mutate({ liftAngleDegrees: liftAngle, beatRateVph: beatRate }, {
       onSuccess: () => toast({ title: "Timing settings saved", description: "These settings are saved for this watch." }),
+      onError: () => toast({ title: "Could not save settings", description: "Confirm migration 0022 is applied, then try again.", variant: "destructive" }),
     });
   };
 
@@ -288,7 +293,7 @@ export function TimingTab({ item }: Props) {
                 type="button"
                 variant="outline"
                 onClick={saveSettings}
-                disabled={!settingsValid || !settingsDirty || updateSettings.isPending || capture.status !== "idle"}
+                disabled={!settingsValid || !settingsDirty || settingsQuery.isError || settingsQuery.isLoading || updateSettings.isPending || capture.status !== "idle"}
                 className="border-[#cbd9d0] bg-white text-slate-700"
               >
                 {updateSettings.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -296,6 +301,7 @@ export function TimingTab({ item }: Props) {
               </Button>
               {!settingsValid && <span className="text-xs text-rose-700">Lift angle must be 20–70°. Beat rate must be 3,600–60,000 vph.</span>}
               {settingsDirty && settingsValid && <span className="text-xs text-amber-700">Save changes before starting a measurement.</span>}
+              {settingsQuery.isError && <span className="text-xs text-slate-600">Timing storage is unavailable. Confirm database migration 0022 has been applied.</span>}
             </div>
           </section>
 
@@ -342,7 +348,7 @@ export function TimingTab({ item }: Props) {
                     setSavedThisRun(false);
                     await capture.start();
                   }}
-                  disabled={!capture.microphoneReady || !settingsValid || settingsDirty || updateSettings.isPending}
+                  disabled={!capture.microphoneReady || !settingsValid || settingsDirty || settingsQuery.isLoading || settingsQuery.isError || updateSettings.isPending}
                   className="bg-emerald-800 text-white hover:bg-emerald-700"
                 >
                   <Activity className="mr-2 h-4 w-4" />
@@ -467,7 +473,7 @@ export function TimingTab({ item }: Props) {
           {history.isLoading ? (
             <div className="flex items-center gap-2 py-5 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" />Loading timing history…</div>
           ) : history.isError ? (
-            <p className="py-4 text-sm text-slate-500">Timing history is unavailable right now. Refresh this tab to try again.</p>
+            <p className="py-4 text-sm text-slate-500">Timing history is unavailable. Confirm database migration 0022 has been applied, then refresh this tab.</p>
           ) : history.data?.length ? (
             <div className="space-y-3">
               {history.data.map((row) => (
@@ -498,7 +504,7 @@ export function TimingTab({ item }: Props) {
               <p className="mt-1 text-sm">Reference {item.referenceNumber || "—"}{item.serialNumber ? ` · Serial ${item.serialNumber}` : ""}</p>
               <p className="mt-2 text-sm">{format(new Date(printReading.measuredAt), "dd MMM yyyy, HH:mm")}</p>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-x-8 gap-y-5">
+            <div className="mt-5 grid grid-cols-1 gap-y-4">
               <PrintMetric label="Rate" value={formatRate(printReading.rateSecondsPerDay)} />
               <PrintMetric label="Amplitude" value={formatAngle(printReading.amplitudeDegrees)} />
               <PrintMetric label="Beat error" value={formatBeatError(printReading.beatErrorMs)} />

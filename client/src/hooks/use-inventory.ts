@@ -81,6 +81,20 @@ export function useInventoryTimingReadings(id: number) {
   });
 }
 
+export function useInventoryTimingSettings(id: number) {
+  return useQuery({
+    queryKey: [api.inventory.timingSettings.get.path, id],
+    queryFn: ({ signal }) => apiJson(
+      "GET",
+      buildUrl(api.inventory.timingSettings.get.path, { id }),
+      undefined,
+      api.inventory.timingSettings.get.responses[200],
+      { signal },
+    ),
+    enabled: !!id,
+  });
+}
+
 export function useCreateInventoryTimingReading(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -100,14 +114,13 @@ export function useUpdateInventoryTimingSettings(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (settings: InventoryTimingSettings) => apiJson(
-      api.inventory.timingSettings.method,
-      buildUrl(api.inventory.timingSettings.path, { id }),
+      api.inventory.timingSettings.update.method,
+      buildUrl(api.inventory.timingSettings.update.path, { id }),
       settings,
-      api.inventory.timingSettings.responses[200],
+      api.inventory.timingSettings.update.responses[200],
     ),
-    onSuccess: (item) => {
-      queryClient.setQueryData([api.inventory.get.path, id], item);
-      return refreshData(queryClient, "inventory");
+    onSuccess: (settings) => {
+      queryClient.setQueryData([api.inventory.timingSettings.get.path, id], settings);
     },
   });
 }

@@ -308,22 +308,37 @@ export async function registerRoutes(
     }
   });
 
-  app.patch(api.inventory.timingSettings.path, isAuthenticated, async (req, res) => {
+  app.get(api.inventory.timingSettings.get.path, isAuthenticated, async (req, res) => {
     const inventoryId = Number(req.params.id);
     if (!Number.isInteger(inventoryId) || inventoryId < 1) {
       return res.status(400).json({ message: "Invalid watch ID." });
     }
     try {
-      const settings = api.inventory.timingSettings.input.parse(req.body);
-      const updated = await storage.updateInventoryTimingSettings(inventoryId, settings);
-      if (!updated) return res.status(404).json({ message: "Watch not found." });
-      return res.json(updated);
+      const watch = await storage.getInventoryItem(inventoryId);
+      if (!watch) return res.status(404).json({ message: "Watch not found." });
+      return res.json(await storage.getInventoryTimingSettings(inventoryId));
+    } catch (err) {
+      console.error("Could not load watch timing settings", err);
+      return res.status(500).json({ message: "Could not load timing settings. Confirm migration 0022 is applied, then try again." });
+    }
+  });
+
+  app.patch(api.inventory.timingSettings.update.path, isAuthenticated, async (req, res) => {
+    const inventoryId = Number(req.params.id);
+    if (!Number.isInteger(inventoryId) || inventoryId < 1) {
+      return res.status(400).json({ message: "Invalid watch ID." });
+    }
+    try {
+      const watch = await storage.getInventoryItem(inventoryId);
+      if (!watch) return res.status(404).json({ message: "Watch not found." });
+      const settings = api.inventory.timingSettings.update.input.parse(req.body);
+      return res.json(await storage.updateInventoryTimingSettings(inventoryId, settings));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid timing settings." });
       }
       console.error("Could not update watch timing settings", err);
-      return res.status(500).json({ message: "Could not save timing settings. Please try again." });
+      return res.status(500).json({ message: "Could not save timing settings. Confirm migration 0022 is applied, then try again." });
     }
   });
 
@@ -338,7 +353,7 @@ export async function registerRoutes(
       return res.json(await storage.getInventoryTimingReadings(inventoryId));
     } catch (err) {
       console.error("Could not load timing history", err);
-      return res.status(500).json({ message: "Could not load timing history. Please try again." });
+      return res.status(500).json({ message: "Could not load timing history. Confirm migration 0022 is applied, then try again." });
     }
   });
 
@@ -357,7 +372,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid timing reading." });
       }
       console.error("Could not save timing reading", err);
-      return res.status(500).json({ message: "Could not save timing reading. Please try again." });
+      return res.status(500).json({ message: "Could not save timing reading. Confirm migration 0022 is applied, then try again." });
     }
   });
 

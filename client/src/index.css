@@ -83,7 +83,7 @@
 
 @media print {
   @page {
-    margin: 12mm;
+    margin: 5mm;
   }
 
   body.timing-print-active * {
@@ -100,7 +100,7 @@
     position: fixed;
     inset: 0;
     width: 100%;
-    padding: 8mm;
+    padding: 2mm;
     background: #fff;
     color: #0f172a;
   }
