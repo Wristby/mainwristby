@@ -1,0 +1,678 @@
+//! The sound card's input controls: their levels and switches as the
+//! computer reports them, and for each condition the signal check detected,
+//! the setting that governs it.
+//!
+//! On Linux the ALSA mixer is read with `amixer`, and each entry in
+//! `fixes[]` carries the `amixer` command that sets that control; on macOS
+//! and Windows the entry names the setting. Nothing
+//! here changes a setting unless `apply` is called (the CLI calls it only
+//! when the person passed `--apply`) or an [`InputGain`] is set (the app
+//! does that when the person moves its input-level control).
+
+use crate::diagnose::{IssueCode, SignalCheck};
+/// A USB microphone's automatic gain switch set over USB, where the
+/// system shows no setting for it (macOS), and an input's through the
+/// system (Windows).
+pub use crate::usbagc::{endpoint_agc, usb_agc, EndpointAgc, UsbAgc};
+use serde::Serialize;
+use std::process::Command;
+
+/// One control from `amixer scontents`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Control {
+    pub name: String,
+    pub index: u32,
+    /// Capture volume steps: current, min, max.
+    pub capture: Option<(i64, i64, i64)>,
+    /// Current capture gain in dB, when the driver reports it.
+    pub capture_db: Option<f64>,
+    /// On/off switch state, when the control has one.
+    pub switch: Option<bool>,
+}
+
+/// The mixer of one sound card.
+#[derive(Debug, Clone, Serialize)]
+pub struct Mixer {
+    pub card: String,
+    pub controls: Vec<Control>,
+}
+
+impl Mixer {
+    /// Automatic gain control, if the card has one.
+    pub fn agc(&self) -> Option<&Control> {
+        self.controls
+            .iter()
+            .find(|c| c.switch.is_some() && is_agc(&c.name))
+    }
+
+    /// The capture level control: `Mic` first, then `Capture`, then any.
+    pub fn capture_level(&self) -> Option<&Control> {
+        let vol = || self.controls.iter().filter(|c| c.capture.is_some());
+        vol()
+            .find(|c| c.name == "Mic")
+            .or_else(|| vol().find(|c| c.name == "Capture"))
+            .or_else(|| vol().next())
+    }
+}
+
+fn is_agc(name: &str) -> bool {
+    let n = name.to_lowercase();
+    n.contains("auto gain") || n.contains("agc")
+}
+
+/// A proposed change.
+#[derive(Debug, Clone, Serialize)]
+pub struct Fix {
+    pub issue: IssueCode,
+    pub description: String,
+    /// The command that makes the change, when there is one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<Vec<String>>,
+    /// Always true: ask the person before changing their computer.
+    pub requires_consent: bool,
+}
+
+/// Parse the output of `amixer -c CARD scontents`.
+pub fn parse_scontents(card: &str, text: &str) -> Mixer {
+    let mut controls: Vec<Control> = Vec::new();
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("Simple mixer control '") {
+            let (name, idx) = rest.rsplit_once("',").unwrap_or((rest, "0"));
+            controls.push(Control {
+                name: name.to_string(),
+                index: idx.trim().parse().unwrap_or(0),
+                capture: None,
+                capture_db: None,
+                switch: None,
+            });
+            continue;
+        }
+        let Some(c) = controls.last_mut() else {
+            continue;
+        };
+        let l = line.trim();
+        if let Some(lim) = l.strip_prefix("Limits:") {
+            if let Some(after) = lim.split("Capture").nth(1) {
+                let nums: Vec<i64> = after
+                    .split(|ch: char| !(ch.is_ascii_digit() || ch == '-'))
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                if let [lo, hi, ..] = nums[..] {
+                    c.capture = Some((lo, lo, hi));
+                }
+            }
+        } else if l.contains(':') && !l.starts_with("Capabilities") && !l.contains("channels") {
+            let (_, value) = l.split_once(':').unwrap_or(("", l));
+            let value = value.trim();
+            // A line can carry playback and capture state; prefer capture.
+            let part = value.find("Capture ").map_or(value, |p| &value[p..]);
+            if let Some(v) = part.strip_prefix("Capture ") {
+                if let (Some((_, lo, hi)), Some(cur)) = (
+                    c.capture,
+                    v.split_whitespace().next().and_then(|s| s.parse().ok()),
+                ) {
+                    c.capture = Some((cur, lo, hi));
+                }
+            }
+            for item in part.split('[').skip(1) {
+                let item = item.trim_end_matches([']', ' ']);
+                match item {
+                    "on" => c.switch = Some(true),
+                    "off" => c.switch = Some(false),
+                    p if p.ends_with("dB") && part.starts_with("Capture") => {
+                        c.capture_db = p.trim_end_matches("dB").parse().ok()
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    Mixer {
+        card: card.to_string(),
+        controls,
+    }
+}
+
+/// Read the ALSA mixer of `card` (a number or name), or `None` when
+/// `amixer` is missing or the card unknown.
+pub fn read_alsa(card: &str) -> Option<Mixer> {
+    let out = Command::new("amixer")
+        .args(["-c", card, "scontents"])
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| parse_scontents(card, &String::from_utf8_lossy(&out.stdout)))
+}
+
+/// The ALSA card of a device id or name such as `hw:CARD=Device,DEV=0`
+/// or `hw:2,0`.
+pub fn card_from_device(id: &str) -> Option<String> {
+    if let Some(rest) = id.split("CARD=").nth(1) {
+        return Some(rest.split([',', ' ', ')']).next()?.to_string());
+    }
+    let rest = id.split("hw:").nth(1)?;
+    let n = rest.split([',', ' ']).next()?;
+    n.parse::<u32>().ok().map(|n| n.to_string())
+}
+
+/// Sound cards listed in `/proc/asound/cards`: (number, id, description).
+pub fn alsa_cards() -> Vec<(u32, String, String)> {
+    let Ok(text) = std::fs::read_to_string("/proc/asound/cards") else {
+        return Vec::new();
+    };
+    let mut cards = Vec::new();
+    for line in text.lines() {
+        let l = line.trim_start();
+        let Some((num, rest)) = l.split_once(' ') else {
+            continue;
+        };
+        let (Ok(n), Some(open)) = (num.parse::<u32>(), rest.find('[')) else {
+            continue;
+        };
+        let Some(close) = rest.find(']') else {
+            continue;
+        };
+        let id = rest[open + 1..close].trim().to_string();
+        let desc = rest[close + 1..].trim_start_matches([':', ' ']).to_string();
+        cards.push((n, id, desc));
+    }
+    cards
+}
+
+/// The one USB audio card, when there is exactly one: usually the
+/// timegrapher microphone.
+pub fn single_usb_card() -> Option<String> {
+    let usb: Vec<_> = alsa_cards()
+        .into_iter()
+        .filter(|c| c.2.contains("USB-Audio"))
+        .collect();
+    (usb.len() == 1).then(|| usb[0].0.to_string())
+}
+
+fn amixer(card: &str, control: &Control, value: &str) -> Vec<String> {
+    let name = if control.index == 0 {
+        control.name.clone()
+    } else {
+        format!("{},{}", control.name, control.index)
+    };
+    ["amixer", "-c", card, "sset", &name, value]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Linux fixes from the mixer state and the signal check.
+pub fn linux_fixes(check: &SignalCheck, mixer: Option<&Mixer>) -> Vec<Fix> {
+    let mut fixes = Vec::new();
+    let mut fix = |issue, description: String, command| {
+        fixes.push(Fix {
+            issue,
+            description,
+            command,
+            requires_consent: true,
+        })
+    };
+    let agc = mixer.and_then(|m| m.agc().map(|c| (m, c)));
+    // Automatic gain spoils every level reading, so it goes first even
+    // when the signal check could not see it pumping.
+    if let Some((m, c)) = agc.filter(|(_, c)| c.switch == Some(true)) {
+        fix(
+            IssueCode::AgcSuspected,
+            format!(
+                "Turns off '{}' on card {}, so the gain stays fixed.",
+                c.name, m.card
+            ),
+            Some(amixer(&m.card, c, "off")),
+        );
+        // Levels measured while automatic gain acts mean little.
+        return fixes;
+    } else if check.has(IssueCode::AgcSuspected) {
+        fix(
+            IssueCode::AgcSuspected,
+            "The background rises between ticks, as automatic gain makes it; the mixer \
+             shows no automatic gain switch to turn off."
+                .into(),
+            None,
+        );
+    }
+    let Some(change) = check.suggested_gain_change_db else {
+        return fixes;
+    };
+    let issue = if check.has(IssueCode::Clipping) {
+        IssueCode::Clipping
+    } else if check.has(IssueCode::TooQuiet) {
+        IssueCode::TooQuiet
+    } else {
+        IssueCode::Hot
+    };
+    let level = mixer.and_then(|m| m.capture_level().map(|c| (m, c)));
+    match level {
+        Some((m, c)) => {
+            let (cur, lo, hi) = c.capture.unwrap_or((0, 0, 0));
+            // Without dB figures, step by a quarter of the range per 6 dB.
+            let step_db = match c.capture_db {
+                Some(_) => None,
+                None => Some(6.0 / ((hi - lo) as f64 / 4.0).max(1.0)),
+            };
+            let (value, to) = match step_db {
+                None => {
+                    let v = format!(
+                        "{:.1}dB{}",
+                        change.abs(),
+                        if change < 0.0 { "-" } else { "+" }
+                    );
+                    (v, format!("by {:+.1} dB", change))
+                }
+                Some(per_step) => {
+                    let steps = (change / per_step).round() as i64;
+                    let new = (cur + steps).clamp(lo, hi);
+                    (new.to_string(), format!("from {cur} to {new} of {hi}"))
+                }
+            };
+            let lasting = match sound_server() {
+                Some(server) => format!(
+                    " {server} is running and puts back its own saved microphone level \
+                     whenever the microphone is opened, so the change may not last; the \
+                     input volume in the sound settings (or wpctl/pactl) is the one it keeps."
+                ),
+                None => String::new(),
+            };
+            fix(
+                issue,
+                format!(
+                    "Sets '{}' on card {} {to}, which puts the peak at about -10 dBFS.{lasting}",
+                    c.name, m.card
+                ),
+                Some(amixer(&m.card, c, &value)),
+            );
+        }
+        None => fix(
+            issue,
+            format!(
+                "The peak is {:.0} dB {} -10 dBFS; no capture control was found on the \
+                 mixer to set it.",
+                change.abs(),
+                if change < 0.0 { "above" } else { "below" }
+            ),
+            None,
+        ),
+    }
+    fixes
+}
+
+/// The sound server on top of ALSA, if one is running for this user.
+pub fn sound_server() -> Option<&'static str> {
+    let dir = std::path::PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?);
+    if dir.join("pipewire-0").exists() {
+        Some("PipeWire")
+    } else if dir.join("pulse/native").exists() {
+        Some("PulseAudio")
+    } else {
+        None
+    }
+}
+
+/// Notes on macOS and Windows, where no command is offered: what the check
+/// found and where the setting it concerns is, in words.
+pub fn other_fixes(check: &SignalCheck, os: &str) -> Vec<Fix> {
+    let mut fixes = Vec::new();
+    let mut fix = |issue, description: String| {
+        fixes.push(Fix {
+            issue,
+            description,
+            command: None,
+            requires_consent: true,
+        })
+    };
+    let place = match os {
+        "macos" => "the microphone's Input volume in Audio MIDI Setup, or System Settings > Sound > Input",
+        "windows" => "the microphone's Input volume in Settings > System > Sound, or Control Panel > Sound > Recording > Properties > Levels",
+        _ => "the microphone's input level in the sound settings",
+    };
+    let level = |change: Option<f64>| match change {
+        Some(c) => format!(
+            "The peak is {:.0} dB {} -10 dBFS. The input level is {place}.",
+            c.abs(),
+            if c < 0.0 { "above" } else { "below" }
+        ),
+        None => format!("The input level is {place}."),
+    };
+    if check.has(IssueCode::AgcSuspected) {
+        fix(
+            IssueCode::AgcSuspected,
+            match os {
+                "windows" => "The background rises between ticks, as automatic gain makes it. A USB microphone's own automatic gain is the AGC option under Control Panel > Sound > Recording > the microphone > Properties (Levels or Custom), and `timegrapher devices --agc-off` or the app's Automatic Gain switch (Settings > Microphone) turns it off; 'Audio enhancements' there can add more.",
+                "macos" => "The background rises between ticks, as automatic gain makes it. macOS shows no setting for a USB microphone's own automatic gain; `timegrapher devices --agc-off` or the app's Automatic Gain switch (Settings > Microphone) turns it off. The microphone turns it on again when it is plugged in.",
+                _ => "The background rises between ticks, as automatic gain makes it.",
+            }
+            .to_string(),
+        );
+    }
+    if check.has(IssueCode::Clipping) {
+        fix(IssueCode::Clipping, level(check.suggested_gain_change_db));
+    } else if check.has(IssueCode::Hot) {
+        fix(IssueCode::Hot, level(check.suggested_gain_change_db));
+    } else if check.has(IssueCode::TooQuiet) {
+        fix(IssueCode::TooQuiet, level(check.suggested_gain_change_db));
+    }
+    fixes
+}
+
+/// Run each fix's command. Only called after the person agreed.
+pub fn apply(fixes: &[Fix]) -> Result<(), String> {
+    for f in fixes {
+        let Some(cmd) = &f.command else { continue };
+        eprintln!("running: {}", shell_words(cmd));
+        let st = Command::new(&cmd[0])
+            .args(&cmd[1..])
+            .status()
+            .map_err(|e| format!("{}: {e}", cmd[0]))?;
+        if !st.success() {
+            return Err(format!("{} failed ({st})", shell_words(cmd)));
+        }
+    }
+    Ok(())
+}
+
+/// A command as you would type it.
+pub fn shell_words(cmd: &[String]) -> String {
+    cmd.iter()
+        .map(|s| {
+            if s.contains(|c: char| c.is_whitespace() || c == '\'') {
+                format!("'{}'", s.replace('\'', r"'\''"))
+            } else {
+                s.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Where a sound input's level is set.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum InputGain {
+    /// The desktop sound server's default input: PipeWire through
+    /// `wpctl`, or PulseAudio (or PipeWire's stand-in for it) through
+    /// `pactl`.
+    SoundServer { server: String },
+    /// An ALSA card's capture control, through `amixer`.
+    Alsa { card: String },
+}
+
+/// An input's level as it stands.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GainState {
+    /// From 0 (quietest) to 1 (loudest).
+    pub level: f64,
+    /// As the system shows it, such as "62%" or "10/16 (12.4 dB)".
+    pub text: String,
+    /// The card's automatic gain switch, when it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agc: Option<bool>,
+}
+
+impl InputGain {
+    /// The level control for a device id from `capture::list` (Linux only):
+    /// the sound server's for the default input, the card's for a direct
+    /// device.
+    pub fn for_device(id: &str) -> Option<InputGain> {
+        if !cfg!(target_os = "linux") {
+            return None;
+        }
+        let bare = id.strip_prefix("alsa:").unwrap_or(id);
+        if matches!(bare, "default" | "pipewire" | "pulse") {
+            return Some(InputGain::SoundServer {
+                server: sound_server()?.to_string(),
+            });
+        }
+        card_from_device(bare).map(|card| InputGain::Alsa { card })
+    }
+
+    /// The card whose automatic gain switch is offered: the device's own,
+    /// or the one USB card behind the sound server.
+    fn card(&self) -> Option<String> {
+        match self {
+            InputGain::Alsa { card } => Some(card.clone()),
+            InputGain::SoundServer { .. } => single_usb_card(),
+        }
+    }
+
+    pub fn read(&self) -> Option<GainState> {
+        let mixer = self.card().and_then(|c| read_alsa(&c));
+        let agc = mixer.as_ref().and_then(|m| m.agc()).and_then(|c| c.switch);
+        match self {
+            InputGain::SoundServer { .. } => {
+                let level = output(&["wpctl", "get-volume", "@DEFAULT_AUDIO_SOURCE@"])
+                    .and_then(|t| parse_wpctl_volume(&t))
+                    .or_else(|| {
+                        output(&["pactl", "get-source-volume", "@DEFAULT_SOURCE@"])
+                            .and_then(|t| parse_pactl_volume(&t))
+                    })?;
+                Some(GainState {
+                    level: level.clamp(0.0, 1.0),
+                    text: format!("{:.0}%", level * 100.0),
+                    agc,
+                })
+            }
+            InputGain::Alsa { .. } => {
+                let m = mixer?;
+                let c = m.capture_level()?;
+                let (cur, lo, hi) = c.capture?;
+                Some(GainState {
+                    level: (cur - lo) as f64 / (hi - lo).max(1) as f64,
+                    text: match c.capture_db {
+                        Some(db) => format!("{cur}/{hi} ({db:+.1} dB)"),
+                        None => format!("{cur}/{hi}"),
+                    },
+                    agc,
+                })
+            }
+        }
+    }
+
+    /// Set the level, from 0 to 1.
+    pub fn set_level(&self, level: f64) -> Result<(), String> {
+        let level = level.clamp(0.0, 1.0);
+        match self {
+            InputGain::SoundServer { .. } => {
+                let v = format!("{level:.3}");
+                run(&["wpctl", "set-volume", "@DEFAULT_AUDIO_SOURCE@", &v]).or_else(|_| {
+                    let p = format!("{:.0}%", level * 100.0);
+                    run(&["pactl", "set-source-volume", "@DEFAULT_SOURCE@", &p])
+                })
+            }
+            InputGain::Alsa { card } => {
+                let m = read_alsa(card).ok_or("can't read the sound card's mixer")?;
+                let c = m.capture_level().ok_or("the card has no capture level")?;
+                let (_, lo, hi) = c.capture.ok_or("the card has no capture level")?;
+                let v = lo + ((hi - lo) as f64 * level).round() as i64;
+                let cmd = amixer(card, c, &v.to_string());
+                run(&cmd.iter().map(String::as_str).collect::<Vec<_>>())
+            }
+        }
+    }
+
+    /// Turn the card's automatic gain on or off.
+    pub fn set_agc(&self, on: bool) -> Result<(), String> {
+        let card = self.card().ok_or("no sound card found for this input")?;
+        let m = read_alsa(&card).ok_or("can't read the sound card's mixer")?;
+        let c = m
+            .agc()
+            .ok_or("this microphone has no automatic gain switch")?;
+        let cmd = amixer(&card, c, if on { "on" } else { "off" });
+        run(&cmd.iter().map(String::as_str).collect::<Vec<_>>())
+    }
+}
+
+/// `wpctl get-volume` prints `Volume: 0.62`, with ` [MUTED]` when muted.
+pub fn parse_wpctl_volume(text: &str) -> Option<f64> {
+    let v = text.split("Volume:").nth(1)?.split_whitespace().next()?;
+    let v: f64 = v.parse().ok()?;
+    Some(if text.contains("[MUTED]") { 0.0 } else { v })
+}
+
+/// `pactl get-source-volume` prints "Volume: mono: 40632 /  62% / -12.46 dB"
+/// (one entry per channel); the first percentage is taken.
+pub fn parse_pactl_volume(text: &str) -> Option<f64> {
+    let pct = text
+        .split('%')
+        .next()?
+        .rsplit(['/', ' '])
+        .find(|s| !s.is_empty())?;
+    pct.trim().parse::<f64>().ok().map(|p| p / 100.0)
+}
+
+fn output(cmd: &[&str]) -> Option<String> {
+    let out = Command::new(cmd[0]).args(&cmd[1..]).output().ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn run(cmd: &[&str]) -> Result<(), String> {
+    let out = Command::new(cmd[0])
+        .args(&cmd[1..])
+        .output()
+        .map_err(|e| format!("{}: {e}", cmd[0]))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} failed: {}",
+            cmd.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The C-Media USB microphone as it arrived: AGC on, Mic at 16/16.
+    const CMEDIA: &str = "\
+Simple mixer control 'Speaker',0
+  Capabilities: pvolume pswitch pswitch-joined
+  Playback channels: Front Left - Front Right
+  Limits: Playback 0 - 151
+  Mono:
+  Front Left: Playback 100 [66%] [-17.00dB] [on]
+  Front Right: Playback 100 [66%] [-17.00dB] [on]
+Simple mixer control 'Mic',0
+  Capabilities: pvolume pvolume-joined cvolume cvolume-joined pswitch pswitch-joined cswitch cswitch-joined
+  Playback channels: Mono
+  Capture channels: Mono
+  Limits: Playback 0 - 127 Capture 0 - 16
+  Mono: Playback 0 [0%] [-23.00dB] [off] Capture 16 [100%] [23.81dB] [on]
+Simple mixer control 'Auto Gain Control',0
+  Capabilities: pswitch pswitch-joined
+  Playback channels: Mono
+  Mono: Playback [on]
+";
+
+    #[test]
+    fn parses_cmedia_mixer() {
+        let m = parse_scontents("2", CMEDIA);
+        assert_eq!(m.controls.len(), 3);
+        let agc = m.agc().unwrap();
+        assert_eq!(agc.name, "Auto Gain Control");
+        assert_eq!(agc.switch, Some(true));
+        let mic = m.capture_level().unwrap();
+        assert_eq!(mic.name, "Mic");
+        assert_eq!(mic.capture, Some((16, 0, 16)));
+        assert_eq!(mic.capture_db, Some(23.81));
+    }
+
+    #[test]
+    fn cards_from_device_names() {
+        assert_eq!(
+            card_from_device("hw:CARD=Device,DEV=0").as_deref(),
+            Some("Device")
+        );
+        assert_eq!(card_from_device("alsa:hw:2,0").as_deref(), Some("2"));
+        assert_eq!(card_from_device("default"), None);
+    }
+
+    fn clipped() -> SignalCheck {
+        use crate::diagnose::{check, DiagnoseConfig};
+        use crate::synth::{generate, SynthConfig};
+        let cfg = SynthConfig {
+            duration_s: 4.0,
+            ..Default::default()
+        };
+        let mut a = generate(&cfg, |_| 270.0, |_| 0.0);
+        for v in a.samples.iter_mut() {
+            *v = (*v * 6.0).clamp(-1.0, 1.0);
+        }
+        check(&a, &DiagnoseConfig::default())
+    }
+
+    #[test]
+    fn agc_goes_off_first() {
+        let c = clipped();
+        let fixes = linux_fixes(&c, Some(&parse_scontents("2", CMEDIA)));
+        assert_eq!(fixes.len(), 1);
+        assert_eq!(
+            shell_words(fixes[0].command.as_ref().unwrap()),
+            "amixer -c 2 sset 'Auto Gain Control' off"
+        );
+    }
+
+    #[test]
+    fn clipping_turns_the_mic_down() {
+        let c = clipped();
+        let m = parse_scontents("2", &CMEDIA.replace("Playback [on]", "Playback [off]"));
+        let fixes = linux_fixes(&c, Some(&m));
+        assert_eq!(fixes.len(), 1);
+        assert_eq!(fixes[0].issue, IssueCode::Clipping);
+        assert_eq!(
+            shell_words(fixes[0].command.as_ref().unwrap()),
+            "amixer -c 2 sset Mic 6.0dB-"
+        );
+        // Without dB figures it steps: a quarter of 16 steps per 6 dB.
+        let m = parse_scontents("2", &m_without_db());
+        let fixes = linux_fixes(&c, Some(&m));
+        assert_eq!(
+            shell_words(fixes[0].command.as_ref().unwrap()),
+            "amixer -c 2 sset Mic 12"
+        );
+    }
+
+    fn m_without_db() -> String {
+        CMEDIA
+            .replace("Playback [on]", "Playback [off]")
+            .replace(" [23.81dB]", "")
+    }
+
+    #[test]
+    fn sound_server_volumes() {
+        assert_eq!(parse_wpctl_volume("Volume: 0.62\n"), Some(0.62));
+        assert_eq!(parse_wpctl_volume("Volume: 0.40 [MUTED]\n"), Some(0.0));
+        assert_eq!(
+            parse_pactl_volume("Volume: mono: 40632 /  62% / -12.46 dB\n        balance 0.00\n"),
+            Some(0.62)
+        );
+        assert_eq!(
+            parse_pactl_volume(
+                "Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: 65536 / 100% / 0.00 dB"
+            ),
+            Some(1.0)
+        );
+        assert_eq!(
+            InputGain::for_device("alsa:hw:CARD=Device,DEV=0"),
+            cfg!(target_os = "linux").then(|| InputGain::Alsa {
+                card: "Device".into()
+            })
+        );
+    }
+
+    #[test]
+    fn quoting() {
+        let c: Vec<String> = ["amixer", "-c", "2", "sset", "Auto Gain Control", "off"]
+            .map(String::from)
+            .into();
+        assert_eq!(shell_words(&c), "amixer -c 2 sset 'Auto Gain Control' off");
+    }
+}

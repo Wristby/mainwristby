@@ -12,6 +12,7 @@
     "migrations:check": "node scripts/check-cpanel-migrations.mjs",
     "test:migrations": "node --test scripts/check-cpanel-migrations.test.mjs",
     "test:service-history-migration-db": "tsx scripts/test-service-history-migration-database.ts --isolated",
+    "timing:build": "bash timing-wasm/build-browser.sh",
     "test": "npm run test:migrations && vitest run --reporter=verbose"
   },
   "dependencies": {

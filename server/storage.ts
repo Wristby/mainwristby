@@ -4,10 +4,11 @@ import { getSoldDate, normalizeSoldDateFields } from "@shared/sold-date";
 import { getSaleAmount } from "@shared/reporting";
 import {
   clients, inventory, expenses, inventoryPriceHistory, inventorySales, inventoryReturns,
+  inventoryTimingReadings, inventoryTimingSettingsTable,
   personalCollectionWatches, personalCollectionValuations, settings, retentionAudit, transactionParties, dealerNotebookEntries,
   type Client, type InsertClient, type UpdateClientRequest,
   type InventoryItem, type InsertInventory, type UpdateInventoryRequest, type InventoryPriceHistory,
-  type InventorySale, type InventoryReturn,
+  type InventorySale, type InventoryReturn, type InventoryTimingReading,
   type Expense, type InsertExpense, type DealerNotebookEntry,
   type PersonalCollectionWatch, type InsertPersonalCollectionWatch,
   type PersonalCollectionValuation, type InsertPersonalCollectionValuation,
@@ -21,6 +22,7 @@ import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
 import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
 import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
+import type { CreateInventoryTimingReading, InventoryTimingSettings } from "@shared/timing";
 import {
   canCaptureNotebookInventory,
   calculateNotebookInventorySnapshot,
@@ -113,6 +115,10 @@ export interface IStorage {
   getInventoryItem(id: number): Promise<(InventoryItem & { expenses?: Expense[] }) | undefined>;
   getInventoryPriceHistory(id: number): Promise<InventoryPriceHistory[]>;
   updateInventoryPriceHistory(inventoryId: number, historyId: number, listPrice: number): Promise<InventoryPriceHistory | undefined>;
+  getInventoryTimingSettings(id: number): Promise<InventoryTimingSettings>;
+  updateInventoryTimingSettings(id: number, settings: InventoryTimingSettings): Promise<InventoryTimingSettings>;
+  getInventoryTimingReadings(id: number): Promise<InventoryTimingReading[]>;
+  createInventoryTimingReading(id: number, reading: CreateInventoryTimingReading): Promise<InventoryTimingReading>;
   createInventoryItem(item: InsertInventory, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem>;
   getSales(inventoryId?: number): Promise<InventorySaleWithReturns[]>;
@@ -435,6 +441,52 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(inventoryPriceHistory)
       .where(eq(inventoryPriceHistory.inventoryId, id))
       .orderBy(desc(inventoryPriceHistory.recordedAt), desc(inventoryPriceHistory.id));
+  }
+
+  async updateInventoryTimingSettings(
+    id: number,
+    settings: InventoryTimingSettings,
+  ): Promise<InventoryTimingSettings> {
+    const [updated] = await db.insert(inventoryTimingSettingsTable)
+      .values({
+        inventoryId: id,
+        liftAngleDegrees: settings.liftAngleDegrees,
+        beatRateVph: settings.beatRateVph,
+      })
+      .onConflictDoUpdate({
+        target: inventoryTimingSettingsTable.inventoryId,
+        set: {
+          liftAngleDegrees: settings.liftAngleDegrees,
+          beatRateVph: settings.beatRateVph,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return { liftAngleDegrees: updated.liftAngleDegrees, beatRateVph: updated.beatRateVph };
+  }
+
+  async getInventoryTimingSettings(id: number): Promise<InventoryTimingSettings> {
+    const [settings] = await db.select().from(inventoryTimingSettingsTable)
+      .where(eq(inventoryTimingSettingsTable.inventoryId, id));
+    return settings
+      ? { liftAngleDegrees: settings.liftAngleDegrees, beatRateVph: settings.beatRateVph }
+      : { liftAngleDegrees: 52, beatRateVph: null };
+  }
+
+  async getInventoryTimingReadings(id: number): Promise<InventoryTimingReading[]> {
+    return db.select().from(inventoryTimingReadings)
+      .where(eq(inventoryTimingReadings.inventoryId, id))
+      .orderBy(desc(inventoryTimingReadings.measuredAt), desc(inventoryTimingReadings.id));
+  }
+
+  async createInventoryTimingReading(
+    id: number,
+    reading: CreateInventoryTimingReading,
+  ): Promise<InventoryTimingReading> {
+    const [created] = await db.insert(inventoryTimingReadings)
+      .values({ ...reading, inventoryId: id })
+      .returning();
+    return created;
   }
 
   async updateInventoryPriceHistory(inventoryId: number, historyId: number, listPrice: number): Promise<InventoryPriceHistory | undefined> {

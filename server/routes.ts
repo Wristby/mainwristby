@@ -308,6 +308,59 @@ export async function registerRoutes(
     }
   });
 
+  app.patch(api.inventory.timingSettings.path, isAuthenticated, async (req, res) => {
+    const inventoryId = Number(req.params.id);
+    if (!Number.isInteger(inventoryId) || inventoryId < 1) {
+      return res.status(400).json({ message: "Invalid watch ID." });
+    }
+    try {
+      const settings = api.inventory.timingSettings.input.parse(req.body);
+      const updated = await storage.updateInventoryTimingSettings(inventoryId, settings);
+      if (!updated) return res.status(404).json({ message: "Watch not found." });
+      return res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid timing settings." });
+      }
+      console.error("Could not update watch timing settings", err);
+      return res.status(500).json({ message: "Could not save timing settings. Please try again." });
+    }
+  });
+
+  app.get(api.inventory.timingReadings.list.path, isAuthenticated, async (req, res) => {
+    const inventoryId = Number(req.params.id);
+    if (!Number.isInteger(inventoryId) || inventoryId < 1) {
+      return res.status(400).json({ message: "Invalid watch ID." });
+    }
+    try {
+      const watch = await storage.getInventoryItem(inventoryId);
+      if (!watch) return res.status(404).json({ message: "Watch not found." });
+      return res.json(await storage.getInventoryTimingReadings(inventoryId));
+    } catch (err) {
+      console.error("Could not load timing history", err);
+      return res.status(500).json({ message: "Could not load timing history. Please try again." });
+    }
+  });
+
+  app.post(api.inventory.timingReadings.create.path, isAuthenticated, async (req, res) => {
+    const inventoryId = Number(req.params.id);
+    if (!Number.isInteger(inventoryId) || inventoryId < 1) {
+      return res.status(400).json({ message: "Invalid watch ID." });
+    }
+    try {
+      const watch = await storage.getInventoryItem(inventoryId);
+      if (!watch) return res.status(404).json({ message: "Watch not found." });
+      const reading = api.inventory.timingReadings.create.input.parse(req.body);
+      return res.status(201).json(await storage.createInventoryTimingReading(inventoryId, reading));
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid timing reading." });
+      }
+      console.error("Could not save timing reading", err);
+      return res.status(500).json({ message: "Could not save timing reading. Please try again." });
+    }
+  });
+
   app.get(api.sales.list.path, isAuthenticated, async (_req, res) => {
     try {
       res.json(await storage.getSales());

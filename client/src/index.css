@@ -80,3 +80,28 @@
 .glass-panel {
   @apply bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm;
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body.timing-print-active * {
+    visibility: hidden !important;
+  }
+
+  body.timing-print-active .timing-printable,
+  body.timing-print-active .timing-printable * {
+    visibility: visible !important;
+  }
+
+  body.timing-print-active .timing-printable {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    padding: 8mm;
+    background: #fff;
+    color: #0f172a;
+  }
+}

@@ -1,0 +1,824 @@
+//! The known wheels' lines, followed through a take.
+//!
+//! Two views of each wheel the calibre names, both on the watch's own time
+//! (the beats counted, as `long` reads its timing and amplitude), so a
+//! wheel's turn keeps one length however the rate moves:
+//!
+//! - **Line sizes against amplitude**: the size of a sine at the wheel's
+//!   period, fitted by least squares in windows of ten turns (at least
+//!   20 min) stepped half a window, each with its standard error, and
+//!   gathered by the amplitude the window was read at. A line that only
+//!   shows at low torque reads near zero at high amplitude and rises below
+//!   some amplitude. With no line in it, a window reads a size near 1.25
+//!   standard errors (the mean of a Rayleigh spread).
+//! - **The turn's shape** (synchronous averaging): every whole turn of the
+//!   wheel cut out and averaged phase bin by phase bin, over the take and
+//!   over the turns read in each 20° of amplitude. Whatever is not locked
+//!   to the wheel averages away; what is left is the wheel's own shape,
+//!   so a bad tooth shows at one place in the turn.
+//!
+//! Neither reads across a gap or a mask: a window or a turn with a stretch
+//! of more than 5 s missing is left out. Wheels whose turn is longer than
+//! half the period search's detrending window are left out, since taking
+//! off the slow change takes off most of their line.
+
+use crate::longterm::Grid;
+use crate::periodicity::Wheel;
+use serde::Serialize;
+
+/// Turns in a size window, and its shortest length, seconds.
+const WINDOW_TURNS: f64 = 10.0;
+const WINDOW_MIN_S: f64 = 1200.0;
+/// Width of an amplitude bin for sizes, and of a band for turn shapes.
+pub const SIZE_BIN_DEG: f64 = 10.0;
+pub const TURN_BAND_DEG: f64 = 20.0;
+/// Longest stretch of missing readings a window or turn may hold, seconds.
+const MAX_HOLE_S: f64 = 5.0;
+/// Share of readings a window or turn needs.
+const MIN_SHARE: f64 = 0.9;
+/// Turns a band's shape needs.
+const MIN_TURNS: usize = 10;
+/// Phase bins of a turn at most.
+const MAX_BINS: usize = 60;
+
+/// One window's fitted line.
+#[derive(Debug, Clone, Serialize)]
+pub struct LineWindow {
+    pub start_s: f64,
+    pub end_s: f64,
+    /// Mean amplitude over the window, degrees.
+    pub amplitude_deg: f64,
+    /// Size of the sine (half its peak to peak) and its standard error, in
+    /// the series' unit.
+    pub size: f64,
+    pub se: f64,
+    /// Phase of the sine at the take's start, degrees: a line locked to
+    /// the wheel keeps one phase from window to window.
+    pub phase_deg: f64,
+}
+
+/// The windows read at amplitudes within one bin, combined.
+#[derive(Debug, Clone, Serialize)]
+pub struct LineBin {
+    /// The bin's lower edge, degrees; the bin runs [`SIZE_BIN_DEG`] up.
+    pub from_deg: f64,
+    pub windows: usize,
+    /// The windows' sizes, weighted by one over their standard error
+    /// squared, and the standard error of that mean.
+    pub size: f64,
+    pub se: f64,
+    /// For the rate: the same in s/d (a timing sine of size A ms at
+    /// period P is a rate sine of 86.4 x 2 pi A / P s/d).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_s_per_day: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub se_s_per_day: Option<f64>,
+}
+
+/// One wheel's line in one series.
+#[derive(Debug, Clone, Serialize)]
+pub struct WheelLine {
+    pub wheel: String,
+    pub period_s: f64,
+    /// `rate` (the beat timing, ms), `amplitude` (deg) or `beat_error` (ms).
+    pub series: &'static str,
+    pub unit: &'static str,
+    pub window_s: f64,
+    /// Lowest amplitude first.
+    pub bins: Vec<LineBin>,
+    /// Every window, with `--maps`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub windows: Option<Vec<LineWindow>>,
+}
+
+/// A wheel turn's mean shape over a set of turns.
+#[derive(Debug, Clone, Serialize)]
+pub struct TurnShape {
+    /// The amplitude band, degrees; both null for every turn of the take.
+    pub from_deg: Option<f64>,
+    pub to_deg: Option<f64>,
+    pub turns: usize,
+    /// The mean per phase bin over the turns, from the turn's start, and
+    /// its standard error (the spread between turns over their root count).
+    pub profile: Vec<f64>,
+    pub se: Vec<f64>,
+    pub peak_to_peak: f64,
+}
+
+/// One wheel's turn, averaged, in one series.
+#[derive(Debug, Clone, Serialize)]
+pub struct WheelTurns {
+    pub wheel: String,
+    pub period_s: f64,
+    /// `rate` (the beat timing, ms) or `amplitude` (deg).
+    pub series: &'static str,
+    pub unit: &'static str,
+    pub bins: usize,
+    pub all: TurnShape,
+    /// Lowest amplitude first.
+    pub by_amplitude: Vec<TurnShape>,
+}
+
+/// Whether `g.y[a..b]` is read well enough: at least [`MIN_SHARE`] of it,
+/// with no hole longer than [`MAX_HOLE_S`].
+fn read_enough(g: &Grid, a: usize, b: usize) -> bool {
+    let max_run = (MAX_HOLE_S / g.step).floor() as usize;
+    let (mut run, mut finite) = (0, 0);
+    for v in &g.y[a..b] {
+        if v.is_finite() {
+            finite += 1;
+            run = 0;
+        } else {
+            run += 1;
+            if run > max_run {
+                return false;
+            }
+        }
+    }
+    finite as f64 >= MIN_SHARE * (b - a) as f64
+}
+
+/// The mean of the finite values of `g` between times `a` and `b`.
+fn mean_between(g: &Grid, a: f64, b: f64) -> Option<f64> {
+    let i0 = (((a - g.t0) / g.step).floor().max(0.0)) as usize;
+    let i1 = (((b - g.t0) / g.step).ceil().max(0.0) as usize).min(g.y.len());
+    let v: Vec<f64> = (i0..i1).map(|i| g.y[i]).filter(|v| v.is_finite()).collect();
+    (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
+}
+
+/// Least squares of `y = m + s t + a cos wt + b sin wt` over the finite
+/// values of `g.y[i0..i1]`: `(a, b, standard error of a and of b)`.
+///
+/// The standard error is read from the residual's own power beside the
+/// line ([`near_power`]), not from its scatter and a lag-one correlation:
+/// the beat timing on its 0.25 s grid wanders like a walk, so its
+/// neighbours correlate past any ρ̂ that can be read (it sat at the 0.99
+/// clamp in 10 of 11 windows on YM42's 2 h take, #1618), and the power at
+/// one period is not what an AR(1) of the whole scatter says it is.
+fn fit_line(g: &Grid, i0: usize, i1: usize, w: f64) -> Option<(f64, f64, f64)> {
+    let tm = g.time((i0 + i1) / 2);
+    let mut rows = Vec::new();
+    for i in i0..i1 {
+        let y = g.y[i];
+        if !y.is_finite() {
+            continue;
+        }
+        let t = g.time(i);
+        let x = [1.0, t - tm, (w * t).cos(), (w * t).sin()];
+        rows.push((i, x, y));
+    }
+    let n = rows.len();
+    if n < 8 {
+        return None;
+    }
+    let p = crate::dsp::least_squares(rows.iter().map(|&(_, x, y)| (x, y, 1.0)), 1e-12)?;
+    let res: Vec<(usize, f64)> = rows
+        .iter()
+        .map(|(i, x, y)| {
+            let f: f64 = x.iter().zip(&p).map(|(a, b)| a * b).sum();
+            (*i, y - f)
+        })
+        .collect();
+    let timed: Vec<(f64, f64)> = res.iter().map(|&(i, r)| (g.time(i), r)).collect();
+    let span = (i1 - i0) as f64 * g.step;
+    // White noise of variance s² has a mean periodogram of s² and gives a
+    // and b each a variance of 2 s² / n; a noise that follows itself gives
+    // them its own power at the line's period in place of s².
+    let se = (2.0 * near_power(&timed, w, span) / n as f64).sqrt();
+    Some((p[2], p[3], se))
+}
+
+/// Periodogram ordinates either side of the line, averaged for its noise.
+const NEAR: i32 = 6;
+
+/// The mean periodogram, `|Σ r e^(-iωt)|² / n`, of the residuals `res`
+/// (time, value) at the frequencies [`NEAR`] or fewer whole cycles a
+/// window (`span`) either side of `w`'s, its own left out: the power the
+/// noise has about the line, however it follows itself. Neighbours a
+/// whole cycle a window apart keep the line's own leakage out; on a red
+/// spectrum their mean errs high, so the standard error errs wide.
+fn near_power(res: &[(f64, f64)], w: f64, span: f64) -> f64 {
+    let n = res.len() as f64;
+    let ks: Vec<i32> = (-NEAR..=NEAR).filter(|&k| k != 0).collect();
+    let sum: f64 = ks
+        .iter()
+        .map(|&k| {
+            let wk = w + std::f64::consts::TAU * f64::from(k) / span;
+            let (c, s) = res.iter().fold((0.0, 0.0), |(c, s), &(t, r)| {
+                (c + r * (wk * t).cos(), s + r * (wk * t).sin())
+            });
+            (c * c + s * s) / n
+        })
+        .sum();
+    sum / ks.len() as f64
+}
+
+/// The line of `wheel` in `g` (with its slow change taken off), window
+/// by window, gathered by the amplitude `amp` read over each window.
+/// `None` when the period is under four readings, or fewer than two
+/// windows fit.
+pub fn line(
+    g: &Grid,
+    amp: &Grid,
+    wheel: &Wheel,
+    series: &'static str,
+    unit: &'static str,
+    keep_windows: bool,
+) -> Option<WheelLine> {
+    let p = wheel.period_s;
+    if p < 4.0 * g.step {
+        return None;
+    }
+    let window_s = (WINDOW_TURNS * p).max(WINDOW_MIN_S);
+    let nw = (window_s / g.step).round() as usize;
+    if nw * 2 > g.y.len() {
+        return None;
+    }
+    let w = std::f64::consts::TAU / p;
+    let hop = (nw / 2).max(1);
+    let mut windows = Vec::new();
+    let mut start = 0;
+    while start + nw <= g.y.len() {
+        let (a, b) = (start, start + nw);
+        start += hop;
+        if !read_enough(g, a, b) {
+            continue;
+        }
+        let (t0, t1) = (g.time(a) - g.step / 2.0, g.time(b - 1) + g.step / 2.0);
+        let Some(amplitude_deg) = mean_between(amp, t0, t1) else {
+            continue;
+        };
+        let Some((ca, sb, se)) = fit_line(g, a, b, w) else {
+            continue;
+        };
+        windows.push(LineWindow {
+            start_s: t0,
+            end_s: t1,
+            amplitude_deg,
+            size: ca.hypot(sb),
+            se,
+            // a cos wt + b sin wt = R sin(wt + phi).
+            phase_deg: ca.atan2(sb).to_degrees(),
+        });
+    }
+    if windows.len() < 2 {
+        return None;
+    }
+    let to_rate = (series == "rate").then(|| 86.4 * std::f64::consts::TAU / p);
+    let mut bins: Vec<LineBin> = Vec::new();
+    let mut edges: Vec<f64> = windows
+        .iter()
+        .map(|x| (x.amplitude_deg / SIZE_BIN_DEG).floor() * SIZE_BIN_DEG)
+        .collect();
+    edges.sort_by(|a, b| a.total_cmp(b));
+    edges.dedup();
+    for from in edges {
+        let inside: Vec<&LineWindow> = windows
+            .iter()
+            .filter(|x| (x.amplitude_deg / SIZE_BIN_DEG).floor() * SIZE_BIN_DEG == from)
+            .filter(|x| x.se > 0.0)
+            .collect();
+        if inside.is_empty() {
+            continue;
+        }
+        let wsum: f64 = inside.iter().map(|x| 1.0 / (x.se * x.se)).sum();
+        let size = inside.iter().map(|x| x.size / (x.se * x.se)).sum::<f64>() / wsum;
+        let se = weighted_mean_se(&inside, wsum);
+        bins.push(LineBin {
+            from_deg: from,
+            windows: inside.len(),
+            size,
+            se,
+            size_s_per_day: to_rate.map(|k| k * size),
+            se_s_per_day: to_rate.map(|k| k * se),
+        });
+    }
+    Some(WheelLine {
+        wheel: wheel.name.clone(),
+        period_s: p,
+        series,
+        unit,
+        window_s: nw as f64 * g.step,
+        bins,
+        windows: keep_windows.then_some(windows),
+    })
+}
+
+/// The standard error of the windows' weighted mean (weights one over
+/// their SE squared, summing to `wsum`). Windows that overlap share
+/// readings, so their errors move together: two windows sharing a
+/// fraction f of their length are taken to correlate at f, as a fit on
+/// noise that does not follow itself would, and that covariance is
+/// carried into the mean instead of treating the windows as independent.
+fn weighted_mean_se(inside: &[&LineWindow], wsum: f64) -> f64 {
+    let mut shared = 0.0;
+    for (i, a) in inside.iter().enumerate() {
+        for b in &inside[i + 1..] {
+            let len = (a.end_s - a.start_s).max(b.end_s - b.start_s);
+            let f = ((a.end_s.min(b.end_s) - a.start_s.max(b.start_s)) / len).max(0.0);
+            shared += 2.0 * f / (a.se * b.se);
+        }
+    }
+    (wsum + shared).sqrt() / wsum
+}
+
+/// The mean turn of `wheel` in `g`, over every whole turn read well
+/// enough, and over the turns in each [`TURN_BAND_DEG`] of the amplitude
+/// `amp` read over the turn. `None` when the period is under four
+/// readings or fewer than [`MIN_TURNS`] turns are read.
+pub fn turns(
+    g: &Grid,
+    amp: &Grid,
+    wheel: &Wheel,
+    series: &'static str,
+    unit: &'static str,
+) -> Option<WheelTurns> {
+    let p = wheel.period_s;
+    let per_turn = p / g.step;
+    if per_turn < 4.0 {
+        return None;
+    }
+    let bins = (per_turn.floor() as usize).min(MAX_BINS);
+    // Turns on the watch's time from zero, so every series and every take
+    // of the same watch cut its turns at the same place.
+    let rows = turn_rows(g, amp, p, bins);
+    let shape = |rows: &[&Vec<f64>], from: Option<f64>| turn_shape(rows, from, bins);
+    let all = shape(&rows.iter().map(|r| &r.1).collect::<Vec<_>>(), None)?;
+    let mut bands: Vec<f64> = rows
+        .iter()
+        .map(|r| (r.0 / TURN_BAND_DEG).floor() * TURN_BAND_DEG)
+        .collect();
+    bands.sort_by(|a, b| a.total_cmp(b));
+    bands.dedup();
+    let by_amplitude = bands
+        .into_iter()
+        .filter_map(|from| {
+            let inside: Vec<&Vec<f64>> = rows
+                .iter()
+                .filter(|r| (r.0 / TURN_BAND_DEG).floor() * TURN_BAND_DEG == from)
+                .map(|r| &r.1)
+                .collect();
+            shape(&inside, Some(from))
+        })
+        .collect();
+    Some(WheelTurns {
+        wheel: wheel.name.clone(),
+        period_s: p,
+        series,
+        unit,
+        bins,
+        all,
+        by_amplitude,
+    })
+}
+
+/// Each whole turn of `p` seconds in `g` read well enough, as its mean
+/// amplitude from `amp` and its mean value in each of `bins` phase bins.
+fn turn_rows(g: &Grid, amp: &Grid, p: f64, bins: usize) -> Vec<(f64, Vec<f64>)> {
+    let first = (g.t0 / p).ceil() as i64;
+    let last = ((g.t0 + g.y.len() as f64 * g.step) / p).floor() as i64;
+    let mut rows: Vec<(f64, Vec<f64>)> = Vec::new();
+    for k in first..last {
+        let (ta, tb) = (k as f64 * p, (k + 1) as f64 * p);
+        let a = (((ta - g.t0) / g.step).ceil().max(0.0)) as usize;
+        let b = ((((tb - g.t0) / g.step).ceil().max(0.0)) as usize).min(g.y.len());
+        if b <= a || !read_enough(g, a, b) {
+            continue;
+        }
+        let Some(amplitude) = mean_between(amp, ta, tb) else {
+            continue;
+        };
+        let (mut sum, mut n) = (vec![0.0; bins], vec![0usize; bins]);
+        for i in a..b {
+            let v = g.y[i];
+            if v.is_finite() {
+                let phase = (g.time(i) - ta) / p;
+                let j = ((phase * bins as f64) as usize).min(bins - 1);
+                sum[j] += v;
+                n[j] += 1;
+            }
+        }
+        if n.contains(&0) {
+            continue;
+        }
+        let row: Vec<f64> = sum.iter().zip(&n).map(|(s, &c)| s / c as f64).collect();
+        rows.push((amplitude, row));
+    }
+    rows
+}
+
+/// The mean shape of the turns `rows` in `bins` phase bins, each turn less
+/// its own mean, for the amplitude band from `from` degrees (all turns
+/// with none); none under [`MIN_TURNS`] turns.
+fn turn_shape(rows: &[&Vec<f64>], from: Option<f64>, bins: usize) -> Option<TurnShape> {
+    let k = rows.len();
+    if k < MIN_TURNS {
+        return None;
+    }
+    // Each turn less its own mean, so a turn's level does not count.
+    let centred: Vec<Vec<f64>> = rows
+        .iter()
+        .map(|r| {
+            let m = r.iter().sum::<f64>() / r.len() as f64;
+            r.iter().map(|v| v - m).collect()
+        })
+        .collect();
+    let profile: Vec<f64> = (0..bins)
+        .map(|j| centred.iter().map(|r| r[j]).sum::<f64>() / k as f64)
+        .collect();
+    let se = (0..bins)
+        .map(|j| {
+            let v = centred
+                .iter()
+                .map(|r| (r[j] - profile[j]).powi(2))
+                .sum::<f64>()
+                / (k - 1) as f64;
+            (v / k as f64).sqrt()
+        })
+        .collect();
+    let (lo, hi) = profile
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &v| {
+            (a.min(v), b.max(v))
+        });
+    Some(TurnShape {
+        from_deg: from,
+        to_deg: from.map(|f| f + TURN_BAND_DEG),
+        turns: k,
+        profile,
+        se,
+        peak_to_peak: hi - lo,
+    })
+}
+
+/// The wheels both views follow: those named, with a turn no longer than
+/// half `detrend_s`.
+fn followed(wheels: &[Wheel], detrend_s: f64) -> impl Iterator<Item = &Wheel> {
+    wheels.iter().filter(move |w| w.period_s <= detrend_s / 2.0)
+}
+
+/// Every named wheel's line sizes against amplitude, in the beat timing
+/// (ms) and the amplitude of `long`, and in the beat error. `keep_windows`
+/// keeps each window.
+pub fn lines_for_take(
+    log: &crate::stream::BeatLog,
+    clock: Option<&crate::clock::ClockFit>,
+    long: &crate::longrun::LongReport,
+    lc: &crate::longterm::LongConfig,
+    keep_windows: bool,
+) -> Vec<WheelLine> {
+    let amp = &long.amplitude.grid;
+    let timing = scaled(&level_timing(long, lc), 1000.0);
+    let [_, be] = crate::steadiness::window_grids(log, clock, &long.breaks);
+    let be = crate::steadiness::level_by_piece(&be, clock, &long.breaks, lc);
+    let mut out = Vec::new();
+    for w in followed(&lc.wheels, lc.detrend_s) {
+        out.extend(line(&timing, amp, w, "rate", "ms", keep_windows));
+        out.extend(line(
+            &long.amplitude.detrended,
+            amp,
+            w,
+            "amplitude",
+            "deg",
+            keep_windows,
+        ));
+        out.extend(line(&be, amp, w, "beat_error", "ms", keep_windows));
+    }
+    out
+}
+
+/// Every named wheel's mean turn, in the beat timing (ms) and the
+/// amplitude of `long`.
+pub fn turns_for_take(
+    long: &crate::longrun::LongReport,
+    lc: &crate::longterm::LongConfig,
+) -> Vec<WheelTurns> {
+    let amp = &long.amplitude.grid;
+    let timing = scaled(&level_timing(long, lc), 1000.0);
+    let mut out = Vec::new();
+    for w in followed(&lc.wheels, lc.detrend_s) {
+        out.extend(turns(&timing, amp, w, "rate", "ms"));
+        out.extend(turns(&long.amplitude.detrended, amp, w, "amplitude", "deg"));
+    }
+    out
+}
+
+/// The take's beat timing with its slow change taken off by the plain
+/// running median, piece by piece, as the wheels have always been
+/// followed in it. Not the period search's sloped pass
+/// ([`crate::longterm::Slow::Sloped`]): its gain of 1.4 to 1.76 near 0.7
+/// of the window lifts the wander left inside each wheel window, and on
+/// YM42's 2 h take the fourth wheel's standard error doubled (0.052 to
+/// 0.100 ms). A window's own line takes off the slope the median leaves.
+fn level_timing(long: &crate::longrun::LongReport, lc: &crate::longterm::LongConfig) -> Grid {
+    let t = &long.timing;
+    crate::longterm::detrend_pieces(
+        &t.grid,
+        lc.detrend_s,
+        crate::longterm::Slow::Level,
+        &t.starts,
+    )
+}
+
+fn scaled(g: &Grid, k: f64) -> Grid {
+    Grid {
+        t0: g.t0,
+        step: g.step,
+        y: g.y.iter().map(|v| v * k).collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    /// The beat error's lines are read from its windows levelled piece by
+    /// piece between the take's breaks, not across them (#1608, #1723).
+    #[test]
+    fn the_beat_errors_lines_read_it_by_piece() {
+        let (log, long, lc) = crate::break_fixture::a_take_with_a_break();
+        let (by_piece, across) = crate::break_fixture::its_beat_error(&log, &long, &lc);
+        let amp = &long.amplitude.grid;
+        let got: Vec<WheelLine> = lines_for_take(&log, long.clock.as_ref(), &long, &lc, false)
+            .into_iter()
+            .filter(|l| l.series == "beat_error")
+            .collect();
+        let on = |g: &crate::longterm::Grid| -> Vec<WheelLine> {
+            followed(&lc.wheels, lc.detrend_s)
+                .filter_map(|w| line(g, amp, w, "beat_error", "ms", false))
+                .collect()
+        };
+        let js = |v: &Vec<WheelLine>| serde_json::to_value(v).unwrap();
+        assert!(!got.is_empty());
+        assert_eq!(js(&got), js(&on(&by_piece)));
+        assert_ne!(js(&got), js(&on(&across)));
+    }
+    use super::*;
+    use crate::synth::Rng;
+
+    fn grid(step: f64, n: usize, mut f: impl FnMut(f64) -> f64) -> Grid {
+        let mut g = Grid {
+            t0: 0.0,
+            step,
+            y: vec![0.0; n],
+        };
+        for i in 0..n {
+            g.y[i] = f(g.time(i));
+        }
+        g
+    }
+
+    fn fourth() -> Wheel {
+        Wheel {
+            name: "fourth wheel".into(),
+            period_s: 60.0,
+        }
+    }
+
+    /// 10 h of 2 s amplitude readings, falling from 300° to 200°.
+    fn amp() -> Grid {
+        grid(2.0, 18000, |t| 300.0 - 100.0 * t / 36000.0)
+    }
+
+    #[test]
+    fn a_windows_se_holds_on_correlated_noise_in_short_runs() {
+        // Noise correlating at 0.5 in runs of 30 between missing values
+        // (#1544's case, Trevor's review), with no line, over 200 seeds:
+        // a window's size over its SE should spread as a Rayleigh does,
+        // rms √2, as it should when its correlation is read right (#1618
+        // reads the SE from the noise's own power, not from ρ̂).
+        let mut z2 = Vec::new();
+        for seed in 0..200 {
+            let mut rng = Rng::new(900_003 + seed);
+            let mut e = 0.0;
+            let g = grid(1.0, 31 * 100, |t| {
+                if (t as usize) % 31 == 30 {
+                    return f64::NAN;
+                }
+                e = 0.5 * e + 0.75f64.sqrt() * rng.normal();
+                e
+            });
+            let (ca, sb, se) = fit_line(&g, 0, g.y.len(), std::f64::consts::TAU / 60.0).unwrap();
+            z2.push((ca.hypot(sb) / se).powi(2));
+        }
+        let rms = (z2.iter().sum::<f64>() / z2.len() as f64).sqrt();
+        assert!((1.25..1.6).contains(&rms), "rms size over SE {rms}");
+    }
+
+    #[test]
+    fn a_window_se_allows_for_noise_that_follows_itself() {
+        // A 60 s line of 2 ms under noise whose neighbours correlate at
+        // 0.8 (0.5 ms in size). One SE should be about the scatter of the
+        // sizes from window to window, not a third of it.
+        let a = amp();
+        let mut rng = Rng::new(3);
+        let mut e = 0.0;
+        let k = (1.0f64 - 0.8 * 0.8).sqrt();
+        let g = grid(1.0, 36000, |t| {
+            e = 0.8 * e + 0.5 * k * rng.normal();
+            2.0 * (std::f64::consts::TAU * t / 60.0).sin() + e
+        });
+        let l = line(&g, &a, &fourth(), "rate", "ms", true).unwrap();
+        // Every other window, so none overlaps the next.
+        let w: Vec<&LineWindow> = l.windows.as_ref().unwrap().iter().step_by(2).collect();
+        assert!(w.len() >= 20, "{}", w.len());
+        let mean = w.iter().map(|x| x.size).sum::<f64>() / w.len() as f64;
+        let scatter =
+            (w.iter().map(|x| (x.size - mean).powi(2)).sum::<f64>() / (w.len() - 1) as f64).sqrt();
+        let se = w.iter().map(|x| x.se).sum::<f64>() / w.len() as f64;
+        assert!(
+            (0.6..1.7).contains(&(scatter / se)),
+            "scatter {scatter} against se {se}"
+        );
+    }
+
+    #[test]
+    fn a_window_se_reads_a_wandering_timings_own_power() {
+        // No line, on 4 h of a 0.25 s timing grid that wanders like a walk
+        // (0.02 ms a step) under white jitter of 0.05 ms, as the beat timing
+        // does: its neighbours correlate past 0.99, so a lag-one ρ̂ can't
+        // say its power at 60 s. A window's size over its SE should then
+        // spread as a Rayleigh does, with an rms of √2 (#1618).
+        let a = grid(2.0, 7200, |_| 255.0);
+        let mut z2 = Vec::new();
+        for seed in 0..20 {
+            let mut rng = Rng::new(500 + seed);
+            let mut walk = 0.0;
+            let g = grid(0.25, 57600, |_| {
+                walk += 0.02 * rng.normal();
+                walk + 0.05 * rng.normal()
+            });
+            let l = line(&g, &a, &fourth(), "rate", "ms", true).unwrap();
+            // Every other window, so none overlaps the next.
+            for w in l.windows.unwrap().iter().step_by(2) {
+                z2.push((w.size / w.se).powi(2));
+            }
+        }
+        let rms = (z2.iter().sum::<f64>() / z2.len() as f64).sqrt();
+        assert!(z2.len() >= 100, "{}", z2.len());
+        assert!((1.2..1.65).contains(&rms), "rms size over SE {rms}");
+    }
+
+    /// Over 300 seeded takes of 2 h of 1 s readings, each a 10 ms line at
+    /// 60 s under white noise of 1 ms with every window in one bin: how
+    /// many bins hold the mean size within one SE, the bin's windows, and
+    /// the sizes' scatter over the mean SE. `hole` says which readings
+    /// are missing.
+    fn bin_coverage(hole: impl Fn(f64) -> bool) -> (usize, usize, f64) {
+        let a = grid(2.0, 3600, |_| 255.0);
+        let runs = 300;
+        let (mut bins, mut windows) = (Vec::new(), 0);
+        for seed in 0..runs {
+            let mut rng = Rng::new(1000 + seed);
+            let g = grid(1.0, 7200, |t| {
+                let y = 10.0 * (std::f64::consts::TAU * t / 60.0).sin() + rng.normal();
+                if hole(t) {
+                    f64::NAN
+                } else {
+                    y
+                }
+            });
+            let l = line(&g, &a, &fourth(), "rate", "ms", false).unwrap();
+            assert_eq!(l.bins.len(), 1);
+            windows = l.bins[0].windows;
+            bins.push((l.bins[0].size, l.bins[0].se));
+        }
+        let mean = bins.iter().map(|b| b.0).sum::<f64>() / runs as f64;
+        let within = bins.iter().filter(|b| (b.0 - mean).abs() <= b.1).count();
+        let sd =
+            (bins.iter().map(|b| (b.0 - mean).powi(2)).sum::<f64>() / (runs - 1) as f64).sqrt();
+        let se = bins.iter().map(|b| b.1).sum::<f64>() / runs as f64;
+        (within, windows, sd / se)
+    }
+
+    #[test]
+    fn a_bin_se_allows_for_windows_that_overlap() {
+        // All 11 half-overlapping windows in one bin. The bin's size should
+        // land within one SE of the mean size about 68% of the time;
+        // taking the windows as independent gives about 53%.
+        let (within, windows, ratio) = bin_coverage(|_| false);
+        assert_eq!(windows, 11);
+        assert!(
+            (180..234).contains(&within),
+            "{within} of 300 within one SE"
+        );
+        assert!((0.85..1.2).contains(&ratio), "scatter over SE {ratio}");
+    }
+
+    #[test]
+    fn a_bin_se_allows_for_overlap_on_a_gapped_take() {
+        // A 30 s hole at 3000 s leaves out the two windows across it, so
+        // the bin's windows come in two runs with no overlap between them;
+        // a 3 s hole at 5000 s stays inside its windows.
+        let (within, windows, ratio) =
+            bin_coverage(|t| (3000.0..3030.0).contains(&t) || (5000.0..5003.0).contains(&t));
+        assert_eq!(windows, 9);
+        assert!(
+            (180..234).contains(&within),
+            "{within} of 300 within one SE"
+        );
+        assert!((0.85..1.2).contains(&ratio), "scatter over SE {ratio}");
+    }
+
+    #[test]
+    fn a_line_that_shows_only_at_low_amplitude_rises_there() {
+        // A 60 s line of 0.2 ms below 240° only, under noise of 0.5 ms.
+        let a = amp();
+        let mut rng = Rng::new(1);
+        let g = grid(1.0, 36000, |t| {
+            let deg = 300.0 - 100.0 * t / 36000.0;
+            let line = if deg < 240.0 { 0.2 } else { 0.0 };
+            line * (std::f64::consts::TAU * t / 60.0 + 1.0).sin() + 0.5 * rng.normal()
+        });
+        let l = line(&g, &a, &fourth(), "rate", "ms", true).unwrap();
+        for b in &l.bins {
+            if b.from_deg + SIZE_BIN_DEG <= 240.0 {
+                assert!((b.size - 0.2).abs() < 3.0 * b.se + 0.01, "{b:?}");
+            } else if b.from_deg >= 240.0 {
+                // No line: a size of a few standard errors at most.
+                assert!(b.size < 0.06, "{b:?}");
+            }
+        }
+        // A locked line keeps its phase: 1 rad in, read as such.
+        let low: Vec<&LineWindow> = l
+            .windows
+            .as_ref()
+            .unwrap()
+            .iter()
+            .filter(|w| w.amplitude_deg < 235.0)
+            .collect();
+        assert!(low.len() > 5);
+        for w in low {
+            assert!((w.phase_deg - 1.0f64.to_degrees()).abs() < 20.0, "{w:?}");
+        }
+        // The rate's size in s/d: 86.4 x 2 pi x 0.2 / 60.
+        let b = l.bins.first().unwrap();
+        let k = 86.4 * std::f64::consts::TAU / 60.0;
+        assert!((b.size_s_per_day.unwrap() - k * b.size).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_window_across_a_gap_is_left_out() {
+        let a = amp();
+        let g = grid(1.0, 36000, |t| {
+            if (10000.0..10600.0).contains(&t) {
+                f64::NAN
+            } else {
+                (std::f64::consts::TAU * t / 60.0).sin()
+            }
+        });
+        let l = line(&g, &a, &fourth(), "rate", "ms", true).unwrap();
+        for w in l.windows.unwrap() {
+            assert!(w.end_s <= 10000.0 || w.start_s >= 10600.0, "{w:?}");
+        }
+    }
+
+    #[test]
+    fn a_bad_tooth_shows_at_one_place_in_the_turn() {
+        // Every turn of a 60 s wheel, a 2 s bump of 0.3 ms at 20 s in,
+        // under noise of 0.5 ms; below 240° the bump doubles.
+        let a = amp();
+        let mut rng = Rng::new(2);
+        let g = grid(1.0, 36000, |t| {
+            let deg = 300.0 - 100.0 * t / 36000.0;
+            let into = t % 60.0;
+            let bump = if (20.0..22.0).contains(&into) {
+                0.3
+            } else {
+                0.0
+            };
+            let k = if deg < 240.0 { 2.0 } else { 1.0 };
+            k * bump + 0.5 * rng.normal()
+        });
+        let s = turns(&g, &a, &fourth(), "rate", "ms").unwrap();
+        assert_eq!(s.bins, 60);
+        let top = (0..60)
+            .max_by(|&i, &j| s.all.profile[i].total_cmp(&s.all.profile[j]))
+            .unwrap();
+        assert!((20..22).contains(&top), "{top}");
+        let high = s
+            .by_amplitude
+            .iter()
+            .find(|b| b.from_deg == Some(260.0))
+            .unwrap();
+        let low = s
+            .by_amplitude
+            .iter()
+            .find(|b| b.from_deg == Some(200.0))
+            .unwrap();
+        let at = |b: &TurnShape| (b.profile[20] + b.profile[21]) / 2.0;
+        assert!((at(high) - 0.3).abs() < 0.1, "{}", at(high));
+        assert!((at(low) - 0.6).abs() < 0.1, "{}", at(low));
+    }
+
+    #[test]
+    fn noise_alone_leaves_a_flat_turn() {
+        let a = amp();
+        let mut rng = Rng::new(3);
+        let g = grid(1.0, 36000, |_| rng.normal());
+        let s = turns(&g, &a, &fourth(), "rate", "ms").unwrap();
+        // 600 turns: each bin's mean within 4 standard errors of zero.
+        for (p, e) in s.all.profile.iter().zip(&s.all.se) {
+            assert!(p.abs() < 4.0 * e, "{p} {e}");
+        }
+    }
+}

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
   insertClientSchema, insertInventorySchema, insertExpenseSchema, clients, inventory, expenses,
-  inventoryPriceHistory, inventorySales, inventoryReturns, type InventoryItem, type InventorySale,
-  type InventoryReturn,
+  inventoryPriceHistory, inventorySales, inventoryReturns, inventoryTimingReadings,
+  type InventoryItem, type InventorySale, type InventoryReturn,
 } from './schema';
 import { deliveryDateError } from './delivery';
 import { saleBuyerSchema, type SaleBuyerInput } from './sale-buyer';
@@ -11,6 +11,7 @@ import { personalCollectionValuations, personalCollectionWatches, type PersonalC
 import { isCalendarDate } from './delivery';
 import { storeWarrantyMonthsSchema } from './warranty';
 import { serviceVisitSchema } from './service-history';
+import { createInventoryTimingReadingSchema, inventoryTimingSettingsSchema } from './timing';
 
 // Helper to transform date strings to Date objects or null
 const dateStringToDate = z.union([
@@ -210,6 +211,46 @@ export const api = {
         200: z.custom<typeof inventoryPriceHistory.$inferSelect>(),
         400: errorSchemas.validation,
         404: errorSchemas.notFound,
+      },
+    },
+    timingSettings: {
+      get: {
+        method: "GET" as const,
+        path: "/api/inventory/:id/timing-settings",
+        responses: {
+          200: inventoryTimingSettingsSchema,
+          404: errorSchemas.notFound,
+        },
+      },
+      update: {
+        method: "PATCH" as const,
+        path: "/api/inventory/:id/timing-settings",
+        input: inventoryTimingSettingsSchema,
+        responses: {
+          200: inventoryTimingSettingsSchema,
+          400: errorSchemas.validation,
+          404: errorSchemas.notFound,
+        },
+      },
+    },
+    timingReadings: {
+      list: {
+        method: "GET" as const,
+        path: "/api/inventory/:id/timing-readings",
+        responses: {
+          200: z.array(z.custom<typeof inventoryTimingReadings.$inferSelect>()),
+          404: errorSchemas.notFound,
+        },
+      },
+      create: {
+        method: "POST" as const,
+        path: "/api/inventory/:id/timing-readings",
+        input: createInventoryTimingReadingSchema,
+        responses: {
+          201: z.custom<typeof inventoryTimingReadings.$inferSelect>(),
+          400: errorSchemas.validation,
+          404: errorSchemas.notFound,
+        },
       },
     },
     archived: {

@@ -1,0 +1,934 @@
+//! A take with a pause: two stretches of one watch joined with no audio
+//! between them, while two minutes pass.
+
+use timegrapher_core::audio::{write_wav, Audio};
+use timegrapher_core::breaks;
+use timegrapher_core::clock::ClockFit;
+use timegrapher_core::longrun;
+use timegrapher_core::longterm::LongConfig;
+use timegrapher_core::measure::Caveat;
+use timegrapher_core::periodicity::standard_wheels;
+use timegrapher_core::session;
+use timegrapher_core::stream::{analyze_file, StreamConfig};
+use timegrapher_core::synth::{generate, SynthConfig};
+
+const GAP_S: f64 = 120.0;
+
+/// The joined take on disk with its session.json, and the clock log's
+/// entries (a card 20 ppm slow, logged every 5 s).
+fn take(dir: &std::path::Path) -> (std::path::PathBuf, Vec<(f64, f64)>, f64) {
+    let piece = |duration_s: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms: 0.6,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    // The first stretch ends partway through a beat period, so the second
+    // starts out of phase with it.
+    let a = piece(90.03, 1);
+    let b = piece(90.0, 2);
+    let fs = a.sample_rate;
+    let join = a.samples.len();
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let path = dir.join("audio-001.wav");
+    write_wav(
+        &path,
+        &Audio {
+            samples,
+            sample_rate: fs,
+        },
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("session.json"),
+        format!(
+            r#"{{"segments": ["audio-001.wav"], "breaks": [{{"frame": {join}, "audio_s": {}, "utc": "2026-10-11T06:00:00.000Z", "gap_s": {GAP_S}}}]}}"#,
+            join as f64 / fs as f64
+        ),
+    )
+    .unwrap();
+    let k = 1.0 + 20e-6;
+    let join_s = join as f64 / fs as f64;
+    let pairs = (0..=36)
+        .map(|i| {
+            let t = (i as f64 * 5.0).min(180.03);
+            let t = if i == 18 { join_s } else { t };
+            (t, 1.79e9 + t * k + if t >= join_s { GAP_S } else { 0.0 })
+        })
+        .collect();
+    (path, pairs, join_s)
+}
+
+#[test]
+fn a_take_with_a_pause_reads_as_one_watch() {
+    let dir = std::env::temp_dir().join(format!("tg-breaks-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (path, pairs, join_s) = take(&dir);
+    let clock = ClockFit::new(&pairs).unwrap();
+    assert!((clock.ppm + 20.0).abs() < 0.5, "clock {} ppm", clock.ppm);
+    assert_eq!(clock.breaks.len(), 1, "{:?}", clock.breaks);
+
+    let mut log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+    let lc = LongConfig {
+        wheels: standard_wheels(log.bph, 15),
+        ..Default::default()
+    };
+    // Read straight through, the phase jump at the join spoils the rate.
+    let naive = longrun::analyse(&log, None, &lc).overall.expect("fit");
+    assert!(
+        (naive.rate_s_per_day - 10.0).abs() > 1.0,
+        "naive {}",
+        naive.rate_s_per_day
+    );
+    let found = breaks::of_files(&[path.as_path()], Some(&clock), log.sample_rate).breaks;
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(found.len(), 1);
+    assert!((found[0].audio_s - join_s).abs() < 1e-6);
+    assert!((found[0].gap_s - GAP_S).abs() < 1e-9);
+    breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+
+    // Rate on the card's clock is 10 s/d; corrected for 20 ppm slow, 8.3.
+    let want = (1.0 + 10.0 / 86400.0) / (1.0 + 20e-6) * 86400.0 - 86400.0;
+    let long = longrun::analyse_with_breaks(&log, Some(&clock), &found, &lc);
+    let f = long.overall.expect("fit");
+    assert!(
+        (f.rate_s_per_day - want).abs() < 0.3,
+        "long rate {}",
+        f.rate_s_per_day
+    );
+    assert!(
+        (f.beat_error_ms.abs() - 0.6).abs() < 0.1,
+        "beat error {}",
+        f.beat_error_ms
+    );
+    assert_eq!(long.breaks.len(), 1);
+    assert!(
+        (long.duration_s - (180.03 + GAP_S)).abs() < 1.0,
+        "{}",
+        long.duration_s
+    );
+    assert!(long.clean_fraction > 0.95, "clean {}", long.clean_fraction);
+
+    let m = session::measure_with_breaks(&log, Some(&clock), &found, 0.0, log.duration_s);
+    let r = m.rate_s_per_day.expect("rate");
+    assert!((r - want).abs() < 0.3, "session rate {r}");
+    assert_eq!(m.breaks.len(), 1);
+    assert!(m.clean_fraction > 0.95, "clean {}", m.clean_fraction);
+}
+
+/// A hole in the sound with no break listed and no clock log: the beats
+/// show the jump, the sides keep their names across it by their sound,
+/// and the rate is fitted on each stretch. One of the two joins puts an
+/// odd number of beats in the hole, so counting alone would swap the sides
+/// there.
+#[test]
+fn a_hole_nobody_listed_keeps_the_sides_and_the_rate() {
+    let piece = |duration_s: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms: 0.6,
+                // The Tock sounds unlike the Tick: a louder unlock.
+                odd_gains: Some([0.9, 0.25, 1.0]),
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    for (n, first_s) in [90.03, 90.155].into_iter().enumerate() {
+        let a = piece(first_s, 1);
+        let b = piece(90.0, 2);
+        let fs = a.sample_rate;
+        let join_s = a.samples.len() as f64 / fs as f64;
+        let mut samples = a.samples;
+        samples.extend(b.samples);
+        let dir = std::env::temp_dir().join(format!("tg-hole-{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("hole.wav");
+        write_wav(
+            &path,
+            &Audio {
+                samples,
+                sample_rate: fs,
+            },
+        )
+        .unwrap();
+        let mut log = analyze_file(&path, &StreamConfig::default(), |_| {}).unwrap();
+        let listed = breaks::of_files(&[path.as_path()], None, log.sample_rate).breaks;
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(listed.is_empty());
+        assert_eq!(log.jumps.len(), 1, "{first_s}: {:?}", log.jumps);
+        // Found once the beats are found again: within the 2 s of beats the
+        // tracker may miss before it takes what it finds, and a few beats.
+        assert!(
+            log.jumps[0] >= join_s && log.jumps[0] - join_s < 3.0,
+            "{first_s}: jump at {:?}, join at {join_s}",
+            log.jumps
+        );
+        let found = breaks::with_jumps(listed, &log.jumps);
+        assert_eq!(found.len(), 1);
+
+        // The same signed beat error on both sides of the hole.
+        let side = |from: f64, to: f64| {
+            let run: Vec<_> = log
+                .beats
+                .iter()
+                .filter(|b| b.time >= from && b.time < to)
+                .copied()
+                .collect();
+            timegrapher_core::timing::beat_error_ms(&run).expect("beat error")
+        };
+        let (before, after) = (side(5.0, join_s - 1.0), side(join_s + 5.0, f64::INFINITY));
+        assert!(
+            before.abs() > 0.4 && (before - after).abs() < 0.1,
+            "{first_s}: beat error {before} then {after}"
+        );
+
+        breaks::renumber(
+            &mut log.beats,
+            &mut log.amplitude_windows,
+            &found,
+            &log.sided,
+            log.bph,
+        );
+        let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+        let r = m.rate_s_per_day.expect("rate");
+        assert!((r - 10.0).abs() < 0.3, "{first_s}: session rate {r}");
+        assert_eq!(m.breaks.len(), 1);
+        // One sign either side: the beat error stays signed.
+        assert!(
+            !m.caveats.contains(&Caveat::BeatErrorAsSize),
+            "{:?}",
+            m.caveats
+        );
+    }
+}
+
+#[test]
+fn the_clock_takes_the_listed_break() {
+    // Logged as the recorder does: the first entry after the resume comes
+    // a block (here 1 s) after the listed frame, so the log alone puts the
+    // gap there and the audio in between reads as before it.
+    let dir = std::env::temp_dir().join(format!("tg-breaks-clock-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (path, mut pairs, join_s) = take(&dir);
+    let i = pairs.iter().position(|q| q.0 == join_s).unwrap();
+    pairs[i].0 += 1.0;
+    pairs[i].1 += 1.0 * (1.0 + 20e-6);
+    let mut clock = ClockFit::new(&pairs).unwrap();
+    assert!((clock.breaks[0].audio_s - (join_s + 1.0)).abs() < 1e-6);
+    let before = clock.map(join_s + 0.5);
+    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000).breaks;
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(found.len(), 1);
+    assert!(
+        (clock.breaks[0].audio_s - join_s).abs() < 1e-6,
+        "{:?}",
+        clock.breaks
+    );
+    let after = clock.map(join_s + 0.5);
+    assert!((after - before - GAP_S).abs() < 0.01, "{before} {after}");
+    assert!((clock.map(join_s - 0.5) - (join_s - 0.5) * (1.0 + 20e-6)).abs() < 0.01);
+}
+
+#[test]
+fn a_real_change_of_beat_error_sign_keeps_its_sides() {
+    // Two stretches joined out of phase, the beat error -0.6 ms before
+    // the join and +0.6 ms after. The Tock sounds unlike the Tick, so the
+    // side sounds tell the sides apart at the jump, and renumbering keeps
+    // the change of sign rather than turning the second stretch over.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                odd_gains: Some([0.9, 0.25, 1.0]),
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, -0.6, 1);
+    let b = piece(90.0, 0.6, 2);
+    let fs = a.sample_rate;
+    let join_s = a.samples.len() as f64 / fs as f64;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    assert_eq!(log.jumps.len(), 1, "{:?}", log.jumps);
+    assert_eq!(log.sided.len(), 1, "{:?}", log.sided);
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    let be = |from: f64, to: f64| {
+        let run: Vec<_> = log
+            .beats
+            .iter()
+            .filter(|b| b.time >= from && b.time < to)
+            .copied()
+            .collect();
+        timegrapher_core::timing::beat_error_ms(&run).unwrap()
+    };
+    let (before, after) = (be(5.0, join_s - 1.0), be(join_s + 5.0, 175.0));
+    // The sides keep their names, so the sign turns over at the join.
+    assert!(
+        before * after < 0.0 && before.abs() > 0.4 && after.abs() > 0.4,
+        "{before} {after}"
+    );
+}
+
+#[test]
+fn a_negative_pause_moves_no_beat_numbers_back() {
+    // A pause the recorder logged as -0.2 s counts as none: the beats
+    // after it number on from those before, as with no gap at all.
+    let period = 3600.0 / 28800.0;
+    let mut beats: Vec<timegrapher_core::beats::Beat> = (0..960)
+        .map(|k| timegrapher_core::beats::Beat {
+            index: k,
+            time: k as f64 * period,
+            quality: 1.0,
+        })
+        .collect();
+    let gap = |gap_s: f64| breaks::Break {
+        audio_s: 60.0,
+        gap_s,
+    };
+    let mut zero = beats.clone();
+    breaks::renumber(&mut zero, &mut Vec::new(), &[gap(0.0)], &[], 28800);
+    breaks::renumber(&mut beats, &mut Vec::new(), &[gap(-0.2)], &[], 28800);
+    let idx = |v: &[timegrapher_core::beats::Beat]| v.iter().map(|b| b.index).collect::<Vec<_>>();
+    assert_eq!(idx(&beats), idx(&zero));
+    assert_eq!(beats[480].index, 480);
+    assert_eq!(breaks::wall(&[gap(-0.2)], 70.0), 70.0);
+}
+
+#[test]
+fn sides_too_alike_to_tell_keep_the_beat_errors_sign() {
+    // As above, but Tick and Tock sound alike, so the side sounds can't
+    // tell them apart at the jump. The beat error is 0.6 ms either side of
+    // it, clearly away from zero, so its sign names the sides: a turn of
+    // sign at such a hole reads as the sides swapped by the count, and the
+    // beat error keeps its sign across it (the project's rule, 2026-10-27).
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, -0.6, 1);
+    let b = piece(90.0, 0.6, 2);
+    let fs = a.sample_rate;
+    let join_s = a.samples.len() as f64 / fs as f64;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    assert_eq!(log.jumps.len(), 1, "{:?}", log.jumps);
+    assert_eq!(log.sided, log.jumps);
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    assert!(log.by_count.is_empty(), "{:?}", log.by_count);
+    let be = |from: f64, to: f64| {
+        let run: Vec<_> = log
+            .beats
+            .iter()
+            .filter(|b| b.time >= from && b.time < to)
+            .copied()
+            .collect();
+        timegrapher_core::timing::beat_error_ms(&run).unwrap()
+    };
+    let (before, after) = (be(5.0, join_s - 1.0), be(join_s + 5.0, 175.0));
+    assert!(
+        before * after > 0.0 && before.abs() > 0.4 && after.abs() > 0.4,
+        "{before} {after}"
+    );
+    let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+    assert!(
+        !m.caveats
+            .iter()
+            .any(|c| matches!(c, Caveat::SidesByCount { .. })),
+        "{:?}",
+        m.caveats
+    );
+}
+
+#[test]
+fn sides_too_alike_to_tell_near_no_beat_error_keep_the_count_and_say_so() {
+    // As above, but the beat error is near zero, too small for its sign to
+    // name the sides: the beat count carries them across the jump, and the
+    // reading says the sides there were named by the count.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, -0.03, 1);
+    let b = piece(90.0, 0.03, 2);
+    let fs = a.sample_rate;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    assert_eq!(log.jumps.len(), 1, "{:?}", log.jumps);
+    assert!(log.sided.is_empty(), "{:?}", log.sided);
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    assert_eq!(log.by_count, log.jumps);
+    let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+    assert!(
+        m.caveats.contains(&Caveat::SidesByCount { count: 1 }),
+        "{:?}",
+        m.caveats
+    );
+}
+
+#[test]
+fn a_reading_across_a_turn_of_sign_gives_the_size_either_side() {
+    // The beat error turns from -0.6 to +0.3 ms at a hole whose sides the
+    // sound can't tell apart, and its size changes there too, so neither
+    // the sound nor the sign names the sides and the count keeps the turn:
+    // a reading across the hole gives the size, about 0.45 ms, rather than
+    // the near-zero mean of the two signs.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let a = piece(90.03, -0.6, 1);
+    let b = piece(90.0, 0.3, 2);
+    let fs = a.sample_rate;
+    let mut samples = a.samples;
+    samples.extend(b.samples);
+    let mut log = timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+    let found = breaks::with_jumps(Vec::new(), &log.jumps);
+    log.by_count = breaks::renumber(
+        &mut log.beats,
+        &mut log.amplitude_windows,
+        &found,
+        &log.sided,
+        log.bph,
+    );
+    let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+    let drop = m.beat_error_ms.expect("beat error");
+    let unlock = m.beat_error_unlock_ms.expect("unlock beat error");
+    assert!((drop - 0.45).abs() < 0.1, "drop {drop}");
+    assert!((unlock - 0.45).abs() < 0.15, "unlock {unlock}");
+    assert!(
+        m.caveats.contains(&Caveat::BeatErrorAsSize),
+        "{:?}",
+        m.caveats
+    );
+}
+
+#[test]
+fn the_drop_and_the_unlock_keep_one_sign_near_a_whole_stretch() {
+    // A long stretch at one sign, a hole, and a short one at the other,
+    // near the length a stretch needs to be fitted on its own: a tail of
+    // 12.5 to 13.5 s (about 10.4 to 11.4 s of beats, but only 8 s of 2 s
+    // windows) and a head of 9 to 10 s (under 10 s of beats, but 10 s of
+    // windows), both ways round. The drop's and the unlock's beat errors
+    // decide together whether the sign turns over, so in `session` and in
+    // `long` they never come out with opposite signs.
+    let piece = |duration_s: f64, beat_error_ms: f64, seed: u64| {
+        generate(
+            &SynthConfig {
+                duration_s,
+                rate_s_per_day: 10.0,
+                beat_error_ms,
+                seed,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        )
+    };
+    let lc = LongConfig::default();
+    for (first_s, then_s) in [
+        (90.03, 6.0),
+        (90.03, 12.5),
+        (90.03, 13.0),
+        (90.03, 13.5),
+        (9.03, 90.0),
+        (9.53, 90.0),
+        (10.03, 90.0),
+    ] {
+        for sign in [1.0, -1.0] {
+            let a = piece(first_s, 0.6 * sign, 1);
+            let b = piece(then_s, -0.6 * sign, 2);
+            let fs = a.sample_rate;
+            let mut samples = a.samples;
+            samples.extend(b.samples);
+            let mut log =
+                timegrapher_core::stream::analyze_samples(&samples, fs, &StreamConfig::default());
+            let found = breaks::with_jumps(Vec::new(), &log.jumps);
+            log.by_count = breaks::renumber(
+                &mut log.beats,
+                &mut log.amplitude_windows,
+                &found,
+                &log.sided,
+                log.bph,
+            );
+            let m = session::measure_with_breaks(&log, None, &found, 0.0, log.duration_s);
+            let long = longrun::analyse_with_breaks(&log, None, &found, &lc);
+            for (what, drop, unlock) in [
+                ("session", m.beat_error_ms, m.beat_error_unlock_ms),
+                (
+                    "long",
+                    long.overall.map(|f| f.beat_error_ms),
+                    long.beat_error_unlock_ms,
+                ),
+            ] {
+                let (drop, unlock) = (drop.expect("beat error"), unlock.expect("unlock"));
+                assert!(
+                    drop * unlock > 0.0 && drop.abs() > 0.4 && unlock.abs() > 0.4,
+                    "{what}, {first_s} s then {then_s} s, sign {sign}: drop {drop}, unlock {unlock}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_clock_step_no_listed_pause_explains_is_a_break_too() {
+    // The take lists its pause, and the clock log also steps 2 s at 140 s
+    // with no pause listed there (a system clock step): the breaks are the
+    // listed one and that step, as the step alone would be with nothing
+    // listed.
+    let dir = std::env::temp_dir().join(format!("tg-breaks-step-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (path, mut pairs, join_s) = take(&dir);
+    for q in pairs.iter_mut().filter(|q| q.0 >= 140.0) {
+        q.1 += 2.0;
+    }
+    let mut clock = ClockFit::new(&pairs).unwrap();
+    assert_eq!(clock.breaks.len(), 2, "{:?}", clock.breaks);
+    let found = breaks::of_files_on_clock(&[path.as_path()], Some(&mut clock), 48000).breaks;
+    std::fs::remove_dir_all(&dir).ok();
+    let at: Vec<f64> = found.iter().map(|b| b.audio_s).collect();
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert!(
+        (at[0] - join_s).abs() < 1e-6 && (at[1] - 140.0).abs() < 1e-6,
+        "{found:?}"
+    );
+    assert!((found[1].gap_s - 2.0).abs() < 0.01, "{found:?}");
+}
+
+/// Live and reopened agree on a live input's breaks: blocks of 0.1 s at
+/// 8 kHz arriving at `arrive(k)` go through `GapWatch` into a `Recorder`
+/// (`sound_lost` at each break), and the take it leaves, read back from
+/// its session.json and clock log, has the breaks the live view skipped,
+/// with the same gaps.
+fn live_and_saved_breaks(name: &str, arrive: &dyn Fn(usize) -> f64) -> Vec<(f64, f64)> {
+    let (live, saved) = record_and_reopen(name, arrive, true, true);
+    assert_eq!(saved.len(), live.len(), "live {live:?} saved {saved:?}");
+    for (l, s) in live.iter().zip(&saved) {
+        assert!(
+            (l.0 - s.audio_s).abs() < 1e-6,
+            "live {live:?} saved {saved:?}"
+        );
+        assert!(
+            (l.1 - s.gap_s).abs() < 1e-3,
+            "live {live:?} saved {saved:?}"
+        );
+    }
+    live
+}
+
+/// The breaks seen live, as (audio s, gap s), and those of the take the
+/// recorder left, reopened: as [`live_and_saved_breaks`], with each
+/// `Live::Cut` listed only when `list_cuts` (a recorder from before cuts
+/// lists none), and the take's session.json removed before it is reopened
+/// unless `keep_list`, so its breaks come from the clock log alone.
+fn record_and_reopen(
+    name: &str,
+    arrive: &dyn Fn(usize) -> f64,
+    list_cuts: bool,
+    keep_list: bool,
+) -> (Vec<(f64, f64)>, Vec<breaks::Break>) {
+    record_and_reopen_glitching(name, arrive, list_cuts, keep_list, &[], &[])
+}
+
+/// [`record_and_reopen`], with the input glitching
+/// (`capture::Event::Glitch`) before each block in `glitches`, and
+/// dropping 0.1 s of sound (`capture::Event::Lost`) before each in `drops`.
+fn record_and_reopen_glitching(
+    name: &str,
+    arrive: &dyn Fn(usize) -> f64,
+    list_cuts: bool,
+    keep_list: bool,
+    glitches: &[usize],
+    drops: &[usize],
+) -> (Vec<(f64, f64)>, Vec<breaks::Break>) {
+    use std::time::{Duration, SystemTime};
+    use timegrapher_core::capture::Block;
+    use timegrapher_core::recorder::{Recorder, SessionInfo};
+    let base = std::env::temp_dir().join(format!("tg-live-saved-{name}-{}", std::process::id()));
+    let info = SessionInfo {
+        watch: String::new(),
+        position: "DU".into(),
+        lift_deg: 52.0,
+        bph: Some(28800),
+        device: "test".into(),
+        sample_rate: 8000,
+        bits: 16,
+        software: "test".into(),
+    };
+    let mut rec = Recorder::start(&base, info).unwrap();
+    let mut watch = breaks::GapWatch::new(8000);
+    let t0 = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+    let mut live = Vec::new();
+    let mut written = 0usize;
+    let mut out = Vec::new();
+    for k in 0..900 {
+        for _ in glitches.iter().filter(|&&g| g == k) {
+            out.extend(watch.glitch());
+        }
+        for _ in drops.iter().filter(|&&d| d == k) {
+            out.extend(watch.lost(800));
+        }
+        out.extend(watch.push(Block {
+            samples: vec![0.0; 800],
+            at: t0 + Duration::from_secs_f64(arrive(k)),
+        }));
+    }
+    out.extend(watch.finish());
+    for l in out {
+        match l {
+            breaks::Live::Break(gap) => {
+                live.push((written as f64 / 8000.0, gap));
+                rec.sound_lost(gap);
+            }
+            breaks::Live::Block(b) => {
+                written += b.samples.len();
+                rec.write(&b).unwrap();
+            }
+            // As the app takes a drop: a break of the time lost.
+            breaks::Live::Dropped(gap) => {
+                live.push((written as f64 / 8000.0, gap));
+                rec.sound_lost(gap);
+            }
+            breaks::Live::Cut => {
+                live.push((written as f64 / 8000.0, 0.0));
+                if list_cuts {
+                    rec.sound_lost(0.0);
+                }
+            }
+            // As the app takes a glitch: a break of no time lost.
+            breaks::Live::Glitch => {
+                live.push((written as f64 / 8000.0, 0.0));
+                rec.sound_lost(0.0);
+            }
+        }
+    }
+    let files = rec.segment_paths();
+    let dir = rec.finish(None).unwrap();
+    if !keep_list {
+        std::fs::remove_file(dir.join(timegrapher_core::take::RECORD)).unwrap();
+    }
+    let text = std::fs::read_to_string(dir.join("clock.csv")).unwrap();
+    let mut clock = timegrapher_core::take::clock(Some(&text), 8000, 2, None, None, 90.0)
+        .unwrap()
+        .expect("a clock");
+    let paths: Vec<&std::path::Path> = files.iter().map(|f| f.as_path()).collect();
+    let saved = breaks::of_files_on_clock(&paths, Some(&mut clock), 8000).breaks;
+    std::fs::remove_dir_all(&base).ok();
+    (live, saved)
+}
+
+/// A glitch (a buffer underrun or overrun the input carries on after,
+/// #1046) is a break of no time lost where it fell, live and saved; two
+/// with no block between are one; and a loss of a second after one is
+/// still found, its gap kept.
+#[test]
+fn a_glitch_is_a_break_live_and_saved() {
+    let check = |name: &str, arrive: &dyn Fn(usize) -> f64, glitches: &[usize]| {
+        let (seen, saved) = record_and_reopen_glitching(name, arrive, true, true, glitches, &[]);
+        // Breaks with no sound between are one where the sound jumps: the
+        // recorder lists the last before the next block, and a glitch's
+        // is of no time.
+        let mut live: Vec<(f64, f64)> = Vec::new();
+        for b in seen {
+            match live.last_mut() {
+                Some(l) if (l.0 - b.0).abs() < 1e-9 => l.1 += b.1,
+                _ => live.push(b),
+            }
+        }
+        assert_eq!(saved.len(), live.len(), "live {live:?} saved {saved:?}");
+        for (l, s) in live.iter().zip(&saved) {
+            assert!(
+                (l.0 - s.audio_s).abs() < 1e-6,
+                "live {live:?} saved {saved:?}"
+            );
+            assert!(
+                (l.1 - s.gap_s).abs() < 1e-3,
+                "live {live:?} saved {saved:?}"
+            );
+        }
+        live
+    };
+    let steady = |k: usize| 0.1 * (k + 1) as f64;
+    let found = check("glitch", &steady, &[300, 600, 600]);
+    assert_eq!(found, [(30.0, 0.0), (60.0, 0.0)]);
+    // A second of sound lost with the glitch: one break there, its gap
+    // the second found after it.
+    let found = check(
+        "glitch-gap",
+        &|k| steady(k) + if k >= 450 { 1.0 } else { 0.0 },
+        &[450],
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        (found[0].0 - 45.0).abs() < 1e-6 && (found[0].1 - 1.0).abs() < 1e-6,
+        "{found:?}"
+    );
+}
+
+#[test]
+fn small_losses_add_up_to_the_same_breaks_live_and_saved() {
+    // 0.2 s of sound lost every 2 s: each step is under MIN_GAP_S, but
+    // they add up between clock-log lines, live as in the log.
+    let found = live_and_saved_breaks("small", &|k| 0.1 * (k + 1) as f64 + 0.2 * (k / 20) as f64);
+    assert!(!found.is_empty());
+    assert!(found.iter().all(|b| b.1 >= breaks::MIN_GAP_S), "{found:?}");
+    let lost: f64 = found.iter().map(|b| b.1).sum();
+    assert!(lost > 0.2 * 44.0 - 0.6 - 1e-6, "{found:?}");
+}
+
+#[test]
+fn a_lost_gap_and_a_late_backlog_read_the_same_live_and_saved() {
+    // 3 s lost before block 300; a 2 s stall at block 500 whose backlog
+    // then comes at once loses nothing; a single block 1.5 s late at 700.
+    let found = live_and_saved_breaks("gap", &|k| {
+        let t = 0.1 * (k + 1) as f64 + if k >= 300 { 3.0 } else { 0.0 };
+        let t = t.max(if k >= 500 { 55.1 } else { 0.0 });
+        t + if k == 700 { 1.5 } else { 0.0 }
+    });
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        (found[0].0 - 30.0).abs() < 1e-6 && (found[0].1 - 3.0).abs() < 1e-6,
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_suspend_the_input_resumes_from_unsaid_is_a_break_live_and_saved() {
+    // The machine sleeps 40 minutes 30 s in. On Linux, cpal 0.18 resumes
+    // the input with no error, and its stream clock (CLOCK_MONOTONIC)
+    // stops while the machine sleeps, so the input's own timestamps
+    // see no gap. Each block's arrival is wall time, which keeps
+    // running: the last 0.3 s captured before the sleep arrives at once
+    // on waking, then the input goes on, 40 minutes later than its sound.
+    let sleep_s: f64 = 2400.0;
+    let found = live_and_saved_breaks("suspend", &|k| {
+        let t = 0.1 * (k + 1) as f64;
+        if k < 297 {
+            t
+        } else {
+            (30.0 + sleep_s).max(t + sleep_s)
+        }
+    });
+    // The break is found at the first late block, 29.7 s, but the sound
+    // jumps at the end of the backlog that came with it, 30.0 s: that
+    // backlog is culled, a break at each end.
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert!((found[0].0 - 29.7).abs() < 1e-6, "{found:?}");
+    assert!((found[0].1 - sleep_s).abs() < 1e-3, "{found:?}");
+    assert!((found[1].0 - 30.0).abs() < 1e-6, "{found:?}");
+    assert_eq!(found[1].1, 0.0, "{found:?}");
+    // No amplitude (2 s) or rate window that holds the jump reads across it.
+    let cut: Vec<breaks::Break> = found
+        .iter()
+        .map(|&(audio_s, gap_s)| breaks::Break { audio_s, gap_s })
+        .collect();
+    for len in [2.0, timegrapher_core::measure::RATE_WINDOW_S] {
+        for i in 0..(len * 100.0) as usize {
+            let start = 30.0 - len + 0.005 + i as f64 * 0.01;
+            assert!(
+                breaks::straddles(&cut, start, start + len),
+                "{start} + {len}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_backlog_is_culled_from_the_clock_log_too() {
+    // The suspend of the test above, in a take that lists no cut (saved
+    // before cuts were listed) and in one with no list at all: the clock
+    // log's first line after the step rose 0.2 s more than the lines
+    // after it keep, so a cut falls 0.2 s after that line, at 30.0 s.
+    let arrive = |k: usize| {
+        let t = 0.1 * (k + 1) as f64;
+        if k < 297 {
+            t
+        } else {
+            (30.0 + 2400.0_f64).max(t + 2400.0)
+        }
+    };
+    for keep_list in [true, false] {
+        let (_, saved) = record_and_reopen("backlog-log", &arrive, false, keep_list);
+        let cuts: Vec<&breaks::Break> = saved.iter().filter(|b| b.gap_s == 0.0).collect();
+        assert_eq!(saved.len(), 2, "{keep_list}: {saved:?}");
+        assert_eq!(cuts.len(), 1, "{keep_list}: {saved:?}");
+        assert!(
+            (cuts[0].audio_s - 30.0).abs() < 1e-3,
+            "{keep_list}: {saved:?}"
+        );
+        assert!(saved[0].audio_s < 30.0 - 0.1, "{keep_list}: {saved:?}");
+        // Listed, the gap is the list's; from the clock log alone, the
+        // fit's own (where its stretch sits).
+        let near = if keep_list { 1e-3 } else { 0.5 };
+        assert!(
+            (saved[0].gap_s - 2400.0).abs() < near,
+            "{keep_list}: {saved:?}"
+        );
+    }
+}
+
+/// Each way a take's own list of breaks goes unused is said, never silent
+/// (guard G8), and the breaks then come from the clock log.
+#[test]
+fn a_list_of_breaks_left_unused_says_why() {
+    use breaks::Unlisted;
+    let dir = std::env::temp_dir().join(format!("tg-unlisted-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (path, pairs, join_s) = take(&dir);
+    let clock = ClockFit::new(&pairs).unwrap();
+    let json = dir.join("session.json");
+    let listed = std::fs::read_to_string(&json).unwrap();
+    let read = |text: Option<&str>| {
+        match text {
+            Some(t) => std::fs::write(&json, t).unwrap(),
+            None => std::fs::remove_file(&json).unwrap(),
+        }
+        breaks::of_files(&[path.as_path()], Some(&clock), 48000)
+    };
+    let own = read(Some(&listed));
+    let unreadable = read(Some("{ not json"));
+    let skipped = read(Some(&listed.replace(
+        r#""breaks": ["#,
+        r#""breaks": [{"utc": "2026-10-11T05:00:00.000Z"}, {"frame": 9, "gap_s": "long"}, "#,
+    )));
+    let not_the_take = read(Some(&listed.replace(
+        r#"["audio-001.wav"]"#,
+        r#"["audio-001.wav", "audio-002.wav"]"#,
+    )));
+    let none = read(None);
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(own.unlisted, None);
+    assert_eq!(own.breaks.len(), 1);
+    assert!((own.breaks[0].gap_s - GAP_S).abs() < 1e-9);
+    for (found, why) in [
+        (&unreadable, Unlisted::Unreadable),
+        (&not_the_take, Unlisted::NotTheTake),
+    ] {
+        assert_eq!(found.unlisted, Some(why));
+        assert_eq!(found.breaks, clock.breaks, "{why:?}");
+    }
+    // The entries it can place are still used.
+    assert_eq!(skipped.unlisted, Some(Unlisted::EntriesSkipped));
+    assert_eq!(skipped.breaks, own.breaks);
+    // A take with no session.json lists none: nothing is left unused.
+    assert_eq!(none.unlisted, None);
+    assert_eq!(none.breaks, clock.breaks);
+    assert!((clock.breaks[0].audio_s - join_s).abs() < 5.1);
+}
+
+/// A drop the input tells of at the first late block after a suspend,
+/// when nothing is held yet, hides neither the gap nor its backlog
+/// (#1051): live and saved, the sound stops for the suspend's 10 s and the
+/// 0.1 s dropped (one break where the sound jumps: the drop, and the 10 s
+/// found after it), and the backlog that came late with it is culled.
+#[test]
+fn a_drop_at_the_first_late_block_after_a_suspend_hides_no_gap() {
+    // 10 s asleep before block 300; blocks 300 to 319 are a 2 s backlog
+    // that comes at once on waking, and the input's clock carries on 0.1 s
+    // later for the sound it dropped.
+    let arrive = |k: usize| match k {
+        0..300 => 0.1 * (k + 1) as f64,
+        300..320 => 42.1,
+        _ => 0.1 * (k + 1) as f64 + 10.1,
+    };
+    let (seen, saved) =
+        record_and_reopen_glitching("drop-suspend", &arrive, true, true, &[], &[300]);
+    // The recorder lists breaks with no sound between as one.
+    let mut live: Vec<(f64, f64)> = Vec::new();
+    for b in seen {
+        match live.last_mut() {
+            Some(l) if (l.0 - b.0).abs() < 1e-9 => l.1 += b.1,
+            _ => live.push(b),
+        }
+    }
+    assert_eq!(live.len(), 2, "{live:?}");
+    assert!(
+        (live[0].0 - 30.0).abs() < 1e-6 && (live[0].1 - 10.1).abs() < 1e-3,
+        "{live:?}"
+    );
+    assert_eq!(live[1], (32.0, 0.0), "{live:?}");
+    assert_eq!(saved.len(), live.len(), "live {live:?} saved {saved:?}");
+    for (l, s) in live.iter().zip(&saved) {
+        assert!(
+            (l.0 - s.audio_s).abs() < 1e-6 && (l.1 - s.gap_s).abs() < 1e-3,
+            "live {live:?} saved {saved:?}"
+        );
+    }
+}

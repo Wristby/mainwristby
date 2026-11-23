@@ -1,0 +1,838 @@
+//! Envelope extraction, FFT correlation and small numeric helpers.
+
+use crate::filter::{highpass4, Biquad};
+use realfft::RealFftPlanner;
+
+/// The high-pass corner the envelope uses unless told otherwise, Hz.
+pub const DEFAULT_HIGHPASS_HZ: f64 = 1500.0;
+
+/// How the raw signal is turned into a tick envelope.
+#[derive(Debug, Clone)]
+pub struct EnvelopeConfig {
+    /// High-pass corner in Hz; removes hum, rumble and handling noise.
+    pub highpass_hz: f64,
+    /// Steady tones to notch out (interference picked up by some mics).
+    pub notch_hz: Vec<f64>,
+    /// Length of the moving average applied to the rectified signal, seconds.
+    pub smooth_s: f64,
+    /// Silence knocks and bumps: stretches whose 20 ms energy is more than
+    /// this many times a typical tick's are zeroed before anything else
+    /// sees them. `None` keeps everything.
+    pub burst_gate: Option<f64>,
+}
+
+impl Default for EnvelopeConfig {
+    fn default() -> Self {
+        EnvelopeConfig {
+            highpass_hz: DEFAULT_HIGHPASS_HZ,
+            notch_hz: Vec::new(),
+            smooth_s: 0.0002,
+            burst_gate: Some(2.0),
+        }
+    }
+}
+
+/// High-pass, optional notches, rectify, then a centred moving average.
+pub fn envelope(x: &[f32], fs: f64, cfg: &EnvelopeConfig) -> Vec<f32> {
+    let mut y = x.to_vec();
+    highpass4(&mut y, fs, cfg.highpass_hz);
+    for &f0 in &cfg.notch_hz {
+        Biquad::notch(fs, f0, 30.0).filtfilt(&mut y);
+    }
+    if let Some(factor) = cfg.burst_gate {
+        burst_gate(&mut y, fs, factor);
+    }
+    for v in y.iter_mut() {
+        *v = v.abs();
+    }
+    moving_average(&y, ((cfg.smooth_s * fs).round() as usize).max(1))
+}
+
+/// Zero every sample whose 20 ms energy is more than `factor` times a
+/// typical tick's: the median, over half-second blocks, of each block's
+/// highest 20 ms energy. A knock on the desk or a bump of the stand is
+/// much louder than the ticks and would otherwise pull the beat tracking
+/// and the templates. Loud stretches longer than 0.1 s are kept. Returns
+/// the fraction of samples zeroed.
+pub fn burst_gate(y: &mut [f32], fs: f64, factor: f64) -> f64 {
+    let w = ((0.02 * fs) as usize).max(1);
+    let blk = (0.5 * fs) as usize;
+    if y.len() < 2 * blk || w >= y.len() {
+        return 0.0;
+    }
+    let sq: Vec<f32> = y.iter().map(|v| v * v).collect();
+    let energy = moving_average(&sq, w);
+    let mut peaks: Vec<f32> = energy
+        .chunks_exact(blk)
+        .map(|c| c.iter().copied().fold(0.0, f32::max))
+        .collect();
+    // The upper middle block, not the mean of two: where the watch is
+    // heard in half the blocks only, the mean of a tick's block and a
+    // silent one is no tick's level, and gating at a multiple of it takes
+    // the ticks themselves (the edge take of a watch that stops).
+    let typical = upper_median_f32(&mut peaks);
+    if typical.is_nan() || typical <= 0.0 {
+        return 0.0;
+    }
+    let limit = (factor * typical as f64) as f32;
+    let loud = energy.iter().filter(|&&e| e > limit).count();
+    // Knocks fill a percent or two of a recording. Far more than that means
+    // the typical level is not a tick's, as when the watch is only heard in
+    // the last part of a window, so the "bursts" are the ticks: keep them.
+    if loud as f64 > MAX_GATED * y.len() as f64 {
+        return 0.0;
+    }
+    // A knock is short. A loud stretch longer than MAX_BURST_S (handling,
+    // rubbing) is left alone: silencing it would take every beat in it
+    // with it, and the beat tracking rides through it better than through
+    // a gap.
+    let max_run = (MAX_BURST_S * fs) as usize;
+    let mut zeroed = 0usize;
+    let mut i = 0;
+    while i < y.len() {
+        if energy[i] <= limit {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < y.len() && energy[i] > limit {
+            i += 1;
+        }
+        if i - start <= max_run {
+            y[start..i].fill(0.0);
+            zeroed += i - start;
+        }
+    }
+    zeroed as f64 / y.len() as f64
+}
+
+/// Most of a recording the burst gate may silence; see [`burst_gate`].
+const MAX_GATED: f64 = 0.04;
+/// Longest loud stretch the burst gate silences, seconds.
+const MAX_BURST_S: f64 = 0.1;
+
+/// Centred moving average of width `w`, same length as the input.
+pub fn moving_average(x: &[f32], w: usize) -> Vec<f32> {
+    if w <= 1 || x.is_empty() {
+        return x.to_vec();
+    }
+    let n = x.len();
+    let mut prefix = Vec::with_capacity(n + 1);
+    prefix.push(0.0f64);
+    let mut acc = 0.0f64;
+    for &v in x {
+        acc += v as f64;
+        prefix.push(acc);
+    }
+    let half = w / 2;
+    (0..n)
+        .map(|i| {
+            let a = i.saturating_sub(half);
+            let b = (i + w - half).min(n);
+            ((prefix[b] - prefix[a]) / (b - a) as f64) as f32
+        })
+        .collect()
+}
+
+/// Sliding dot product of `x` with `template`:
+/// `out[n] = sum_k x[n + k] * template[k]`, for `n` in `0..x.len()`
+/// (samples past the end of `x` count as zero). FFT overlap-save.
+///
+/// Never panics. A template that is not all finite numbers matches
+/// nothing, all zeros (#1207). Templates from no beats are None at their
+/// source now ([`crate::beats::median_window`], #1210); this stays as the
+/// backstop. A sample of `x` that is not a finite number counts as zero.
+#[allow(clippy::needless_range_loop)]
+pub fn correlate(x: &[f32], template: &[f32]) -> Vec<f32> {
+    let m = template.len();
+    let n = x.len();
+    if m == 0 || n == 0 || !template.iter().all(|v| v.is_finite()) {
+        return vec![0.0; n];
+    }
+    let l = (4 * m).next_power_of_two().max(4096);
+    let step = l - m + 1;
+    let mut planner = RealFftPlanner::<f32>::new();
+    let fwd = planner.plan_fft_forward(l);
+    let inv = planner.plan_fft_inverse(l);
+
+    // Spectrum of the reversed template.
+    let mut h = vec![0.0f32; l];
+    for (k, &v) in template.iter().enumerate() {
+        h[m - 1 - k] = v;
+    }
+    let mut hs = fwd.make_output_vec();
+    if fwd.process(&mut h, &mut hs).is_err() {
+        return vec![0.0; n];
+    }
+
+    let mut out = vec![0.0f32; n];
+    let mut buf = vec![0.0f32; l];
+    let mut spec = fwd.make_output_vec();
+    let scale = 1.0 / l as f32;
+    let mut s = 0usize;
+    while s < n {
+        // Block covers x[s .. s + l]; outputs y[s + j] for j >= m - 1 are
+        // valid, and out[n'] = y[n' + m - 1].
+        for (j, b) in buf.iter_mut().enumerate() {
+            *b = x
+                .get(s + j)
+                .copied()
+                .filter(|v| v.is_finite())
+                .unwrap_or(0.0);
+        }
+        if fwd.process(&mut buf, &mut spec).is_err() {
+            return vec![0.0; n];
+        }
+        for (a, b) in spec.iter_mut().zip(hs.iter()) {
+            *a *= *b;
+        }
+        // The inverse takes only a real first and last bin; a product
+        // that overflowed would leave them not quite real.
+        for edge in [0, spec.len() - 1] {
+            spec[edge].im = 0.0;
+        }
+        if inv.process(&mut spec, &mut buf).is_err() {
+            return vec![0.0; n];
+        }
+        for j in (m - 1)..l {
+            let idx = s + j - (m - 1);
+            if idx >= n || j - (m - 1) >= step {
+                break;
+            }
+            out[idx] = buf[j] * scale;
+        }
+        s += step;
+    }
+    out
+}
+
+/// Index and value of the maximum of `x[a..b]` (clamped to the slice).
+pub fn argmax(x: &[f32], a: usize, b: usize) -> Option<(usize, f32)> {
+    let b = b.min(x.len());
+    if a >= b {
+        return None;
+    }
+    let mut best = (a, x[a]);
+    for (i, &v) in x[a..b].iter().enumerate() {
+        if v > best.1 {
+            best = (a + i, v);
+        }
+    }
+    Some(best)
+}
+
+/// Sub-sample position of a peak by parabolic interpolation.
+pub fn parabolic(x: &[f32], i: usize) -> f64 {
+    if i == 0 || i + 1 >= x.len() {
+        return i as f64;
+    }
+    let (y0, y1, y2) = (x[i - 1] as f64, x[i] as f64, x[i + 1] as f64);
+    let d = y0 - 2.0 * y1 + y2;
+    // Only a local maximum is refined: on a slope (an argmax at the edge
+    // of its search window) a nearly flat curve would throw the vertex
+    // many samples away.
+    if d < 0.0 && y1 >= y0 && y1 >= y2 {
+        i as f64 + 0.5 * (y0 - y2) / d
+    } else {
+        i as f64
+    }
+}
+
+/// Median of a slice (the slice is reordered). Returns NaN when empty.
+/// With an even count it is the mean of the two middle values.
+pub fn median(v: &mut [f64]) -> f64 {
+    let odd = v.len() % 2 == 1;
+    middle(v, f64::total_cmp).map_or(f64::NAN, |(lo, hi)| if odd { hi } else { 0.5 * (lo + hi) })
+}
+
+/// The mean of the finite values `v` gives, summed in order from -0 as
+/// `Iterator::sum` sums; `None` when there are none.
+pub fn mean_of(v: impl Iterator<Item = f64>) -> Option<f64> {
+    let (sum, n) = v
+        .filter(|x| x.is_finite())
+        .fold((-0.0, 0usize), |(s, n), x| (s + x, n + 1));
+    (n > 0).then(|| sum / n as f64)
+}
+
+/// [`median`] of the finite values `v` gives; `None` when there are none
+/// (#512).
+pub fn median_of(v: impl Iterator<Item = f64>) -> Option<f64> {
+    let mut w: Vec<f64> = v.filter(|x| x.is_finite()).collect();
+    (!w.is_empty()).then(|| median(&mut w))
+}
+
+/// How many times the variance of their mean a [`median`] of `k`
+/// independent normal values has: its variance is `c(k)·σ²/k`. Exact normal order
+/// statistics for k ≤ 10, by integration (an even count averages the two
+/// middle values, so it scatters less than the odd count either side);
+/// π/2, the large-k limit, beyond. 1 for k of 1 or 2, where the median
+/// is the mean (#656).
+pub const MEDIAN_VARIANCE_FACTOR: [f64; 10] = [
+    1.0, 1.0, 1.3460, 1.1928, 1.4342, 1.2885, 1.4731, 1.3454, 1.4949, 1.3833,
+];
+
+/// [`MEDIAN_VARIANCE_FACTOR`] for `k` values (1 for none).
+pub fn median_variance_factor(k: usize) -> f64 {
+    match k {
+        0 => 1.0,
+        1..=10 => MEDIAN_VARIANCE_FACTOR[k - 1],
+        _ => std::f64::consts::FRAC_PI_2,
+    }
+}
+
+/// The value `q` (0 to 1) of the way through `sorted` (ascending),
+/// interpolated linearly between the two values either side: the one
+/// percentile rule in core (math guide section 8, #512). Unlike the
+/// nearest rank it moves smoothly with the values, so a set with two
+/// clusters does not jump from one to the other on a tiny change (#846).
+/// NaN when empty.
+pub fn quantile(sorted: &[f64], q: f64) -> f64 {
+    quantile_by(sorted.len(), |i| sorted[i], q)
+}
+
+/// Tukey's far fences of `sorted` (ascending): three interquartile
+/// ranges below the lower quartile and above the upper, by [`quantile`].
+/// A value outside them is a lone wild one, not part of the run. The one
+/// fence rule in core: the steadiness views' scale
+/// ([`crate::chart_scale::spread`]), a histogram's
+/// ([`crate::histogram::histogram_with`]) and the unlock beat error's
+/// screen ([`crate::amplitude::screen_unlock_beat_error`]). None when
+/// empty.
+pub fn far_fences(sorted: &[f64]) -> Option<(f64, f64)> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let (q1, q3) = (quantile(sorted, 0.25), quantile(sorted, 0.75));
+    let iqr = q3 - q1;
+    Some((q1 - FAR_FENCE_IQR * iqr, q3 + FAR_FENCE_IQR * iqr))
+}
+
+/// The reach of Tukey's far fences, in interquartile ranges; also the gap
+/// that parts a value beyond them from the body in [`joined_range`]
+/// (#1971, Norm).
+pub const FAR_FENCE_IQR: f64 = 3.0;
+
+/// The span of `sorted` (ascending) joined to its body: the values inside
+/// [`far_fences`], then, walking outward from the last of them each way,
+/// each next value while it is less than [`FAR_FENCE_IQR`] interquartile
+/// ranges past the one before. The first gap that wide ends it, so a
+/// run-down's tail, its readings following on from one another, stays
+/// joined, and a cluster of glitches across an empty stretch does not, at
+/// any count (Norm, #1971). None when empty or with no spread between the
+/// quartiles.
+pub fn joined_range(sorted: &[f64]) -> Option<(f64, f64)> {
+    let (f_lo, f_hi) = far_fences(sorted)?;
+    let iqr = quantile(sorted, 0.75) - quantile(sorted, 0.25);
+    if iqr <= 0.0 {
+        return None;
+    }
+    let gap = FAR_FENCE_IQR * iqr;
+    let mut hi = sorted.iter().rposition(|&x| x <= f_hi)?;
+    while hi + 1 < sorted.len() && sorted[hi + 1] - sorted[hi] < gap {
+        hi += 1;
+    }
+    let mut lo = sorted.iter().position(|&x| x >= f_lo)?;
+    while lo > 0 && sorted[lo] - sorted[lo - 1] < gap {
+        lo -= 1;
+    }
+    Some((sorted[lo], sorted[hi]))
+}
+
+/// [`quantile`] of `f32` values, by the same rule.
+pub fn quantile_f32(sorted: &[f32], q: f64) -> f32 {
+    quantile_by(sorted.len(), |i| f64::from(sorted[i]), q) as f32
+}
+
+/// [`quantile`] of `len` sorted values read by `at`, without copying them.
+fn quantile_by(len: usize, at: impl Fn(usize) -> f64, q: f64) -> f64 {
+    if len == 0 {
+        return f64::NAN;
+    }
+    let x = q.clamp(0.0, 1.0) * (len - 1) as f64;
+    let i = x.floor() as usize;
+    let j = (i + 1).min(len - 1);
+    at(i) + (at(j) - at(i)) * (x - i as f64)
+}
+
+/// [`quantile`] `q` of the finite values in `v`, in any order; `None`
+/// when there are none.
+pub fn percentile(v: &[f64], q: f64) -> Option<f64> {
+    let mut w: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
+    if w.is_empty() {
+        return None;
+    }
+    w.sort_by(f64::total_cmp);
+    Some(quantile(&w, q))
+}
+
+/// [`median`] of `f32` values, by the same rule.
+pub fn median_f32(v: &mut [f32]) -> f32 {
+    let odd = v.len() % 2 == 1;
+    middle(v, f32::total_cmp).map_or(f32::NAN, |(lo, hi)| if odd { hi } else { 0.5 * (lo + hi) })
+}
+
+/// The upper of the two middle values of `v` for an even count (the
+/// middle one for an odd count), NaN when empty: an order statistic,
+/// always one of the values, never the mean of two. Not the median: two
+/// envelope levels take it, each for its own reason. The knock gate
+/// ([`burst_gate`]) gates on a level a block actually reaches, and the
+/// beats' median template ([`crate::beats::median_window`]) keeps it
+/// until #844 settles what moving it would trade. Every other level,
+/// and every figure shown as a median, takes [`median_f32`] (#839).
+/// Reorders `v`.
+pub fn upper_median_f32(v: &mut [f32]) -> f32 {
+    middle(v, f32::total_cmp).map_or(f32::NAN, |(_, hi)| hi)
+}
+
+/// The two middle values of `v` in the order `cmp` (the middle one twice
+/// for an odd count), or `None` when empty. Reorders `v`.
+fn middle<T: Copy>(v: &mut [T], cmp: impl Fn(&T, &T) -> std::cmp::Ordering) -> Option<(T, T)> {
+    if v.is_empty() {
+        return None;
+    }
+    let mid = v.len() / 2;
+    v.select_nth_unstable_by(mid, &cmp);
+    let hi = v[mid];
+    if v.len() % 2 == 1 {
+        return Some((hi, hi));
+    }
+    let lo = *v[..mid]
+        .iter()
+        .max_by(|a, b| cmp(a, b))
+        .expect("an even count has a lower half");
+    Some((lo, hi))
+}
+
+/// Mean of the middle of `v` after dropping `trim` of the values from each
+/// end (0.25 keeps the middle half; 0.5 is the median). Sorts `v`.
+pub fn trimmed_mean_f32(v: &mut [f32], trim: f64) -> f32 {
+    if v.is_empty() {
+        return f32::NAN;
+    }
+    v.sort_unstable_by(|a, b| a.total_cmp(b));
+    let n = v.len();
+    let cut = ((n as f64 * trim.clamp(0.0, 0.5)).floor() as usize).min((n - 1) / 2);
+    let mid = &v[cut..n - cut];
+    (mid.iter().map(|&x| x as f64).sum::<f64>() / mid.len() as f64) as f32
+}
+
+/// Median absolute deviation scaled to match a standard deviation.
+pub fn robust_sd(v: &[f64]) -> f64 {
+    let mut w: Vec<f64> = v.iter().copied().filter(|x| x.is_finite()).collect();
+    let m = median(&mut w);
+    let mut dev: Vec<f64> = w.iter().map(|x| (x - m).abs()).collect();
+    1.4826 * median(&mut dev)
+}
+
+/// `y` less its least-squares line against the index, in place.
+pub fn detrend_line(y: &mut [f64]) {
+    let n = y.len() as f64;
+    let mx = (n - 1.0) / 2.0;
+    let my = y.iter().sum::<f64>() / n;
+    let (mut sxy, mut sxx) = (0.0, 0.0);
+    for (i, v) in y.iter().enumerate() {
+        let dx = i as f64 - mx;
+        sxy += dx * (v - my);
+        sxx += dx * dx;
+    }
+    let slope = if sxx > 0.0 { sxy / sxx } else { 0.0 };
+    for (i, v) in y.iter_mut().enumerate() {
+        *v -= my + slope * (i as f64 - mx);
+    }
+}
+
+/// Solves `a x = b` by Gauss–Jordan elimination with partial pivoting:
+/// the one linear solve in core (#512). `None` when a pivot is smaller
+/// than `tiny`, the caller's own scale for "singular".
+#[allow(clippy::needless_range_loop)]
+pub fn solve<const N: usize>(mut a: [[f64; N]; N], mut b: [f64; N], tiny: f64) -> Option<[f64; N]> {
+    for c in 0..N {
+        let p = (c..N).max_by(|&i, &j| a[i][c].abs().total_cmp(&a[j][c].abs()))?;
+        if a[p][c].abs() < tiny {
+            return None;
+        }
+        a.swap(c, p);
+        b.swap(c, p);
+        for r in 0..N {
+            if r != c {
+                let f = a[r][c] / a[c][c];
+                for k in 0..N {
+                    a[r][k] -= f * a[c][k];
+                }
+                b[r] -= f * b[c];
+            }
+        }
+    }
+    Some(std::array::from_fn(|i| b[i] / a[i][i]))
+}
+
+/// Weighted least squares: the coefficients `x` that minimise
+/// `sum w (y - row . x)^2` over the `(row, y, w)` given, through the
+/// normal equations and [`solve`] (`None` as there).
+pub fn least_squares<const N: usize>(
+    rows: impl IntoIterator<Item = ([f64; N], f64, f64)>,
+    tiny: f64,
+) -> Option<[f64; N]> {
+    let (a, b) = normal_equations(rows);
+    solve(a, b, tiny)
+}
+
+/// [`least_squares`] with the coefficients' covariance (XᵀWX)⁻¹, which
+/// is their covariance when each `w` is 1/σ² of its `y` (#1474). The
+/// inverse is [`solve`] against each unit vector, so `None` as there.
+#[allow(clippy::needless_range_loop)]
+pub fn least_squares_cov<const N: usize>(
+    rows: impl IntoIterator<Item = ([f64; N], f64, f64)>,
+    tiny: f64,
+) -> Option<([f64; N], [[f64; N]; N])> {
+    let (a, b) = normal_equations(rows);
+    let x = solve(a, b, tiny)?;
+    let mut cov = [[0.0f64; N]; N];
+    for j in 0..N {
+        let e: [f64; N] = std::array::from_fn(|i| f64::from(u8::from(i == j)));
+        let col = solve(a, e, tiny)?;
+        for i in 0..N {
+            cov[i][j] = col[i];
+        }
+    }
+    Some((x, cov))
+}
+
+/// XᵀWX and XᵀWy over the `(row, y, w)` given.
+#[allow(clippy::needless_range_loop)]
+fn normal_equations<const N: usize>(
+    rows: impl IntoIterator<Item = ([f64; N], f64, f64)>,
+) -> ([[f64; N]; N], [f64; N]) {
+    let mut a = [[0.0f64; N]; N];
+    let mut b = [0.0f64; N];
+    for (r, y, w) in rows {
+        for i in 0..N {
+            b[i] += w * r[i] * y;
+            for j in 0..N {
+                a[i][j] += w * r[i] * r[j];
+            }
+        }
+    }
+    (a, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A body of 1000 values over 0 to 99.9 and `tail` past it, sorted,
+    /// with the body's interquartile range. Values past the upper quartile
+    /// move no quartile, so the range is the body's at any tail.
+    fn with_tail(tail: &[f64]) -> (Vec<f64>, f64) {
+        let mut v: Vec<f64> = (0..1000).map(|i| f64::from(i) / 10.0).collect();
+        v.extend_from_slice(tail);
+        v.sort_by(f64::total_cmp);
+        let iqr = quantile(&v, 0.75) - quantile(&v, 0.25);
+        (v, iqr)
+    }
+
+    /// A tail joined above the body stays in the range to its end, and
+    /// the mirror below (Trevor on #2038): each next value is two
+    /// interquartile ranges past the one before, under the 3 that part.
+    #[test]
+    fn a_joined_tail_stays_in_the_range_above_and_below() {
+        let (_, iqr) = with_tail(&[]);
+        let (_, f_hi) = far_fences(&with_tail(&[]).0).unwrap();
+        let up: Vec<f64> = (0..4).map(|k| f_hi + f64::from(k) * 2.0 * iqr).collect();
+        let (v, _) = with_tail(&up);
+        assert_eq!(joined_range(&v), Some((0.0, up[3])));
+        let down: Vec<f64> = (0..4).map(|k| -f64::from(k + 1) * 2.0 * iqr).collect();
+        let (v, _) = with_tail(&down);
+        assert_eq!(joined_range(&v), Some((down[3], 99.9)));
+    }
+
+    /// The gap that parts a value from the body is the fences' reach,
+    /// `FAR_FENCE_IQR` interquartile ranges: a hundredth under it the
+    /// value is joined, a hundredth over it the range ends (Trevor on
+    /// #2038).
+    #[test]
+    fn the_parting_gap_is_three_interquartile_ranges() {
+        let (_, iqr) = with_tail(&[]);
+        let (_, f_hi) = far_fences(&with_tail(&[]).0).unwrap();
+        let last = f_hi - 1.0;
+        let gap = FAR_FENCE_IQR * iqr;
+        let (v, _) = with_tail(&[last, last + gap * 0.99]);
+        assert_eq!(joined_range(&v).unwrap().1, last + gap * 0.99);
+        let (v, _) = with_tail(&[last, last + gap * 1.01]);
+        assert_eq!(joined_range(&v).unwrap().1, last);
+    }
+
+    /// The covariance is the inverse of the normal matrix, and the fit is
+    /// [`least_squares`]'s.
+    #[test]
+    fn least_squares_cov_inverts_the_normal_matrix() {
+        let rows = [
+            ([1.0, 0.0], 1.0, 4.0),
+            ([1.0, 1.0], 3.0, 1.0),
+            ([1.0, 2.0], 4.0, 1.0),
+        ];
+        let (x, cov) = least_squares_cov(rows, 1e-12).unwrap();
+        assert_eq!(Some(x), least_squares(rows, 1e-12));
+        // XᵀWX = [[6, 3], [3, 5]], whose inverse is [[5, -3], [-3, 6]] / 21.
+        let want = [[5.0 / 21.0, -3.0 / 21.0], [-3.0 / 21.0, 6.0 / 21.0]];
+        for i in 0..2 {
+            for j in 0..2 {
+                assert!((cov[i][j] - want[i][j]).abs() < 1e-12, "{cov:?}");
+            }
+        }
+        assert!(least_squares_cov([([1.0, 1.0], 1.0, 1.0)], 1e-12).is_none());
+    }
+
+    /// The table matches 200,000 simulated medians of k normal values
+    /// each to 1% (k = 3: 1.349; 4: 1.194; 5: 1.432; 10: 1.387), and a
+    /// median of two is their mean.
+    #[test]
+    fn a_median_of_k_scatters_as_the_table_says() {
+        for (k, sim) in [(3, 1.349), (4, 1.194), (5, 1.432), (10, 1.387)] {
+            let c = median_variance_factor(k);
+            assert!((c / sim - 1.0).abs() < 0.01, "{k}: {c}");
+        }
+        assert_eq!(median_variance_factor(2), 1.0);
+        assert_eq!(median_variance_factor(1000), std::f64::consts::FRAC_PI_2);
+        // Seeded here too: 20,000 medians of 5.
+        let mut z = crate::synth::Rng::new(3);
+        let m: Vec<f64> = (0..20_000)
+            .map(|_| median(&mut (0..5).map(|_| z.normal()).collect::<Vec<_>>()))
+            .collect();
+        let var = m.iter().map(|v| v * v).sum::<f64>() / m.len() as f64;
+        assert!(
+            (var * 5.0 / median_variance_factor(5) - 1.0).abs() < 0.03,
+            "{var}"
+        );
+    }
+
+    /// The one percentile rule: linear between neighbours at q·(n − 1)
+    /// (Hyndman–Fan type 7), q clamped to 0 to 1, non-finite values left
+    /// out, nothing to read giving NaN or None (#846).
+    #[test]
+    fn quantile_is_linear_between_neighbours() {
+        let v = [10.0, 20.0, 30.0, 40.0, 50.0];
+        assert_eq!(quantile(&v, 0.0), 10.0);
+        assert!((quantile(&v, 0.05) - 12.0).abs() < 1e-12);
+        assert_eq!(quantile(&v, 0.5), 30.0);
+        assert!((quantile(&v, 0.95) - 48.0).abs() < 1e-12);
+        assert_eq!(quantile(&v, 1.0), 50.0);
+        assert_eq!(quantile(&v, -0.5), 10.0);
+        assert_eq!(quantile(&v, 1.5), 50.0);
+        assert_eq!(quantile(&[7.0], 0.3), 7.0);
+        assert!(quantile(&[], 0.5).is_nan());
+
+        let mixed = [50.0, f64::NAN, 10.0, 40.0, f64::INFINITY, 30.0, 20.0];
+        assert!((percentile(&mixed, 0.05).unwrap() - 12.0).abs() < 1e-12);
+        assert_eq!(percentile(&mixed, 0.5), Some(30.0));
+        assert_eq!(percentile(&[f64::NAN], 0.5), None);
+        assert_eq!(percentile(&[], 0.5), None);
+
+        let four = [1.0, 2.0, 3.0, 4.0];
+        assert!((quantile(&four, 0.5) - 2.5).abs() < 1e-12);
+        assert!((quantile(&four, 0.05) - 1.15).abs() < 1e-12);
+    }
+
+    /// #846: window amplitudes in two clusters, 10° apart, with p05 at
+    /// the boundary. One more window in the upper cluster moves p05 by
+    /// half a degree, not from one cluster to the other as a nearest
+    /// rank does (index round(1.45) = 1 against round(1.5) = 2).
+    #[test]
+    fn percentile_steps_smoothly_across_two_clusters() {
+        let set = |high: usize| {
+            let mut v = vec![265.0, 265.0];
+            v.extend(std::iter::repeat_n(275.0, high));
+            v
+        };
+        let (a, b) = (set(28), set(29));
+        let (pa, pb) = (percentile(&a, 0.05).unwrap(), percentile(&b, 0.05).unwrap());
+        assert!(
+            (pa - 269.5).abs() < 1e-9 && (pb - 270.0).abs() < 1e-9,
+            "{pa} {pb}"
+        );
+        let nearest = |v: &[f64]| v[((v.len() - 1) as f64 * 0.05).round() as usize];
+        assert_eq!((nearest(&a), nearest(&b)), (265.0, 275.0));
+    }
+
+    #[test]
+    fn both_medians_take_one_rule_for_an_even_count() {
+        // The mean of the two middle values, in f64 and in f32 alike.
+        let mut a = [4.0, 1.0, 3.0, 2.0];
+        let mut b = [4.0f32, 1.0, 3.0, 2.0];
+        assert_eq!(median(&mut a), 2.5);
+        assert_eq!(median_f32(&mut b), 2.5);
+        let (mut a, mut b) = ([5.0, 1.0, 3.0], [5.0f32, 1.0, 3.0]);
+        assert_eq!((median(&mut a), median_f32(&mut b)), (3.0, 3.0));
+        assert!(median(&mut []).is_nan() && median_f32(&mut []).is_nan());
+        // The upper middle value is an order statistic of its own.
+        assert_eq!(upper_median_f32(&mut [4.0, 1.0, 3.0, 2.0]), 3.0);
+        assert_eq!(upper_median_f32(&mut [5.0, 1.0, 3.0]), 3.0);
+    }
+
+    #[test]
+    fn burst_gate_silences_a_knock_not_the_ticks() {
+        // A 1 ms tick every 125 ms for 4 s, and a knock ten times as loud.
+        let fs = 48_000.0;
+        let mut y = vec![0.0f32; (4.0 * fs) as usize];
+        for k in 0..32 {
+            let i = ((0.05 + k as f64 * 0.125) * fs) as usize;
+            for v in &mut y[i..i + 48] {
+                *v = 0.5;
+            }
+        }
+        let knock = (2.01 * fs) as usize;
+        for v in &mut y[knock..knock + 480] {
+            *v = 5.0;
+        }
+        let ticks: f32 = y.iter().filter(|&&v| v == 0.5).count() as f32;
+        let frac = burst_gate(&mut y, fs, 2.0);
+        assert!(y[knock..knock + 480].iter().all(|&v| v == 0.0));
+        assert_eq!(y.iter().filter(|&&v| v == 0.5).count() as f32, ticks);
+        assert!(frac > 0.0 && frac < 0.01, "{frac}");
+    }
+
+    #[test]
+    fn burst_gate_keeps_a_long_loud_stretch() {
+        // Ticks for 8 s, and from 4 s a loud stretch of 0.15 s (handling,
+        // not a knock): left alone, so the ticks in it are still there.
+        let fs = 48_000.0;
+        let mut y = vec![0.0f32; (8.0 * fs) as usize];
+        for k in 0..64 {
+            let i = ((0.05 + k as f64 * 0.125) * fs) as usize;
+            for v in &mut y[i..i + 48] {
+                *v = 0.5;
+            }
+        }
+        let a = (4.0 * fs) as usize;
+        for (j, v) in y[a..a + (0.15 * fs) as usize].iter_mut().enumerate() {
+            *v += if j.is_multiple_of(2) { 3.0 } else { -3.0 };
+        }
+        let before = y.clone();
+        assert_eq!(burst_gate(&mut y, fs, 2.0), 0.0);
+        assert_eq!(y, before);
+    }
+
+    #[test]
+    fn burst_gate_keeps_ticks_when_the_watch_arrives_late() {
+        // Faint noise for 3 s, then ticks for 1 s: the typical block is
+        // quiet and every tick looks like a burst, so nothing is gated.
+        let fs = 48_000.0;
+        let mut y: Vec<f32> = (0..(4.0 * fs) as usize)
+            .map(|i| 0.001 * ((i * 7919 % 1000) as f32 / 500.0 - 1.0))
+            .collect();
+        for k in 0..8 {
+            let i = ((3.05 + k as f64 * 0.125) * fs) as usize;
+            for v in &mut y[i..i + 48] {
+                *v = 0.5;
+            }
+        }
+        let before = y.clone();
+        assert_eq!(burst_gate(&mut y, fs, 2.0), 0.0);
+        assert_eq!(y, before);
+    }
+
+    #[test]
+    fn parabolic_refines_only_a_peak() {
+        // A true peak moves toward its higher neighbour by under a sample.
+        let p = parabolic(&[0.0, 1.0, 0.5], 1);
+        assert!(p > 1.0 && p < 1.5, "{p}");
+        // On a nearly flat falling slope the vertex would be far away.
+        assert_eq!(parabolic(&[1.0, 0.999, 0.997], 1), 1.0);
+    }
+
+    #[test]
+    fn trimmed_mean_ignores_the_ends() {
+        let mut v = [1.0, 2.0, 3.0, 4.0, 100.0, -50.0, 2.5, 3.5];
+        // Middle half of the sorted values: 2.0, 2.5, 3.0, 3.5.
+        assert!((trimmed_mean_f32(&mut v, 0.25) - 2.75).abs() < 1e-6);
+        let mut one = [7.0];
+        assert_eq!(trimmed_mean_f32(&mut one, 0.25), 7.0);
+        let mut w = [1.0, 2.0, 9.0];
+        assert_eq!(trimmed_mean_f32(&mut w, 0.5), 2.0);
+    }
+
+    #[test]
+    fn correlate_matches_direct() {
+        let x: Vec<f32> = (0..10_000)
+            .map(|i| ((i * 7919) % 101) as f32 / 50.0 - 1.0)
+            .collect();
+        let t: Vec<f32> = (0..300)
+            .map(|i| ((i * 31) % 17) as f32 / 8.0 - 1.0)
+            .collect();
+        let fast = correlate(&x, &t);
+        for &n in &[0usize, 1, 500, 4000, 9_699, 9_999] {
+            let direct: f32 = (0..t.len())
+                .map(|k| x.get(n + k).copied().unwrap_or(0.0) * t[k])
+                .sum();
+            assert!(
+                (fast[n] - direct).abs() < 1e-2,
+                "n={n} fast={} direct={direct}",
+                fast[n]
+            );
+        }
+    }
+
+    /// A template made from no beats is NaN throughout, as a take too
+    /// short for one beat's window gives: it matches nothing, and a
+    /// sample that is not a number counts as zero. Neither panics (#1207).
+    #[test]
+    fn correlate_never_panics_on_a_template_or_sound_that_is_not_a_number() {
+        let x: Vec<f32> = (0..5_000).map(|i| (i % 13) as f32 / 13.0).collect();
+        assert_eq!(correlate(&x, &[f32::NAN; 400]), vec![0.0; x.len()]);
+        assert_eq!(correlate(&x, &[1.0, f32::INFINITY]), vec![0.0; x.len()]);
+        assert_eq!(correlate(&[], &[f32::NAN]), Vec::<f32>::new());
+        // NaN and infinite samples count as zero.
+        let t = [0.5f32, -0.25, 1.0];
+        let mut bad = x.clone();
+        bad[100] = f32::NAN;
+        bad[2_000] = f32::NEG_INFINITY;
+        let mut zeroed = x.clone();
+        zeroed[100] = 0.0;
+        zeroed[2_000] = 0.0;
+        let (got, want) = (correlate(&bad, &t), correlate(&zeroed, &t));
+        assert!(got.iter().zip(&want).all(|(a, b)| (a - b).abs() < 1e-4));
+        // Sound loud enough that the spectrum overflows still gives finite
+        // numbers or infinities, never a panic.
+        let loud = vec![f32::MAX / 4.0; 5_000];
+        assert_eq!(correlate(&loud, &[f32::MAX / 4.0; 64]).len(), 5_000);
+    }
+
+    #[test]
+    fn moving_average_flat() {
+        let x = vec![2.0f32; 50];
+        assert!(moving_average(&x, 7)
+            .iter()
+            .all(|&v| (v - 2.0).abs() < 1e-6));
+    }
+
+    /// The one linear solve: a pivot that needs a row swap, a weighted
+    /// quadratic recovered exactly, and a singular system refused at the
+    /// caller's own scale (#512).
+    #[test]
+    fn one_solve_reads_fits_and_refuses_a_singular_system() {
+        let x = solve(
+            [[0.0, 2.0, 1.0], [1.0, 1.0, 0.0], [2.0, 0.0, 3.0]],
+            [7.0, 3.0, 11.0],
+            1e-12,
+        )
+        .unwrap();
+        for (got, want) in x.iter().zip([1.0, 2.0, 3.0]) {
+            assert!((got - want).abs() < 1e-12, "{x:?}");
+        }
+        let rows = (0..9).map(|i| {
+            let t = f64::from(i) - 4.0;
+            (
+                [1.0, t, t * t],
+                0.5 - 2.0 * t + 0.25 * t * t,
+                1.0 + f64::from(i % 3),
+            )
+        });
+        let c = least_squares(rows, 1e-12).unwrap();
+        for (got, want) in c.iter().zip([0.5, -2.0, 0.25]) {
+            assert!((got - want).abs() < 1e-9, "{c:?}");
+        }
+        assert_eq!(solve([[1.0, 2.0], [2.0, 4.0]], [1.0, 2.0], 1e-12), None);
+        let flat = (0..5).map(|_| ([1.0, 3.0, 9.0], 1.0, 1.0));
+        assert_eq!(least_squares(flat, 1e-12), None);
+    }
+}

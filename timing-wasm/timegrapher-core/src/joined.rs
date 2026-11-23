@@ -1,0 +1,648 @@
+//! One take's measured stretches joined end to end, so the steadiness
+//! tests and the long-run analysis read them as one run: the app's
+//! Steadiness panes join the stretches in the position the watch is in,
+//! and `timegrapher series` and `timegrapher long` join a take's entries,
+//! each after its settling.
+
+use crate::beats::Beat;
+use crate::breaks::{self, Break};
+use crate::clock::ClockFit;
+use crate::measure::Caveat;
+use crate::session::Manifest;
+use crate::stream::BeatLog;
+use crate::take;
+
+/// Seconds of beats the steadiness tests need before they can say
+/// anything: 30 rate readings of 10 s.
+pub const MIN_S: f64 = 300.0;
+
+/// Room left between two stretches when they are joined, seconds: longer
+/// than a gap the readings fit across.
+pub const JOIN_S: f64 = 5.0;
+
+/// The take's clock as [`join`] reads a time on it: `t` itself without
+/// one.
+fn on_clock(clock: Option<&ClockFit>, t: f64) -> f64 {
+    clock.map_or(t, |c| c.map(t))
+}
+
+/// The length of the stretches `spans` (start, end; the last may run on)
+/// once joined end to end, up to `end_s`, seconds, as [`join`] gives it on
+/// `clock`.
+pub fn joined_duration(spans: &[(f64, f64)], end_s: f64, clock: Option<&ClockFit>) -> f64 {
+    let lens: Vec<f64> = spans
+        .iter()
+        .map(|&(a, b)| (a.max(0.0), b.min(end_s)))
+        .filter(|(a, b)| b > a)
+        .map(|(a, b)| on_clock(clock, b) - on_clock(clock, a))
+        .collect();
+    lens.iter().sum::<f64>() + JOIN_S * lens.len().saturating_sub(1) as f64
+}
+
+/// [`Caveat::Positions`] for a take whose entries that read anything
+/// name more than one position, read whole or joined: the isochronism
+/// and the rate against the amplitude span the positions (#651).
+pub fn positions_caveat(m: &Manifest) -> Option<Caveat> {
+    let mut seen: Vec<&str> = Vec::new();
+    for p in m
+        .recordings
+        .iter()
+        .filter(|e| !take::reads_nothing(e))
+        .filter_map(|e| e.position.as_deref())
+    {
+        if !seen.contains(&p) {
+            seen.push(p);
+        }
+    }
+    (seen.len() > 1).then_some(Caveat::Positions { count: seen.len() })
+}
+
+/// [`Caveat::PausesUnseen`] for a take read in `spans` on `clock`: the
+/// listed pauses inside them that the clock log witnesses but shows no gap
+/// at, so [`join`] counts no time for them (#646), as
+/// [`ClockFit::unseen`] counts them on a take read whole.
+pub fn pauses_unseen(
+    spans: &[(f64, f64)],
+    breaks: &[Break],
+    clock: Option<&ClockFit>,
+) -> Option<Caveat> {
+    let inside: Vec<Break> = breaks
+        .iter()
+        .filter(|c| spans.iter().any(|&(a, b)| c.audio_s > a && c.audio_s < b))
+        .copied()
+        .collect();
+    let count = clock?.unseen(&inside);
+    (count > 0).then_some(Caveat::PausesUnseen { count })
+}
+
+/// The beats counted across a join, `between` beats as the times give it:
+/// the nearest count, at least one, that leaves the joined numbers on the
+/// beats' own sides, odd when `gap` (the beats' own numbers apart) is odd
+/// and even when it is even (#1146).
+fn beats_between(between: f64, gap: i64) -> i64 {
+    let n = between.round().max(1.0) as i64;
+    if (n - gap).rem_euclid(2) == 0 {
+        return n;
+    }
+    // The other parity: whichever neighbour is nearer, the later on a tie
+    // (to a microbeat, so a time read a hair short is no nearer), never
+    // below one.
+    let (down, up) = (between - (n - 1) as f64, (n + 1) as f64 - between);
+    if n > 1 && down < up - 1e-6 {
+        n - 1
+    } else {
+        n + 1
+    }
+}
+
+/// A log with `log`'s header and no beats, for [`join`] to fill.
+fn empty_like(log: &BeatLog) -> BeatLog {
+    BeatLog {
+        lock_template_kept: log.lock_template_kept,
+        sample_rate: log.sample_rate,
+        duration_s: 0.0,
+        bph: log.bph,
+        lift_deg: log.lift_deg,
+        beats: Vec::new(),
+        amplitude_windows: Vec::new(),
+        clipped_beats: Vec::new(),
+        clipped_samples: log.clipped_samples,
+        jumps: Vec::new(),
+        sided: Vec::new(),
+        by_count: Vec::new(),
+        snippets: Vec::new(),
+    }
+}
+
+/// The part of `log` inside `spans`, in time order, with the time between
+/// them taken out: one position's beats over a session that moved the
+/// watch, joined so the tests see them as one run, with a short gap at each
+/// join that no reading fits across. With it, the cuts the joined readings
+/// stop at: each of `breaks` inside a span, on the joined times and with
+/// the time its gap held, each join, with none, and every jump.
+///
+/// The joined times are on the take's `clock`: each beat is put on it
+/// before the time between stretches is taken out, so the joined log is
+/// read with no clock after. A clock log puts the pauses it witnesses back
+/// itself ([`ClockFit::breaks`]), so it leaves those breaks no gap of their
+/// own (one it saw no gap at adds none, #646), and each of its steps inside
+/// a span is a cut.
+pub fn join(
+    log: &BeatLog,
+    spans: &[(f64, f64)],
+    breaks: &[Break],
+    clock: Option<&ClockFit>,
+) -> (BeatLog, Vec<Break>) {
+    let time = |t: f64| on_clock(clock, t);
+    // Where the clock log witnesses a pause the gap is its own: a listed
+    // pause it saw no gap at adds none (#646, as `clean::true_time`).
+    let pauses_back = |at: f64| clock.is_some_and(|c| c.witnesses(at));
+    let steps = clock.map_or(&[][..], |c| &c.breaks[..]);
+    let mut cuts = Vec::new();
+    let beat = 3600.0 / log.bph as f64;
+    let mut out = empty_like(log);
+    // Times in [a, b), on the clock and with this span's shift taken off.
+    let within = |at: &[f64], a: f64, b: f64, shift_t: f64| -> Vec<f64> {
+        at.iter()
+            .filter(|&&t| t >= a && t < b)
+            .map(|&t| time(t) - shift_t)
+            .collect()
+    };
+    // The last kept span's end and last beat (time, number), joined.
+    let mut prev: Option<(f64, f64, i64)> = None;
+    for &(a, b) in spans {
+        let b = b.min(log.duration_s);
+        let lo = log.beats.partition_point(|x| x.time < a);
+        let hi = log.beats.partition_point(|x| x.time < b);
+        let Some(first) = log.beats.get(lo).filter(|_| lo < hi) else {
+            continue;
+        };
+        // Taken off this span's times and beat numbers: it starts JOIN_S
+        // after the last one ended, its beats numbered on by the beats that
+        // would fit between. The shift is always even, so every beat keeps
+        // the side the engine named it (#1146): a Tick stays a Tick.
+        let (shift_t, shift_i) = match prev {
+            None => (time(a.max(0.0)), first.index - first.index.rem_euclid(2)),
+            Some((end, last_t, last_i)) => {
+                let shift_t = time(a) - (end + JOIN_S);
+                let between = (time(first.time) - shift_t - last_t) / beat;
+                (
+                    shift_t,
+                    first.index - (last_i + beats_between(between, first.index - last_i)),
+                )
+            }
+        };
+        if prev.is_some() {
+            out.jumps.push(time(a) - shift_t);
+            cuts.push(Break {
+                audio_s: time(a) - shift_t,
+                gap_s: 0.0,
+            });
+        }
+        cuts.extend(
+            breaks
+                .iter()
+                .filter(|c| c.audio_s > a && c.audio_s < b)
+                .map(|c| Break {
+                    audio_s: time(c.audio_s) - shift_t,
+                    gap_s: if pauses_back(c.audio_s) { 0.0 } else { c.gap_s },
+                }),
+        );
+        // Already among `breaks` when they came from core's take reader
+        // ([`breaks::on_clock`]).
+        cuts.extend(
+            steps
+                .iter()
+                .filter(|c| c.audio_s > a && c.audio_s < b)
+                .filter(|c| !breaks.iter().any(|l| (l.audio_s - c.audio_s).abs() < 1e-9))
+                .map(|c| Break {
+                    audio_s: time(c.audio_s) - shift_t,
+                    gap_s: 0.0,
+                }),
+        );
+        out.jumps.extend(within(&log.jumps, a, b, shift_t));
+        out.sided.extend(within(&log.sided, a, b, shift_t));
+        out.by_count.extend(within(&log.by_count, a, b, shift_t));
+        out.beats.extend(log.beats[lo..hi].iter().map(|x| Beat {
+            time: time(x.time) - shift_t,
+            index: x.index - shift_i,
+            ..*x
+        }));
+        // Wholly inside the part, not `session::window_in` (#636): each
+        // end of a part is a cut in the joined log, or one of its ends,
+        // and no window reaches across a cut.
+        out.amplitude_windows.extend(
+            log.amplitude_windows
+                .iter()
+                .filter(|w| w.start_s >= a && w.end_s <= b)
+                .map(|w| {
+                    let mut w = w.clone();
+                    w.start_s = time(w.start_s) - shift_t;
+                    w.end_s = time(w.end_s) - shift_t;
+                    w
+                }),
+        );
+        out.clipped_beats
+            .extend(within(&log.clipped_beats, a, b, shift_t));
+        let last = out.beats.last().unwrap();
+        out.duration_s = time(b) - shift_t;
+        prev = Some((out.duration_s, last.time, last.index));
+    }
+    for at in [&mut out.jumps, &mut out.sided, &mut out.by_count] {
+        at.sort_by(f64::total_cmp);
+        at.dedup();
+    }
+    let cuts = breaks::with_jumps(cuts, &out.jumps);
+    (out, cuts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 200 s of an 18,000 bph watch, a beat every 0.2 s.
+    fn log() -> BeatLog {
+        BeatLog {
+            lock_template_kept: false,
+            sample_rate: 48_000,
+            duration_s: 200.0,
+            bph: 18_000,
+            lift_deg: 52.0,
+            beats: (0..1000)
+                .map(|i| Beat {
+                    index: i,
+                    time: i as f64 * 0.2,
+                    quality: 1.0,
+                })
+                .collect(),
+            amplitude_windows: Vec::new(),
+            clipped_beats: Vec::new(),
+            clipped_samples: 0,
+            jumps: Vec::new(),
+            sided: Vec::new(),
+            by_count: Vec::new(),
+            snippets: Vec::new(),
+        }
+    }
+
+    /// A jump whose sides were named by the beat count alone stays one in
+    /// the joined log, where its stretch is kept, so its readings carry
+    /// the caveat; one in the time taken out goes with it.
+    #[test]
+    fn a_join_keeps_the_sides_named_by_count() {
+        let mut log = log();
+        log.jumps = vec![30.0, 50.0, 120.0];
+        log.sided = vec![120.0];
+        log.by_count = vec![30.0, 50.0];
+        let (joined, _) = join(&log, &[(10.0, 40.0), (100.0, 190.0)], &[], None);
+        // 30 s is 20 s into the first stretch; 120 s is 20 s into the
+        // second, which starts 35 s into the joined log.
+        assert_eq!(joined.by_count, [20.0]);
+        assert_eq!(joined.sided, [55.0]);
+    }
+
+    /// The beats after a join are numbered on by the beats that would fit
+    /// across it, kept on their own sides (#1146): the 5 s join and the
+    /// beat's step from the last beat kept, 5.2 s at a beat every 0.2 s,
+    /// hold 26, but the beats are 351 apart in the recording, an odd
+    /// count, so 27 keep the next beat a Tock as the engine named it.
+    #[test]
+    fn a_join_numbers_the_beats_on_by_the_beats_it_holds() {
+        let (joined, _) = join(&log(), &[(10.0, 40.0), (100.0, 190.0)], &[], None);
+        let k = joined.beats.partition_point(|b| b.time < 30.0);
+        let (last, next) = (&joined.beats[k - 1], &joined.beats[k]);
+        assert!((last.time - 29.8).abs() < 1e-9 && (next.time - 35.0).abs() < 1e-9);
+        assert_eq!(next.index - last.index, 27);
+        assert_eq!(beats_between(26.0, 26), 26);
+        assert_eq!(beats_between(26.4, 351), 27);
+        assert_eq!(beats_between(25.6, 351), 25);
+        assert_eq!(beats_between(1.2, 2), 2);
+    }
+
+    /// A join never renames a side (#1146): each beat keeps the side the
+    /// engine's side check named it, so a stretch that starts on a Tock,
+    /// and one after a join that starts on either, read the take's own
+    /// signed beat error, not its mirror.
+    #[test]
+    fn a_join_keeps_each_beat_on_its_own_side() {
+        let mut log = log();
+        log.amplitude_windows = (0..100)
+            .map(|i| crate::amplitude::AmplitudeWindow {
+                start_s: i as f64 * 2.0,
+                end_s: (i + 1) as f64 * 2.0,
+                even_deg: Some(280.0),
+                odd_deg: Some(270.0),
+                beat_error_ms: Some(0.3),
+                beat_error_unlock_ms: Some(0.5),
+                even_unlock_ms: Some(-7.0),
+                odd_unlock_ms: Some(-6.0),
+                even_drop_ms: None,
+                odd_drop_ms: None,
+                extra: None,
+                sound_1: [f32::NAN; 2],
+            })
+            .collect();
+        // 10.2 s is beat 51, a Tock; 100.2 s is beat 501, a Tock too, and
+        // 140.0 s beat 700, a Tick.
+        for spans in [
+            vec![(10.2, 40.0)],
+            vec![(10.2, 40.0), (100.2, 130.0)],
+            vec![(10.2, 40.0), (140.0, 190.0)],
+            vec![(10.0, 40.0), (100.2, 190.0)],
+        ] {
+            let (joined, _) = join(&log, &spans, &[], None);
+            // Every kept beat, in order, on the side it had.
+            let sides: Vec<i64> = joined.beats.iter().map(|b| b.index.rem_euclid(2)).collect();
+            let own: Vec<i64> = spans
+                .iter()
+                .flat_map(|&(a, b)| log.beats.iter().filter(move |o| o.time >= a && o.time < b))
+                .map(|o| o.index.rem_euclid(2))
+                .collect();
+            assert_eq!(sides, own, "{spans:?}");
+            assert!(!joined.amplitude_windows.is_empty());
+            for w in &joined.amplitude_windows {
+                assert_eq!(w.beat_error_unlock_ms, Some(0.5), "{spans:?}");
+                assert_eq!(w.beat_error_ms, Some(0.3));
+                assert_eq!((w.even_deg, w.odd_deg), (Some(280.0), Some(270.0)));
+            }
+        }
+    }
+
+    /// On a card 100 ppm slow, the joined beats are on the take's clock:
+    /// a second of sound is 1.0001 s, and the joined log runs as long as
+    /// [`joined_duration`] says on that clock.
+    #[test]
+    fn a_join_puts_the_beats_on_the_takes_clock() {
+        let clock = ClockFit::fixed(-100.0, 200.0);
+        let spans = [(10.0, 60.0), (100.0, 190.0)];
+        let (joined, cuts) = join(&log(), &spans, &[], Some(&clock));
+        let first = &joined.beats[..250];
+        let steps: Vec<f64> = first.windows(2).map(|b| b[1].time - b[0].time).collect();
+        assert!(
+            steps.iter().all(|s| (s - 0.2 * 1.0001).abs() < 1e-9),
+            "{:?}",
+            &steps[..3]
+        );
+        let want = joined_duration(&spans, 200.0, Some(&clock));
+        assert!(
+            (joined.duration_s - want).abs() < 1e-9,
+            "{}",
+            joined.duration_s
+        );
+        assert!((want - (140.0 * 1.0001 + JOIN_S)).abs() < 1e-9, "{want}");
+        // The join is a cut, at the second stretch's start on the clock.
+        assert_eq!(cuts.len(), 1, "{cuts:?}");
+        assert!((cuts[0].audio_s - (50.0 * 1.0001 + JOIN_S)).abs() < 1e-9);
+    }
+
+    fn manifest(text: &str) -> Manifest {
+        toml::from_str(text).unwrap()
+    }
+
+    /// A take that names two positions carries the caveat, wherever its
+    /// sound is; one position, or none named, does not (#651).
+    #[test]
+    fn a_take_in_several_positions_says_so() {
+        let two = manifest(
+            "[[recording]]\nfile = \"a.flac\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"b.flac\"\nposition = \"CU\"\n\
+             [[recording]]\nfile = \"c.flac\"\nposition = \"DU\"\n",
+        );
+        assert_eq!(positions_caveat(&two), Some(Caveat::Positions { count: 2 }));
+        let one = manifest(
+            "[[recording]]\nfile = \"a.flac\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"b.flac\"\nposition = \"DU\"\n",
+        );
+        assert_eq!(positions_caveat(&one), None);
+        assert_eq!(
+            positions_caveat(&manifest("[[recording]]\nfile = \"a.flac\"\n")),
+            None
+        );
+    }
+
+    fn cut(audio_s: f64, gap_s: f64) -> Break {
+        Break { audio_s, gap_s }
+    }
+
+    /// Two stretches of [`log`]: 10-40 s and 100-190 s, the second
+    /// starting [`JOIN_S`] after the first ends.
+    const SPANS: [(f64, f64); 2] = [(10.0, 40.0), (100.0, 190.0)];
+
+    /// Each stretch's beats are kept and shifted: the first starts at 0
+    /// with its own number, the second JOIN_S after the first ends, its
+    /// beats numbered on by the beats that would fit between (#692), on
+    /// their own sides (#1146).
+    #[test]
+    fn a_join_shifts_and_renumbers_each_stretchs_beats() {
+        let (joined, cuts) = join(&log(), &SPANS, &[], None);
+        assert_eq!(joined.beats.len(), 150 + 450);
+        assert_eq!((joined.beats[0].time, joined.beats[0].index), (0.0, 0));
+        let last = &joined.beats[149];
+        assert!((last.time - 29.8).abs() < 1e-9 && last.index == 149);
+        // 35 s is 5.2 s after the last beat, 26 beats on; beat 500 is a
+        // Tick and beat 149 a Tock, so 27 keep it one.
+        let next = &joined.beats[150];
+        assert!((next.time - 35.0).abs() < 1e-9, "{}", next.time);
+        assert_eq!(next.index, 149 + 27);
+        assert!(joined
+            .beats
+            .windows(2)
+            .all(|b| b[1].index > b[0].index && b[1].time > b[0].time));
+        assert!((joined.duration_s - 125.0).abs() < 1e-9);
+        assert_eq!(joined.jumps.len(), 1);
+        assert!((joined.jumps[0] - 35.0).abs() < 1e-9);
+        assert_eq!(cuts.len(), 1);
+        assert!((cuts[0].audio_s - 35.0).abs() < 1e-9 && cuts[0].gap_s == 0.0);
+        // The header is the log's; the beats' quality is kept.
+        assert_eq!((joined.bph, joined.lift_deg), (18_000, 52.0));
+        assert!(joined.beats.iter().all(|b| b.quality == 1.0));
+    }
+
+    /// A stretch that runs past the recording ends with it, and one that
+    /// holds no beat adds nothing, not even a join.
+    #[test]
+    fn a_join_ends_at_the_recording_and_skips_an_empty_stretch() {
+        let (joined, cuts) = join(
+            &log(),
+            &[(10.0, 40.0), (40.05, 40.15), (150.0, 500.0)],
+            &[],
+            None,
+        );
+        assert_eq!(joined.beats.len(), 150 + 250);
+        assert!(
+            (joined.duration_s - (30.0 + JOIN_S + 50.0)).abs() < 1e-9,
+            "{}",
+            joined.duration_s
+        );
+        assert_eq!(cuts.len(), 1, "{cuts:?}");
+        let (one, _) = join(&log(), &[(150.0, 500.0)], &[], None);
+        assert!((one.duration_s - 50.0).abs() < 1e-9 && one.jumps.is_empty());
+        assert_eq!(one.beats[0].index, 0);
+    }
+
+    /// What is marked at a time goes with its stretch: from its start up to
+    /// but not including its end, on the joined times, sorted and once.
+    #[test]
+    fn a_join_carries_the_marks_inside_each_stretch() {
+        let mut log = log();
+        log.clipped_beats = vec![5.0, 10.0, 39.9, 40.0, 100.0, 189.9, 195.0];
+        log.jumps = vec![12.0, 100.0, 150.0];
+        log.sided = vec![150.0, 12.0];
+        let (joined, _) = join(&log, &SPANS, &[], None);
+        let near = |a: &[f64], b: &[f64]| {
+            a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9)
+        };
+        assert!(
+            near(&joined.clipped_beats, &[0.0, 29.9, 35.0, 124.9]),
+            "{:?}",
+            joined.clipped_beats
+        );
+        // The jump at the second stretch's start is the join's, once.
+        assert!(
+            near(&joined.jumps, &[2.0, 35.0, 85.0]),
+            "{:?}",
+            joined.jumps
+        );
+        assert!(near(&joined.sided, &[2.0, 85.0]), "{:?}", joined.sided);
+    }
+
+    /// A break inside a stretch is a cut on the joined times with the time
+    /// its gap held; one at a stretch's edge is not, the join cutting there
+    /// already. A clock that puts the pauses back leaves them no gap, and
+    /// each of its own steps inside a stretch is a cut, once.
+    #[test]
+    fn a_join_cuts_at_the_breaks_inside_its_stretches() {
+        let breaks = [
+            cut(10.0, 9.0),
+            cut(20.0, 30.0),
+            cut(40.0, 9.0),
+            cut(150.0, 12.0),
+        ];
+        let (_, cuts) = join(&log(), &SPANS, &breaks, None);
+        let got: Vec<(f64, f64)> = cuts
+            .iter()
+            .map(|c| ((c.audio_s * 1e6).round() / 1e6, c.gap_s))
+            .collect();
+        assert_eq!(got, [(10.0, 30.0), (35.0, 0.0), (85.0, 12.0)]);
+        let mut clock = ClockFit::fixed(0.0, 200.0);
+        clock.breaks = vec![cut(150.0, 12.0), cut(170.0, 4.0), cut(60.0, 4.0)];
+        let (_, cuts) = join(&log(), &SPANS, &breaks, Some(&clock));
+        let got: Vec<(f64, f64)> = cuts
+            .iter()
+            .map(|c| ((c.audio_s * 1e6).round() / 1e6, c.gap_s))
+            .collect();
+        // The clock puts each pause back: 4 s before the second stretch
+        // and 12 s at 150 s, so its times run on by them.
+        assert_eq!(got, [(10.0, 0.0), (35.0, 0.0), (97.0, 0.0), (121.0, 0.0)]);
+    }
+
+    /// A clock log that ended at 120 s witnesses a pause listed at 20 s,
+    /// where it shows no gap, so that pause adds no time and is named; it
+    /// does not witness one listed at 150 s, whose gap counts (#646).
+    #[test]
+    fn a_join_counts_a_listed_gap_only_where_the_clock_log_saw_none() {
+        let pairs: Vec<(f64, f64)> = (0..=12)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0))
+            .collect();
+        let clock = ClockFit::new(&pairs).unwrap();
+        let breaks = [cut(20.0, 9.0), cut(150.0, 12.0)];
+        let (_, cuts) = join(&log(), &SPANS, &breaks, Some(&clock));
+        let gaps: Vec<f64> = cuts.iter().map(|c| c.gap_s).collect();
+        assert_eq!(gaps, [0.0, 0.0, 12.0], "{cuts:?}");
+        assert_eq!(
+            pauses_unseen(&SPANS, &breaks, Some(&clock)),
+            Some(Caveat::PausesUnseen { count: 1 })
+        );
+        assert_eq!(pauses_unseen(&SPANS, &breaks, None), None);
+    }
+
+    /// An amplitude window inside a stretch is kept on the joined times,
+    /// its sides and signed beat errors as they were: the beats are only
+    /// ever renumbered by an even count, so no side is renamed (#1146).
+    #[test]
+    fn a_join_keeps_each_amplitude_window_on_its_beats() {
+        use crate::amplitude::AmplitudeWindow;
+        let window = |a: f64| AmplitudeWindow {
+            start_s: a,
+            end_s: a + 2.0,
+            even_deg: Some(260.0),
+            odd_deg: Some(280.0),
+            beat_error_ms: Some(0.4),
+            beat_error_unlock_ms: Some(-0.2),
+            even_unlock_ms: Some(-3.0),
+            odd_unlock_ms: Some(-4.0),
+            even_drop_ms: Some(0.1),
+            odd_drop_ms: Some(0.5),
+            extra: None,
+            sound_1: [f32::NAN; 2],
+        };
+        let mut log = log();
+        log.amplitude_windows = vec![window(12.0), window(60.0), window(120.0)];
+        let (joined, _) = join(&log, &SPANS, &[], None);
+        let w = &joined.amplitude_windows;
+        assert_eq!(w.len(), 2, "{w:?}");
+        // The first stretch is renumbered by 50, an even count.
+        assert!((w[0].start_s - 2.0).abs() < 1e-9 && (w[0].end_s - 4.0).abs() < 1e-9);
+        assert_eq!(
+            (w[0].even_deg, w[0].beat_error_ms),
+            (Some(260.0), Some(0.4))
+        );
+        // The second by 500 − 176 = 324, even too.
+        assert_eq!(joined.beats[150].index, 176);
+        assert!((w[1].start_s - 55.0).abs() < 1e-9 && (w[1].end_s - 57.0).abs() < 1e-9);
+        assert_eq!((w[1].even_deg, w[1].odd_deg), (Some(260.0), Some(280.0)));
+        assert_eq!(
+            (w[1].beat_error_ms, w[1].beat_error_unlock_ms),
+            (Some(0.4), Some(-0.2))
+        );
+        assert_eq!(
+            (w[1].even_unlock_ms, w[1].odd_drop_ms),
+            (Some(-3.0), Some(0.5))
+        );
+    }
+
+    /// A stretch of no length adds no join (#756).
+    #[test]
+    fn a_stretch_of_no_length_adds_no_join() {
+        let spans = [(10.0, 40.0), (50.0, 50.0)];
+        assert_eq!(joined_duration(&spans, 200.0, None), 30.0);
+    }
+
+    /// Only a pause strictly inside a stretch can be one the joined
+    /// reading doesn't see: none at a stretch's ends or outside them, even
+    /// where the clock log witnesses it (#756).
+    #[test]
+    fn only_a_pause_inside_a_stretch_is_unseen() {
+        let pairs: Vec<(f64, f64)> = (0..=12)
+            .map(|i| (i as f64 * 10.0, 1.79e9 + i as f64 * 10.0))
+            .collect();
+        let clock = ClockFit::new(&pairs).unwrap();
+        let outside = [
+            cut(5.0, 9.0),
+            cut(10.0, 9.0),
+            cut(40.0, 9.0),
+            cut(60.0, 9.0),
+        ];
+        assert_eq!(pauses_unseen(&SPANS, &outside, Some(&clock)), None);
+    }
+
+    /// A step in the clock log at either end of a stretch is not a cut
+    /// inside it; one a hair inside is, unless it is a listed break
+    /// already (within 1e-9 s) (#756).
+    #[test]
+    fn a_clock_step_is_a_cut_only_strictly_inside_a_stretch() {
+        let mut clock = ClockFit::fixed(0.0, 200.0);
+        clock.breaks = vec![
+            cut(10.0, 3.0),
+            cut(40.0, 3.0),
+            cut(100.0, 3.0),
+            cut(190.0, 3.0),
+        ];
+        let (_, cuts) = join(&log(), &SPANS, &[], Some(&clock));
+        // Only the join itself.
+        assert_eq!(cuts.len(), 1, "{cuts:?}");
+        // A step 1e-9 s after a listed break is its own cut.
+        clock.breaks = vec![cut(1e-9, 1.0)];
+        let (_, cuts) = join(&log(), &[(0.0, 40.0)], &[cut(0.0, 5.0)], Some(&clock));
+        assert_eq!(cuts.len(), 1, "{cuts:?}");
+    }
+
+    /// The joined length: each stretch inside the recording, on the clock,
+    /// and JOIN_S between each two, as [`join`] makes it.
+    #[test]
+    fn the_joined_length_is_the_stretches_and_the_joins_between() {
+        let spans = [(-5.0, 40.0), (100.0, 300.0)];
+        assert!((joined_duration(&spans, 200.0, None) - (40.0 + JOIN_S + 100.0)).abs() < 1e-9);
+        assert_eq!(joined_duration(&[(250.0, 300.0)], 200.0, None), 0.0);
+        assert_eq!(joined_duration(&[], 200.0, None), 0.0);
+        let clock = ClockFit::fixed(-1000.0, 200.0);
+        let on = joined_duration(&[(0.0, 100.0)], 200.0, Some(&clock));
+        assert!((on - 100.1).abs() < 1e-9, "{on}");
+        let (joined, _) = join(&log(), &[(0.0, 40.0), (100.0, 200.0)], &[], None);
+        assert!(
+            (joined.duration_s - joined_duration(&[(0.0, 40.0), (100.0, 200.0)], 200.0, None))
+                .abs()
+                < 1e-9
+        );
+    }
+}

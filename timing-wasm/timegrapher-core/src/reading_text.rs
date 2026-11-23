@@ -1,0 +1,337 @@
+//! Shared words for a reading in the CLI and MCP JSON documents.
+//! Surfaces choose the reading; core chooses its figures, precision and units.
+
+use serde_json::Value;
+
+/// Rate (already on the chosen clock), amplitude and unsigned beat error.
+/// The unlock wins over the drop, as in every other core reading.
+pub fn values(m: &Value, rate: Option<f64>, drop_ms: Option<f64>) -> [Option<f64>; 3] {
+    [
+        rate,
+        m["amplitude_deg"].as_f64(),
+        crate::session::beat_error_size(m["beat_error_unlock_ms"].as_f64(), drop_ms),
+    ]
+}
+
+/// One reading's figures, each with its own standard error. Units follow
+/// the math and design guides: s/d, degrees as °, and ms. Each figure is
+/// written at its place, its ± rounded up there
+/// ([`crate::figure_text::figure_digits`], #1470). Missing figures are
+/// omitted; an entirely empty reading gives no line.
+pub fn figures(m: &Value, [rate, amplitude, beat_error]: [Option<f64>; 3]) -> Option<String> {
+    use crate::figure_text::{base_digits as base, figure_digits, pm_text, signed_text};
+    let se = |key: &str| m["confidence"][key]["se"].as_f64();
+    let pm = |key: &str, digits| {
+        se(key)
+            .and_then(|se| pm_text(se, digits))
+            .map_or_else(String::new, |s| format!(" ± {s}"))
+    };
+    let mut parts = Vec::new();
+    if let Some(r) = rate {
+        let d = figure_digits(se("rate"), base::RATE);
+        parts.push(format!(
+            "rate {}{} s/d",
+            signed_text(r, d),
+            pm("rate", base::RATE)
+        ));
+    }
+    if let Some(a) = amplitude {
+        let d = figure_digits(se("amplitude"), base::AMPLITUDE);
+        parts.push(format!(
+            "amplitude {a:.d$}{}°",
+            pm("amplitude", base::AMPLITUDE)
+        ));
+    }
+    if let Some(b) = beat_error {
+        let d = figure_digits(se("beat_error"), base::BEAT_ERROR);
+        parts.push(format!(
+            "beat error {b:.d$}{} ms",
+            pm("beat_error", base::BEAT_ERROR)
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+/// A session/take measurement's figures, or the fact that no beat was found.
+pub fn measurement(m: &Value) -> String {
+    if m["watch_heard"] == false {
+        "no regular beat found".into()
+    } else {
+        figures(
+            m,
+            values(m, m["rate_s_per_day"].as_f64(), m["beat_error_ms"].as_f64()),
+        )
+        .unwrap_or_default()
+    }
+}
+
+/// A known position's full name, preserving an unknown code as supplied.
+pub fn position_name(p: &str) -> String {
+    crate::session::Position::parse(p).map_or_else(|| p.to_string(), |p| p.display_label())
+}
+
+/// A state of wind as every surface names it: "full wind" at 0 (or less),
+/// "24 h after winding", the hours as given, or "wind not given"
+/// where the reading carries none (#1665): a reading is never called fully
+/// wound unless that was set.
+pub fn wind_state_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(|| WIND_NOT_GIVEN.to_string(), wind_words)
+}
+
+/// [`wind_state_words`] as a heading: "Full wind", "24 h after winding",
+/// "Wind not given".
+pub fn wind_state_title(wind_h: Option<f64>) -> String {
+    capitalised(&wind_state_words(wind_h))
+}
+
+/// The words for a state of wind that was not given.
+pub const WIND_NOT_GIVEN: &str = "wind not given";
+
+/// The wind in full, in the Wind field's hover, to 0.1 h: "Full wind 2.0 h ago", or
+/// "Wind not given" until it is set (#1665).
+pub fn wind_since_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(
+        || capitalised(WIND_NOT_GIVEN),
+        |h| format!("Full wind {} h ago", crate::figure_text::fixed_text(h, 1)),
+    )
+}
+
+/// A saved take's wind, to 0.1 h: "Full wind 2.0 h before it began", or
+/// "Wind not given" (#1665).
+pub fn wind_before_take_words(wind_h: Option<f64>) -> String {
+    wind_h.map_or_else(
+        || capitalised(WIND_NOT_GIVEN),
+        |h| {
+            format!(
+                "Full wind {} h before it began",
+                crate::figure_text::fixed_text(h, 1)
+            )
+        },
+    )
+}
+
+/// The Listen card's Wind field in each of its widths (Hugh on #1915),
+/// widest first, to 0.1 h. The whole of it, [`wind_since_words`] or
+/// [`wind_before_take_words`], is in the hover.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindFieldWords {
+    /// Beside a "Wind" label: "Full 2.0 h ago" before a take, "Began 2.0 h
+    /// after full" from its start, or "Not given".
+    pub value: String,
+    /// With no label: "Wind: full 2.0 h ago", "Wind: 2.0 h at start",
+    /// "Wind: not given".
+    pub labelled: String,
+    /// The hours alone: "Wind 2.0 h", or "Wind \u{2014}" where not given.
+    pub short: String,
+}
+
+/// [`WindFieldWords`] for hours since full wind `wind_h`, where given:
+/// counting up before a take, or fixed at its start where it `began`.
+pub fn wind_field_words(wind_h: Option<f64>, began: bool) -> WindFieldWords {
+    let value = match (wind_h, began) {
+        (None, _) => capitalised(NOT_GIVEN),
+        (Some(h), false) => format!("Full {} h ago", crate::figure_text::fixed_text(h, 1)),
+        (Some(h), true) => format!(
+            "Began {} h after full",
+            crate::figure_text::fixed_text(h, 1)
+        ),
+    };
+    let mut first = value.chars();
+    let lower: String = first
+        .next()
+        .map(|c| c.to_lowercase().chain(first).collect())
+        .unwrap_or_default();
+    let hours = wind_h.map(|h| crate::figure_text::fixed_text(h, 1));
+    WindFieldWords {
+        // From the start, as short as before it (Hugh on #1926).
+        labelled: match (&hours, began) {
+            (Some(h), true) => format!("{WIND_FIELD}: {h} h at start"),
+            _ => format!("{WIND_FIELD}: {lower}"),
+        },
+        short: match wind_h {
+            Some(h) => format!("{WIND_FIELD} {} h", crate::figure_text::fixed_text(h, 1)),
+            None => format!("{WIND_FIELD} \u{2014}"),
+        },
+        value,
+    }
+}
+
+/// The Listen card's Wind field's name, its label and its narrowest form.
+pub const WIND_FIELD: &str = "Wind";
+
+/// A field's words for a wind not given, beside its "Wind" label.
+const NOT_GIVEN: &str = "not given";
+
+fn capitalised(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
+}
+
+/// A state of wind that was given, as [`wind_state_words`] names it:
+/// the hours as given ([`WindHours::given`] from full wind, #1715).
+pub fn wind_words(wind_h: f64) -> String {
+    WindHours::given(0.0, wind_h).words()
+}
+
+/// [`wind_words`] with the hours to `digits` decimals: see [`WindHours`].
+fn wind_words_to(wind_h: f64, digits: usize) -> String {
+    if wind_h <= 0.0 {
+        "full wind".into()
+    } else {
+        format!(
+            "{} h after winding",
+            crate::figure_text::fixed_text(wind_h, digits)
+        )
+    }
+}
+
+/// Hours after full wind with the decimals they are known to, so every
+/// surface writes them at the precision of their source (Norm on #1713):
+/// hours a guided test measured, to a tenth ("24.2 h"); hours a person
+/// gave, as given ("24 h" for 24, "24.5 h" for 24.5), never more digits
+/// than were typed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindHours {
+    pub hours: f64,
+    pub digits: usize,
+}
+
+/// Decimals of hours a guided test measured: it times them to a tenth.
+const MEASURED_DIGITS: usize = 1;
+
+/// The most decimals hours given by hand are read to: a tenth, as states
+/// of wind are told apart (#1665).
+const GIVEN_MAX_DIGITS: usize = 1;
+
+impl WindHours {
+    /// Hours a guided test measured, to a tenth.
+    pub fn measured(hours: f64) -> Self {
+        Self {
+            hours,
+            digits: MEASURED_DIGITS,
+        }
+    }
+
+    /// Hours `to` less hours `from`, each given by hand: the difference
+    /// keeps the decimals of the less precise of the two (math guide,
+    /// #1576). Full wind, a `from` of 0, is exact and doesn't limit it. A
+    /// typed "24.0" reads as whole, as 24: the number keeps no trailing
+    /// zero.
+    pub fn given(from: f64, to: f64) -> Self {
+        // To the tenth the state of wind is keyed to, rounded as it is.
+        let tenth = crate::full_wind::to_tenth;
+        let (from, to) = (tenth(from), tenth(to));
+        let digits = if from == 0.0 {
+            given_digits(to)
+        } else {
+            given_digits(from).min(given_digits(to))
+        };
+        Self {
+            hours: to - from,
+            digits,
+        }
+    }
+
+    /// "full wind", or "24 h after winding".
+    pub fn words(self) -> String {
+        wind_words_to(self.hours, self.digits)
+    }
+
+    /// The hours alone, "24 h", for a table's head.
+    pub fn short(self) -> String {
+        format!(
+            "{} h",
+            crate::figure_text::fixed_text(self.hours, self.digits)
+        )
+    }
+}
+
+/// How many decimals `x` was given to: 0 for 24, 1 for 24.5.
+fn given_digits(x: f64) -> usize {
+    (0..GIVEN_MAX_DIGITS)
+        .find(|&d| {
+            let scaled = x * 10f64.powi(d as i32);
+            (scaled - scaled.round()).abs() < 1e-6
+        })
+        .unwrap_or(GIVEN_MAX_DIGITS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Hours are written at the precision of their source (Norm on
+    /// #1713): a given whole hour stays whole, measured hours keep their
+    /// tenth even when it is 0.
+    #[test]
+    fn wind_hours_keep_the_precision_of_their_source() {
+        assert_eq!(WindHours::given(0.0, 24.0).words(), "24 h after winding");
+        assert_eq!(WindHours::given(0.0, 24.0).short(), "24 h");
+        // 24 is known only to the hour, so the difference is too.
+        assert_eq!(WindHours::given(0.5, 24.0).words(), "24 h after winding");
+        assert_eq!(WindHours::given(0.1, 24.3).short(), "24.2 h");
+        // Full wind is exact: it doesn't take the tenth from 24.5.
+        assert_eq!(WindHours::given(0.0, 24.5).short(), "24.5 h");
+        assert_eq!(WindHours::measured(24.0).words(), "24.0 h after winding");
+        assert_eq!(WindHours::measured(24.2).short(), "24.2 h");
+        assert_eq!(WindHours::measured(0.0).words(), "full wind");
+        // A state of wind given by hand reads as given (#1715).
+        assert_eq!(wind_words(24.0), "24 h after winding");
+        assert_eq!(wind_words(24.5), "24.5 h after winding");
+        // To the tenth its state is keyed to, rounded as it is (#1665).
+        assert_eq!(wind_words(24.25), "24.3 h after winding");
+        assert_eq!(wind_words(0.0), "full wind");
+    }
+
+    /// The Listen card and a take's hover say the wind to 0.1 h, or that
+    /// it was not given (#1665).
+    #[test]
+    fn the_wind_since_full_wind_is_said_to_a_tenth() {
+        assert_eq!(wind_since_words(Some(2.0)), "Full wind 2.0 h ago");
+        assert_eq!(wind_since_words(Some(0.04)), "Full wind 0.0 h ago");
+        assert_eq!(wind_since_words(None), "Wind not given");
+        assert_eq!(
+            wind_before_take_words(Some(2.0)),
+            "Full wind 2.0 h before it began"
+        );
+        assert_eq!(wind_before_take_words(None), "Wind not given");
+        // The Listen card's field in its three widths (Hugh on #1915).
+        let w = |value: &str, labelled: &str, short: &str| WindFieldWords {
+            value: value.into(),
+            labelled: labelled.into(),
+            short: short.into(),
+        };
+        assert_eq!(
+            wind_field_words(Some(2.0), false),
+            w("Full 2.0 h ago", "Wind: full 2.0 h ago", "Wind 2.0 h")
+        );
+        assert_eq!(
+            wind_field_words(Some(24.24), true),
+            w(
+                "Began 24.2 h after full",
+                "Wind: 24.2 h at start",
+                "Wind 24.2 h"
+            )
+        );
+        for began in [false, true] {
+            assert_eq!(
+                wind_field_words(None, began),
+                w("Not given", "Wind: not given", "Wind \u{2014}")
+            );
+        }
+    }
+
+    #[test]
+    fn reading_text_matches_the_cross_surface_cases() {
+        let cases: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/reading_text.json")).unwrap();
+        for c in cases.as_array().unwrap() {
+            assert_eq!(measurement(&c["measurement"]), c["text"].as_str().unwrap());
+            assert_eq!(
+                position_name(c["position"].as_str().unwrap()),
+                c["position_text"].as_str().unwrap()
+            );
+        }
+    }
+}

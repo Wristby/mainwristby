@@ -1,0 +1,496 @@
+//! Histograms of a reading over a session: how often each value came up,
+//! so a watch that flips between two states (a high and a low amplitude,
+//! say) shows two peaks where an average shows one value between them.
+//!
+//! The bin width follows the Freedman–Diaconis rule (twice the
+//! interquartile range over the cube root of the count), rounded up to 1, 2
+//! or 5 times a power of ten so the bin edges are round numbers, and never
+//! finer than the reading's own resolution.
+
+use crate::dsp::quantile;
+use serde::Serialize;
+
+/// Counts of values in bins of equal width.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Histogram {
+    /// Lower edge of the first bin.
+    pub start: f64,
+    pub bin_width: f64,
+    /// Values in each bin, from `start` upwards.
+    pub counts: Vec<u32>,
+    /// Values counted.
+    pub n: usize,
+    pub median: f64,
+    /// The 10th and 90th percentiles: where the middle 80% of values lie.
+    pub p10: f64,
+    pub p90: f64,
+    /// Values left out below and above the bins as outliers (see
+    /// [`Options::trim`]); counted in `n`, the median and percentiles.
+    pub below: usize,
+    pub above: usize,
+}
+
+/// How to bin.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Options {
+    /// The finest bin width worth drawing, such as 0.5° for amplitude.
+    pub resolution: f64,
+    /// Times the automatic bin width: below 1 for finer bins, above for
+    /// coarser ones.
+    pub width_factor: f64,
+    /// The share of values at each end left out of the bins as outliers, so
+    /// a few stray readings don't stretch the bins over an empty range.
+    pub trim: f64,
+}
+
+impl Options {
+    pub fn new(resolution: f64) -> Self {
+        Options {
+            resolution,
+            width_factor: 1.0,
+            trim: 0.0,
+        }
+    }
+}
+
+impl Histogram {
+    /// The centre of bin `i`.
+    pub fn centre(&self, i: usize) -> f64 {
+        self.start + (i as f64 + 0.5) * self.bin_width
+    }
+
+    /// The bins that stand out as separate peaks: local maxima holding at
+    /// least `min_share` of the values, with a dip to at most half the lower
+    /// peak's height between neighbouring ones. One peak is a single state;
+    /// two or more suggest the watch moves between states.
+    pub fn peaks(&self, min_share: f64) -> Vec<usize> {
+        let c = &self.counts;
+        // Smooth over three bins, so one noisy bin isn't a peak.
+        let s: Vec<f64> = (0..c.len())
+            .map(|i| {
+                let lo = i.saturating_sub(1);
+                let hi = (i + 2).min(c.len());
+                c[lo..hi].iter().map(|&v| v as f64).sum::<f64>() / (hi - lo) as f64
+            })
+            .collect();
+        let floor = min_share * self.n as f64 / 3.0;
+        let mut peaks: Vec<usize> = Vec::new();
+        for i in 0..s.len() {
+            let left = if i == 0 { f64::MIN } else { s[i - 1] };
+            let right = if i + 1 == s.len() { f64::MIN } else { s[i + 1] };
+            if s[i] < floor || s[i] < left || s[i] <= right {
+                continue;
+            }
+            if let Some(&p) = peaks.last() {
+                let dip = s[p..=i].iter().copied().fold(f64::MAX, f64::min);
+                if dip > 0.5 * s[p].min(s[i]) {
+                    // Not separated: keep the higher of the two.
+                    if s[i] > s[p] {
+                        *peaks.last_mut().unwrap() = i;
+                    }
+                    continue;
+                }
+            }
+            peaks.push(i);
+        }
+        peaks
+    }
+}
+
+/// A histogram of `values`, ignoring any that aren't finite; `None` with
+/// fewer than three. `resolution` is the finest bin width worth drawing
+/// (such as 0.5° for amplitude); the bins are capped at 200.
+pub fn histogram(values: &[f64], resolution: f64) -> Option<Histogram> {
+    histogram_with(values, &Options::new(resolution))
+}
+
+/// A histogram with bins chosen by `opt`.
+pub fn histogram_with(values: &[f64], opt: &Options) -> Option<Histogram> {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    if v.len() < 3 {
+        return None;
+    }
+    v.sort_by(f64::total_cmp);
+    let n = v.len();
+    let trim = opt.trim.clamp(0.0, 0.2);
+    let (mut lo, mut hi) = if trim > 0.0 {
+        (quantile(&v, trim), quantile(&v, 1.0 - trim))
+    } else {
+        (v[0], v[n - 1])
+    };
+    let (q1, q3) = (quantile(&v, 0.25), quantile(&v, 0.75));
+    let iqr = q3 - q1;
+    // Trimming, the scale keeps the values joined to the body: a value
+    // past Tukey's far fences stays on it while it follows on from the
+    // one before, as a run-down's tail does, and a gap of the fences'
+    // reach ends it, so one far-out value among few, or a cluster of
+    // glitches, is counted off the scale and not drawn over empty bins
+    // (#1971, Norm).
+    if trim > 0.0 {
+        if let Some((j_lo, j_hi)) = crate::dsp::joined_range(&v) {
+            lo = lo.max(j_lo);
+            hi = hi.min(j_hi);
+        }
+    }
+    let fd = 2.0 * iqr / (n as f64).cbrt() * opt.width_factor.clamp(0.05, 20.0);
+    let mut width = crate::chart_scale::round_step(fd.max(opt.resolution).max(1e-12));
+    while (hi - lo) / width > 200.0 {
+        width = crate::chart_scale::round_step(width * 1.01);
+    }
+    let start = (lo / width).floor() * width;
+    let bins = (((hi - start) / width).floor() as usize + 1).max(1);
+    let mut counts = vec![0u32; bins];
+    let (mut below, mut above) = (0, 0);
+    for &x in &v {
+        if x < start {
+            below += 1;
+        } else if x >= start + bins as f64 * width {
+            above += 1;
+        } else {
+            counts[(((x - start) / width).floor() as usize).min(bins - 1)] += 1;
+        }
+    }
+    Some(Histogram {
+        start,
+        bin_width: width,
+        counts,
+        n,
+        median: quantile(&v, 0.5),
+        p10: quantile(&v, 0.1),
+        p90: quantile(&v, 0.9),
+        below,
+        above,
+    })
+}
+
+/// The empirical cumulative distribution: each value, sorted, with the
+/// share of values at or below it. A single state rises in one steep
+/// stretch; two states rise twice with a flatter stretch between.
+pub fn ecdf(values: &[f64]) -> Vec<[f64; 2]> {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    v.sort_by(f64::total_cmp);
+    let n = v.len() as f64;
+    v.iter()
+        .enumerate()
+        .map(|(i, &x)| [x, (i + 1) as f64 / n])
+        .collect()
+}
+
+/// The value below which a share `p` of a standard normal population
+/// falls (the inverse of its cumulative distribution), by Acklam's
+/// rational approximation, good to about 1e-9.
+pub fn normal_quantile(p: f64) -> f64 {
+    if !(p > 0.0 && p < 1.0) {
+        return if p <= 0.0 {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+    }
+    const A: [f64; 6] = [
+        -3.969683028665376e1,
+        2.209460984245205e2,
+        -2.759285104469687e2,
+        1.38357751867269e2,
+        -3.066479806614716e1,
+        2.506628277459239,
+    ];
+    const B: [f64; 5] = [
+        -5.447609879822406e1,
+        1.615858368580409e2,
+        -1.556989798598866e2,
+        6.680131188771972e1,
+        -1.328068155288572e1,
+    ];
+    const C: [f64; 6] = [
+        -7.784894002430293e-3,
+        -3.223964580411365e-1,
+        -2.400758277161838,
+        -2.549732539343734,
+        4.374664141464968,
+        2.938163982698783,
+    ];
+    const D: [f64; 4] = [
+        7.784695709041462e-3,
+        3.224671290700398e-1,
+        2.445134137142996,
+        3.754408661907416,
+    ];
+    let tail = |q: f64| {
+        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
+    };
+    if p < 0.02425 {
+        tail((-2.0 * p.ln()).sqrt())
+    } else if p > 1.0 - 0.02425 {
+        -tail((-2.0 * (1.0 - p).ln()).sqrt())
+    } else {
+        let q = p - 0.5;
+        let r = q * q;
+        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
+            / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
+    }
+}
+
+/// A normal probability plot: each value against the normal score of its
+/// rank, `[value, z]` sorted by value. A value's share is its Hazen
+/// plotting position, (rank − ½) / n, as on flood-frequency probability
+/// paper. Values from one normal population fall on a straight line; two
+/// populations draw two lines joined by a bend.
+pub fn probability_plot(values: &[f64]) -> Vec<[f64; 2]> {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    v.sort_by(f64::total_cmp);
+    let n = v.len() as f64;
+    v.iter()
+        .enumerate()
+        .map(|(i, &x)| [x, normal_quantile((i as f64 + 0.5) / n)])
+        .collect()
+}
+
+/// The straight line one normal population would draw on the probability
+/// plot, as (centre, spread): the median and the interquartile range over
+/// 1.349, so a few strays or a second state do not tilt it. None when the
+/// values have no spread.
+pub fn normal_line(values: &[f64]) -> Option<(f64, f64)> {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    if v.len() < 4 {
+        return None;
+    }
+    v.sort_by(f64::total_cmp);
+    let q = |p: f64| {
+        let i = p * (v.len() - 1) as f64;
+        let (lo, hi) = (i.floor() as usize, i.ceil() as usize);
+        v[lo] + (v[hi] - v[lo]) * (i - lo as f64)
+    };
+    let sd = (q(0.75) - q(0.25)) / 1.349;
+    (sd > 0.0).then(|| (q(0.5), sd))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A spread of values about `mid`, the same every run.
+    fn spread(mid: f64, sd: f64, n: usize, seed: u64) -> Vec<f64> {
+        let mut s = seed;
+        let mut u = || {
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((s >> 11) as f64 + 0.5) / (1u64 << 53) as f64
+        };
+        (0..n)
+            .map(|_| {
+                // Box–Muller.
+                let (a, b) = (u(), u());
+                mid + sd * (-2.0 * a.ln()).sqrt() * (std::f64::consts::TAU * b).cos()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn counts_every_value_in_round_bins() {
+        let v = spread(250.0, 3.0, 2000, 1);
+        let h = histogram(&v, 0.5).unwrap();
+        assert_eq!(h.counts.iter().sum::<u32>() as usize, 2000);
+        assert_eq!(h.n, 2000);
+        // Round bin edges.
+        let k = h.start / h.bin_width;
+        assert!((k - k.round()).abs() < 1e-9);
+        assert!([0.5, 1.0, 2.0].contains(&h.bin_width), "{}", h.bin_width);
+        assert!((h.median - 250.0).abs() < 0.5);
+        assert!(h.p10 < h.median && h.median < h.p90);
+        assert_eq!(h.peaks(0.05).len(), 1);
+    }
+
+    #[test]
+    fn two_states_show_two_peaks() {
+        let mut v = spread(230.0, 2.0, 1000, 2);
+        v.extend(spread(250.0, 2.0, 1000, 3));
+        let h = histogram(&v, 0.5).unwrap();
+        let p = h.peaks(0.05);
+        assert_eq!(p.len(), 2, "{h:?}");
+        assert!((h.centre(p[0]) - 230.0).abs() <= h.bin_width, "{h:?}");
+        assert!((h.centre(p[1]) - 250.0).abs() <= h.bin_width, "{h:?}");
+    }
+
+    #[test]
+    fn trimming_keeps_outliers_from_stretching_the_bins() {
+        let mut v = spread(6.0, 0.5, 1000, 4);
+        v.extend([-65.0, -40.0, 20.0]);
+        let plain = histogram(&v, 0.1).unwrap();
+        let opt = Options {
+            trim: 0.005,
+            ..Options::new(0.1)
+        };
+        let h = histogram_with(&v, &opt).unwrap();
+        assert!(h.counts.len() < plain.counts.len() / 4);
+        assert_eq!(
+            h.below + h.above + h.counts.iter().sum::<u32>() as usize,
+            h.n
+        );
+        assert!(h.below >= 2 && h.above >= 1);
+        // Finer on request.
+        let fine = histogram_with(
+            &v,
+            &Options {
+                width_factor: 0.25,
+                ..opt
+            },
+        )
+        .unwrap();
+        assert!(fine.bin_width < h.bin_width);
+    }
+
+    #[test]
+    fn one_far_value_among_few_is_counted_off_the_scale() {
+        // Thirty rate readings near 6 s/d and one at 34, as a short take
+        // with one bad reading gives.
+        let mut v = spread(6.0, 0.3, 29, 6);
+        v.push(34.0);
+        let h = histogram_with(
+            &v,
+            &Options {
+                resolution: 0.1,
+                width_factor: 1.0,
+                trim: 0.005,
+            },
+        )
+        .unwrap();
+        let end = h.start + h.counts.len() as f64 * h.bin_width;
+        assert!(end < 8.0, "the scale reaches {end}");
+        assert_eq!(h.above, 1);
+        let on: usize = h.counts.iter().map(|&c| c as usize).sum();
+        assert_eq!(on + h.below + h.above, h.n);
+    }
+
+    /// A histogram of `v` at Distributions' trim and 0.1 resolution, with
+    /// its scale's end, after checking every value is counted once, on the
+    /// scale or off it.
+    fn counted(v: &[f64]) -> (Histogram, f64) {
+        let h = histogram_with(
+            v,
+            &Options {
+                trim: 0.005,
+                ..Options::new(0.1)
+            },
+        )
+        .unwrap();
+        let on: usize = h.counts.iter().map(|&c| c as usize).sum();
+        assert_eq!(on + h.below + h.above, h.n);
+        let end = h.start + h.counts.len() as f64 * h.bin_width;
+        (h, end)
+    }
+
+    /// Five glitches near +40 among 400 values in 0 to 4.9 (Trevor on
+    /// #2038): more than the trim takes, but across an empty stretch, so
+    /// the scale ends by the body and all five are counted above it.
+    #[test]
+    fn a_cluster_of_glitches_across_a_gap_is_off_the_scale() {
+        let v: Vec<f64> = (0..400)
+            .map(|i| f64::from(i % 50) * 0.1 + if i % 97 == 0 { 40.0 } else { 0.0 })
+            .collect();
+        let (h, end) = counted(&v);
+        assert!(end < 10.0, "the scale reaches {end}");
+        assert_eq!(h.above, 5);
+    }
+
+    /// One wild value among 200 and among 201, either side of where the
+    /// trim starts taking a whole value out: the scale is not stretched
+    /// at either size (Norm on #2038).
+    #[test]
+    fn one_wild_value_stretches_no_scale_at_200_or_201() {
+        for n in [200, 201] {
+            let mut v = spread(6.0, 0.3, n - 1, 6);
+            v.push(34.0);
+            let (h, end) = counted(&v);
+            assert!(end < 8.0, "n {n}: the scale reaches {end}");
+            assert_eq!(h.above, 1, "n {n}");
+        }
+    }
+
+    /// A run-down (#1971, dd3255's 67 h): most readings near the rate, an
+    /// eighth of them falling away over the last hours to −150 s/d. The
+    /// scale leaves out the 0.5% at each end and no more, so the middle
+    /// 80% the facts box gives is on it.
+    #[test]
+    fn a_run_downs_long_tail_stays_on_the_scale() {
+        let mut v = spread(0.0, 3.0, 2100, 7);
+        v.extend((0..300).map(|k| -10.0 - 140.0 * (f64::from(k) / 299.0).powi(2)));
+        let h = histogram_with(
+            &v,
+            &Options {
+                trim: 0.005,
+                ..Options::new(0.1)
+            },
+        )
+        .unwrap();
+        let end = h.start + h.counts.len() as f64 * h.bin_width;
+        assert!(
+            h.start <= h.p10 && end >= h.p90,
+            "{} {} in {}..{end}",
+            h.p10,
+            h.p90,
+            h.start
+        );
+        let off = (h.below + h.above) as f64 / h.n as f64;
+        assert!(off <= 0.011, "{off} off the scale");
+        // Every value counted once, on the scale or off it.
+        let on: usize = h.counts.iter().map(|&c| c as usize).sum();
+        assert_eq!(on + h.below + h.above, h.n);
+    }
+
+    #[test]
+    fn ecdf_rises_to_one() {
+        let v = spread(10.0, 1.0, 4000, 5);
+        let e = ecdf(&v);
+        assert_eq!(e.len(), 4000);
+        assert!((e[3999][1] - 1.0).abs() < 1e-12);
+        assert!(e.windows(2).all(|w| w[0][0] <= w[1][0]));
+    }
+
+    #[test]
+    fn resolution_and_degenerate_input() {
+        assert!(histogram(&[1.0, 2.0], 0.1).is_none());
+        assert!(histogram(&[f64::NAN, 1.0, 2.0], 0.1).is_none());
+        // All the same value: one bin of the resolution's width.
+        let h = histogram(&[5.0; 10], 0.1).unwrap();
+        assert_eq!(h.counts, vec![10]);
+        assert!((h.bin_width - 0.1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn normal_quantiles() {
+        assert!(normal_quantile(0.5).abs() < 1e-9);
+        assert!((normal_quantile(0.975) - 1.959964).abs() < 1e-5);
+        assert!((normal_quantile(0.001) + 3.090232).abs() < 1e-5);
+        assert!((normal_quantile(0.1) + normal_quantile(0.9)).abs() < 1e-9);
+        assert_eq!(normal_quantile(0.0), f64::NEG_INFINITY);
+    }
+
+    #[test]
+    fn one_population_draws_a_line_and_two_draw_a_bend() {
+        // One state: every point lies near the line through the median.
+        let one = spread(240.0, 3.0, 2000, 7);
+        let (mid, sd) = normal_line(&one).unwrap();
+        assert!((mid - 240.0).abs() < 0.5 && (sd - 3.0).abs() < 0.5);
+        let off = |pts: &[[f64; 2]], mid: f64, sd: f64| {
+            pts.iter()
+                .filter(|p| p[1].abs() < 2.0)
+                .map(|p| (p[0] - (mid + sd * p[1])).abs() / sd)
+                .fold(0.0, f64::max)
+        };
+        let pts = probability_plot(&one);
+        assert_eq!(pts.len(), 2000);
+        assert!(pts
+            .windows(2)
+            .all(|w| w[0][0] <= w[1][0] && w[0][1] < w[1][1]));
+        assert!(off(&pts, mid, sd) < 0.5);
+        // Two states, 226° and 238°: the middle of the plot leaves the line.
+        let mut two = spread(226.0, 2.0, 1000, 3);
+        two.extend(spread(238.0, 2.0, 1000, 5));
+        let (mid, sd) = normal_line(&two).unwrap();
+        assert!(off(&probability_plot(&two), mid, sd) > 1.0);
+        assert!(normal_line(&[1.0, 1.0, 1.0, 1.0]).is_none());
+    }
+}

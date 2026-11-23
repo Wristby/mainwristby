@@ -1,0 +1,846 @@
+//! The take context's windows are `session`'s, laid end to end (#294).
+//!
+//! Each session entry's window in the context, less its recording's
+//! offset, is the window `session` reads that entry in, to the bit; the
+//! recordings sit end to end in the order the take reads them; and each
+//! entry's masks are moved by its recording's offset. Synthetic takes
+//! run everywhere; the corpus's takes of several recordings run when
+//! `TIMEGRAPHER_CORPUS` names the corpus.
+
+use std::path::{Path, PathBuf};
+use timegrapher_core::session::Manifest;
+use timegrapher_core::stream::StreamConfig;
+use timegrapher_core::take::{self, EntrySettings};
+use timegrapher_core::take_context::{
+    entry_layout, in_files, masks_in_take, EntryWindow, FilePart, Masks, TakeContext,
+};
+
+fn settings(settle_s: Option<f64>) -> EntrySettings {
+    EntrySettings {
+        stream: StreamConfig::default(),
+        card_clock: false,
+        settle_s,
+    }
+}
+
+fn manifest(base: &Path) -> Manifest {
+    toml::from_str(&std::fs::read_to_string(base.join("session.toml")).unwrap()).unwrap()
+}
+
+/// Every entry of the take in `base`, read as `session` reads it, against
+/// the context's window for it less its offset.
+fn same_as_session(base: &Path, m: &Manifest, entries: &[EntryWindow], given: Option<f64>) {
+    assert_eq!(entries.len(), m.recordings.len());
+    for (e, w) in m.recordings.iter().zip(entries) {
+        let read = take::measure_entry(base, m, e, &settings(given), |_| Ok(None), |_| Ok(None));
+        match (read, &w.window) {
+            (Ok(r), Ok(c)) => {
+                let back = |t: f64| t - w.offset_s;
+                assert_eq!(
+                    (r.start_s, r.stop_s, r.settle_s, r.end_s),
+                    (
+                        back(c.start_s),
+                        back(c.stop_s),
+                        back(c.from_s),
+                        back(c.to_s)
+                    ),
+                    "{} entry {}",
+                    base.display(),
+                    w.entry
+                );
+            }
+            (Err(take::EntryError::NoReading(a)), Err(b)) => assert_eq!(&a, b),
+            (r, c) => panic!(
+                "{} entry {}: session {:?}, context {c:?}",
+                base.display(),
+                w.entry,
+                r.map(|r| (r.settle_s, r.end_s)).map_err(|e| e.to_string())
+            ),
+        }
+    }
+}
+
+/// The recordings lie end to end, each where the one before it ends.
+fn end_to_end(files: &[FilePart]) {
+    let mut at = 0.0;
+    for f in files {
+        assert!(
+            (f.offset_s - at).abs() < 1e-9,
+            "{}: {} not {at}",
+            f.path.display(),
+            f.offset_s
+        );
+        at = f.offset_s + f.duration_s;
+    }
+}
+
+fn synthetic_take(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("tg-take-context-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (i, name) in ["a.wav", "b.wav", "c.wav"].iter().enumerate() {
+        let sound = timegrapher_core::synth::generate(
+            &timegrapher_core::synth::SynthConfig {
+                duration_s: 60.0 + i as f64,
+                rate_s_per_day: 5.0,
+                seed: i as u64 + 1,
+                ..Default::default()
+            },
+            |_| 270.0,
+            |_| 0.0,
+        );
+        timegrapher_core::audio::write_wav(&dir.join(name), &sound).unwrap();
+    }
+    std::fs::write(
+        dir.join("session.toml"),
+        "bph = 28800\nmeasure_s = 30\n\
+         [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n\
+         [[recording]]\nfile = \"./b.wav\"\nposition = \"DD\"\nsettle_s = 10\nmeasure_s = 20\n\
+         [[recording]]\nfile = \"c.wav\"\nposition = \"CU\"\nstart_s = 5\nend_s = 50\n\
+         masked = [[20.0, 25.0]]\n\
+         [[recording]]\nfile = \"c.wav\"\nposition = \"CD\"\nstart_s = 50\nend_s = 50\n\
+         [[recording]]\nfile = \".\"\nposition = \"CL\"\nsettle_s = 30\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn a_takes_entries_are_sessions_windows_laid_end_to_end() {
+    let dir = synthetic_take("windows");
+    let m = manifest(&dir);
+    for given in [None, Some(15.0)] {
+        let (ctx, log) = TakeContext::open(
+            &dir,
+            &m,
+            settings(given),
+            Masks::Cut,
+            |_| Ok(None),
+            |_| Ok(None),
+            |_, _| {},
+        )
+        .unwrap();
+        let lengths: Vec<f64> = ctx.files.iter().map(|f| f.duration_s).collect();
+        assert_eq!(lengths, [60.0, 61.0, 62.0]);
+        end_to_end(&ctx.files);
+        assert!((log.duration_s - 183.0).abs() < 1e-9, "{}", log.duration_s);
+        let offsets: Vec<f64> = ctx.entries.iter().map(|w| w.offset_s).collect();
+        assert_eq!(offsets, [0.0, 60.0, 121.0, 121.0, 0.0]);
+        // b.wav, spelt "./b.wav", is the second file; "." is all three.
+        let parts: Vec<_> = ctx.entries.iter().map(|w| w.parts.clone()).collect();
+        assert_eq!(parts, [0..1, 1..2, 2..3, 2..3, 0..3]);
+        same_as_session(&dir, &m, &ctx.entries, given);
+        // The settling-only entry reads nothing, as `session` notes it.
+        assert_eq!(ctx.entries[3].window, Err(take::NoReading::Nothing));
+        // c.wav's mask, at 20 to 25 s into it, is at 141 to 146 s in the
+        // take, and no beat is kept inside it.
+        assert_eq!(ctx.masked, [(141.0, 146.0)]);
+        assert!(!log.beats.iter().any(|b| b.time > 141.0 && b.time < 146.0));
+        // The headers alone give the same layout.
+        let (files, entries) = entry_layout(&dir, &m, given).unwrap();
+        assert_eq!((files, entries), (ctx.files.clone(), ctx.entries.clone()));
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_entry_outside_the_takes_recordings_is_refused() {
+    let dir = synthetic_take("outside");
+    let mut m = manifest(&dir);
+    m.recordings[0].file = "elsewhere.wav".into();
+    let e = entry_layout(&dir, &m, None).unwrap_err();
+    assert!(e.contains("elsewhere.wav"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The corpus's takes of several recordings: laid end to end, every
+/// window inside its own recording, and on the shorter ones each window
+/// `session`'s to the bit.
+#[test]
+fn the_corpus_takes_of_several_recordings_lie_end_to_end() {
+    let Some(corpus) = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from) else {
+        eprintln!("SKIP: set TIMEGRAPHER_CORPUS to lay out the corpus's takes");
+        return;
+    };
+    let mut seen = 0;
+    for take_dir in std::fs::read_dir(corpus.join("takes")).unwrap() {
+        let base = take_dir.unwrap().path();
+        let Ok(text) = std::fs::read_to_string(base.join("session.toml")) else {
+            continue;
+        };
+        let m: Manifest = toml::from_str(&text).unwrap();
+        let Ok(sounds) = take::sound_files(std::slice::from_ref(&base)) else {
+            continue;
+        };
+        if sounds.len() < 2 || m.recordings.is_empty() {
+            continue;
+        }
+        let (files, entries) =
+            entry_layout(&base, &m, None).unwrap_or_else(|e| panic!("{}: {e}", base.display()));
+        end_to_end(&files);
+        for w in &entries {
+            let part = files
+                .iter()
+                .find(|f| (f.offset_s - w.offset_s).abs() < 1e-9)
+                .unwrap();
+            if let Ok(win) = &w.window {
+                let end = if m.recordings[w.entry].file == "." {
+                    files.last().map_or(0.0, |f| f.offset_s + f.duration_s)
+                } else {
+                    part.offset_s + part.duration_s
+                };
+                assert!(
+                    win.start_s >= part.offset_s && win.stop_s <= end + 1e-9,
+                    "{}",
+                    base.display()
+                );
+            }
+        }
+        let name = base.file_name().unwrap().to_string_lossy().into_owned();
+        if ["ym42_DD_30min", "eta2824_bare_DU_30min"].contains(&name.as_str()) {
+            same_as_session(&base, &m, &entries, None);
+        }
+        seen += 1;
+    }
+    assert!(seen >= 5, "{seen} takes of several recordings");
+}
+
+#[test]
+fn masks_kept_as_data_are_not_cut_from_the_beats() {
+    let dir = synthetic_take("kept");
+    let m = manifest(&dir);
+    let open = |masks| {
+        TakeContext::open(
+            &dir,
+            &m,
+            settings(None),
+            masks,
+            |_| Ok(None),
+            |_| Ok(None),
+            |_, _| {},
+        )
+        .unwrap()
+    };
+    let (cut, cut_log) = open(Masks::Cut);
+    let (kept, kept_log) = open(Masks::Kept);
+    assert_eq!(kept.masked, cut.masked);
+    assert_eq!(kept.entries, cut.entries);
+    let inside = |log: &timegrapher_core::stream::BeatLog| {
+        log.beats
+            .iter()
+            .filter(|b| b.time > 141.0 && b.time < 146.0)
+            .count()
+    };
+    assert_eq!(inside(&cut_log), 0);
+    assert!(inside(&kept_log) > 30, "{}", inside(&kept_log));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_stretch_of_the_take_is_split_into_its_files_own_seconds() {
+    let dir = synthetic_take("split");
+    let (files, _) = entry_layout(&dir, &manifest(&dir), None).unwrap();
+    // Files at 0 to 60, 60 to 121 and 121 to 183 s.
+    assert_eq!(in_files(&files, 10.0, 20.0), [(0, 10.0, 20.0)]);
+    assert_eq!(
+        in_files(&files, 50.0, 130.0),
+        [(0, 50.0, 60.0), (1, 0.0, 61.0), (2, 0.0, 9.0)]
+    );
+    assert_eq!(in_files(&files, 183.0, 190.0), []);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The positions the context lists are `take`'s listed positions of each
+/// entry in its own recording, moved by that recording's offset.
+#[test]
+fn a_takes_positions_are_listed_in_take_seconds() {
+    let dir = synthetic_take("positions");
+    let m = manifest(&dir);
+    let (ctx, _) = TakeContext::open(
+        &dir,
+        &m,
+        settings(None),
+        Masks::Cut,
+        |_| Ok(None),
+        |_| Ok(None),
+        |_, _| {},
+    )
+    .unwrap();
+    let mut want = Vec::new();
+    for (e, w) in m.recordings.iter().zip(&ctx.entries) {
+        let length = ctx.files[w.parts.clone()]
+            .iter()
+            .map(|f| f.duration_s)
+            .sum();
+        let at = w.offset_s;
+        want.extend(
+            take::listed_positions(&m, std::slice::from_ref(e), length)
+                .into_iter()
+                .map(|(s, f, t, p, c)| (s + at, f + at, t.map(|t| t + at), p, c)),
+        );
+    }
+    assert_eq!(ctx.listed_positions(&m), want);
+    assert_eq!(want.len(), 5);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Masks that arrive out of order, or meet, are held in order and merged,
+/// as `take::open_entry` holds them.
+#[test]
+fn masks_out_of_order_or_meeting_are_held_in_order_and_merged() {
+    let dir = synthetic_take("merged");
+    let mut m = manifest(&dir);
+    m.recordings[0].masked = vec![[30.0, 35.0], [10.0, 20.0], [20.0, 25.0]];
+    m.recordings[1].masked = vec![[5.0, 6.0]];
+    m.recordings[2].masked = Vec::new();
+    let (ctx, _) = TakeContext::open(
+        &dir,
+        &m,
+        settings(None),
+        Masks::Kept,
+        |_| Ok(None),
+        |_| Ok(None),
+        |_, _| {},
+    )
+    .unwrap();
+    assert_eq!(ctx.masked, [(10.0, 25.0), (30.0, 35.0), (65.0, 66.0)]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A take's readings are cut at each change of position and each end of
+/// settling; the next file of a take in the same position is no change.
+#[test]
+fn a_takes_reading_breaks_cut_at_changes_of_position_and_settling() {
+    let dir = synthetic_take("cuts");
+    let m: Manifest = toml::from_str(
+        "bph = 28800\n\
+         [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n\
+         [[recording]]\nfile = \"b.wav\"\nposition = \"DU\"\n\
+         [[recording]]\nfile = \"c.wav\"\nposition = \"CU\"\n",
+    )
+    .unwrap();
+    let (ctx, _) = TakeContext::open(
+        &dir,
+        &m,
+        settings(None),
+        Masks::Cut,
+        |_| Ok(None),
+        |_| Ok(None),
+        |_, _| {},
+    )
+    .unwrap();
+    let at: Vec<f64> = ctx.reading_breaks(&m).iter().map(|b| b.audio_s).collect();
+    // a.wav settles for core's 20 s. b.wav (60 s on) is in a.wav's
+    // position: no cut where it starts (where its own settling ends is
+    // `take::reading_window`'s to say). c.wav changes to CU at 121 s and
+    // settles to 141 s.
+    assert!(!at.contains(&60.0), "{at:?}");
+    for t in [20.0, 121.0, 141.0] {
+        assert!(at.contains(&t), "{t} in {at:?}");
+    }
+    assert!(ctx.reading_breaks(&m).iter().all(|b| b.gap_s == 0.0));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A restart in the same position (the watch put back as it was, after
+/// handling) is a change: a whole-take reading is cut where it begins as
+/// well as where its settling ends, so none runs from before the handling
+/// into the settling after it.
+#[test]
+fn a_restart_in_the_same_position_cuts_where_it_begins() {
+    let dir = synthetic_take("restart");
+    let m: Manifest = toml::from_str(
+        "bph = 28800\n\
+         [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\nend_s = 50.0\n\
+         [[recording]]\nfile = \"b.wav\"\nposition = \"DU\"\n",
+    )
+    .unwrap();
+    let (ctx, _) = TakeContext::open(
+        &dir,
+        &m,
+        settings(None),
+        Masks::Cut,
+        |_| Ok(None),
+        |_| Ok(None),
+        |_, _| {},
+    )
+    .unwrap();
+    // a.wav is read to 50 s; b.wav starts at 60 s and settles for core's
+    // 20 s, so the restart begins at 50 s and settles to 80 s.
+    let (stretches, settles) = ctx.positions(&m);
+    let starts: Vec<f64> = stretches.iter().map(|s| s.0).collect();
+    assert_eq!(starts, [0.0, 50.0]);
+    assert_eq!(settles, [(0.0, 20.0), (50.0, 80.0)]);
+    let at: Vec<f64> = ctx.reading_breaks(&m).iter().map(|b| b.audio_s).collect();
+    for t in [20.0, 50.0, 80.0] {
+        assert!(at.contains(&t), "{t} in {at:?}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A take's holes are its settlings, the cut `positions_of` makes: the
+/// first from the take's start to its first reading, and each after that
+/// the time between two stretches read (#1233).
+#[test]
+fn a_takes_holes_are_the_gaps_its_stretches_leave() {
+    let dir = synthetic_take("holes");
+    let m: Manifest = toml::from_str(
+        "bph = 28800\n\
+         [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n\
+         [[recording]]\nfile = \"b.wav\"\nposition = \"CU\"\n",
+    )
+    .unwrap();
+    let (ctx, _) = TakeContext::open(
+        &dir,
+        &m,
+        settings(None),
+        Masks::Cut,
+        |_| Ok(None),
+        |_| Ok(None),
+        |_, _| {},
+    )
+    .unwrap();
+    let read = ctx.spans(&m).expect("two positions").read;
+    let mut gaps = vec![(0.0, read[0].0)];
+    gaps.extend(read.windows(2).map(|w| (w[0].1, w[1].0)));
+    assert_eq!(ctx.holes(&m), gaps);
+    assert_eq!(ctx.holes(&m), [(0.0, 20.0), (60.0, 80.0)]);
+    // Left out as a mask is, with the masks by hand, merged.
+    assert_eq!(
+        timegrapher_core::session::with_holes(&[(10.0, 30.0), (100.0, 101.0)], &ctx.holes(&m)),
+        [(0.0, 30.0), (60.0, 80.0), (100.0, 101.0)]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The stretches of the synthetic take (a.wav 60 s, b.wav 61 s, c.wav
+/// 62 s) that `series` and `long` read for the session file `toml`.
+/// Stretches read and holes, take seconds.
+type Read = (Vec<(f64, f64)>, Vec<(f64, f64)>);
+
+fn spans_of(dir: &Path, toml: &str) -> Option<Read> {
+    let m: Manifest = toml::from_str(toml).unwrap();
+    let (ctx, _) = TakeContext::open(
+        dir,
+        &m,
+        settings(None),
+        Masks::Cut,
+        |_| Ok(None),
+        |_| Ok(None),
+        |_, _| {},
+    )
+    .unwrap();
+    ctx.spans(&m).map(|s| (s.read, s.holes))
+}
+
+/// The stretches `series` and `long` read are the entries' windows in
+/// take seconds: joined where the position changes, run on where a file
+/// carries on the one before it, and with a hole, kept at its width,
+/// where an entry leaves out part of one position's run (#294, #1156).
+#[test]
+fn a_takes_stretches_are_its_entries_windows() {
+    let dir = synthetic_take("spans");
+    let spans = |toml: &str| spans_of(&dir, toml);
+    let s = take::SETTLE_S;
+    let read = |r: &[(f64, f64)]| Some((r.to_vec(), Vec::new()));
+    // One file in one position, from its settling.
+    assert_eq!(
+        spans("[[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n"),
+        read(&[(s, 60.0)])
+    );
+    // Two positions in one file, each from its settling.
+    assert_eq!(
+        spans(
+            "settle_s = 5.0\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\nend_s = 30.0\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"CU\"\nstart_s = 30.0\n"
+        ),
+        read(&[(5.0, 30.0), (35.0, 60.0)])
+    );
+    // Read from its start: the whole take. No position named: whole.
+    assert_eq!(
+        spans("[[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\nsettle_s = 0.0\n"),
+        None
+    );
+    assert_eq!(spans("[[recording]]\nfile = \"a.wav\"\n"), None);
+    // Two files in two positions, each from its settling.
+    assert_eq!(
+        spans(
+            "[[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"b.wav\"\nposition = \"CU\"\n"
+        ),
+        read(&[(s, 60.0), (60.0 + s, 121.0)])
+    );
+    // Files one after another in one position settle once (#1145).
+    assert_eq!(
+        spans(
+            "[[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"b.wav\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"c.wav\"\nposition = \"dial up\"\n"
+        ),
+        read(&[(s, 183.0)])
+    );
+    // A later file that settles on its own, in the same position: a hole
+    // in the run where it settles.
+    assert_eq!(
+        spans(
+            "[[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n\
+             [[recording]]\nfile = \"b.wav\"\nposition = \"DU\"\nsettle_s = 40.0\n"
+        ),
+        Some((vec![(s, 121.0)], vec![(60.0, 100.0)]))
+    );
+    // A file measured for 10 s, then read again from 40 s into it, as
+    // ym42_CR_long's third file is (#1156): one run, with a hole.
+    assert_eq!(
+        spans(
+            "[[recording]]\nfile = \"a.wav\"\nposition = \"CR\"\n\
+             [[recording]]\nfile = \"b.wav\"\nposition = \"CR\"\n\
+             [[recording]]\nfile = \"c.wav\"\nposition = \"CR\"\nmeasure_s = 10\n\
+             [[recording]]\nfile = \"c.wav\"\nposition = \"CR\"\nsettle_s = 40\n"
+        ),
+        Some((vec![(s, 183.0)], vec![(131.0, 161.0)]))
+    );
+    // The folder in the first file's position, before the files or
+    // beside the first alone: from that file's settling to the end.
+    for files in ["a.wav\", \"b.wav", "a.wav"] {
+        let mut toml = "[[recording]]\nfile = \".\"\nposition = \"DU\"\n".to_string();
+        for f in files.split("\", \"") {
+            toml += &format!("[[recording]]\nfile = \"{f}\"\nposition = \"DU\"\n");
+        }
+        assert_eq!(spans(&toml), read(&[(s, 183.0)]), "{files}");
+    }
+    // In another position, or naming more, it is a reading of its own,
+    // over the first file's: read whole.
+    assert_eq!(
+        spans(
+            "[[recording]]\nfile = \".\"\nposition = \"CU\"\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n"
+        ),
+        None
+    );
+    assert_eq!(
+        spans(
+            "[[recording]]\nfile = \".\"\nposition = \"DU\"\nend_s = 50.0\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\n"
+        ),
+        None
+    );
+    // Entries that overlap would read their shared sound twice: whole.
+    assert_eq!(
+        spans(
+            "settle_s = 5.0\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\nend_s = 40.0\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"DD\"\nstart_s = 30.0\n"
+        ),
+        None
+    );
+    // Stretches that only touch are joined; an entry with nothing left
+    // after its settling, or that measures for no time, adds none (#756).
+    let two = |second: &str| {
+        spans(&format!(
+            "settle_s = 5.0\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"DU\"\nend_s = 30.0\n\
+             [[recording]]\nfile = \"a.wav\"\nposition = \"CU\"\n{second}"
+        ))
+    };
+    assert_eq!(two("start_s = 25.0\n"), read(&[(5.0, 30.0), (30.0, 60.0)]));
+    assert_eq!(two("start_s = 30.0\nend_s = 35.0\n"), read(&[(5.0, 30.0)]));
+    assert_eq!(
+        two("start_s = 30.0\nmeasure_s = 0.0\n"),
+        read(&[(5.0, 30.0)])
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The rule `spans` joins entries by, as the app joins its stretches
+/// (#1156): a window carrying on runs on; two in one position one after
+/// the other are one run with a hole between; another position between
+/// joins them; two that overlap read nothing joined.
+#[test]
+fn stretches_of_runs_on_holes_and_joins() {
+    use timegrapher_core::take_context::stretches_of;
+    let s = stretches_of([
+        (20.0, 300.0, false, 'R'),
+        (300.0, 337.0, true, 'R'),
+        (377.0, 900.0, false, 'R'),
+        (920.0, 1000.0, false, 'U'),
+        (1030.0, 1100.0, false, 'R'),
+    ])
+    .unwrap();
+    assert_eq!(s.read, [(20.0, 900.0), (920.0, 1000.0), (1030.0, 1100.0)]);
+    assert_eq!(s.holes, [(337.0, 377.0)]);
+    assert_eq!(s.at, ['R', 'U', 'R']);
+    assert_eq!(
+        stretches_of([(0.0, 300.0, false, 'R'), (200.0, 400.0, false, 'U')]),
+        None
+    );
+}
+
+/// Each entry's masks are moved by its own recording's offset into take
+/// seconds, as the take and the app's strip place them (#294 step 5).
+#[test]
+fn masks_land_at_their_recordings_offset() {
+    let m: Manifest = toml::from_str(
+        "[[recording]]\nfile = \"a.wav\"\nmasked = [[1.0, 2.0]]\n\
+         [[recording]]\nfile = \"b.wav\"\nmasked = [[0.5, 1.5], [3.0, 4.0]]\n",
+    )
+    .unwrap();
+    assert_eq!(
+        masks_in_take(&m.recordings, [0.0, 600.0]),
+        [[1.0, 2.0], [600.5, 601.5], [603.0, 604.0]]
+    );
+}
+
+/// The take in `base` kept as its analysis alone in `kept`, as Keep
+/// Analysis Only keeps it: measured from all its sound, its session file
+/// marked `audio = false`, and its sound left behind.
+fn keep_analysis(base: &Path, kept: &Path) -> Manifest {
+    let text = std::fs::read_to_string(base.join("session.toml")).unwrap();
+    let m: Manifest = toml::from_str(&text).unwrap();
+    let sounds = take::sound_files(&[base.to_path_buf()]).unwrap();
+    let files: Vec<&Path> = sounds.iter().map(PathBuf::as_path).collect();
+    let span_s: f64 = sounds
+        .iter()
+        .map(|f| {
+            let i = timegrapher_core::audio::info(f).unwrap();
+            i.frames.unwrap() as f64 / i.sample_rate as f64
+        })
+        .sum();
+    let cfg = take::stream_settings(&m, None, take::Given::default());
+    let shapes = timegrapher_core::analysis_take::shape_stretches(&m, span_s);
+    let software = serde_json::json!({"name": "timegrapher", "version": "test"});
+    let stored =
+        timegrapher_core::analysis_take::measure(&files, &cfg, &shapes, software, |_| {}).unwrap();
+    let _ = std::fs::remove_dir_all(kept);
+    let manifest = format!("audio = false\n{text}");
+    timegrapher_core::analysis_take::save(
+        kept,
+        &[("session.toml".to_string(), manifest.clone().into_bytes())],
+        &stored,
+    )
+    .unwrap();
+    toml::from_str(&manifest).unwrap()
+}
+
+/// A take kept as its analysis alone is laid out as its sound was: each
+/// entry at the take's start, over the length kept, its window the one the
+/// sound gave it; no files, and its kept profiles. An entry beside them
+/// naming one of the files it was made from can't be placed any more.
+fn kept_is_laid_out_as_its_sound_was(base: &Path, kept: &Path) {
+    let m = manifest(base);
+    let mk = keep_analysis(base, kept);
+    let (_, sound) = entry_layout(base, &m, None).unwrap();
+    let (files, entries) = entry_layout(kept, &mk, None).unwrap();
+    assert!(files.is_empty());
+    assert_eq!(entries.len(), sound.len());
+    for (k, s) in entries.iter().zip(&sound) {
+        assert_eq!(
+            (k.entry, k.position, k.offset_s, &k.window),
+            (s.entry, s.position, s.offset_s, &s.window),
+            "{}",
+            base.display()
+        );
+        assert!(k.parts.is_empty());
+    }
+    let (ctx, log) = TakeContext::open(
+        kept,
+        &mk,
+        settings(None),
+        Masks::Cut,
+        |_| Ok(None),
+        |_| Ok(None),
+        |_, _| {},
+    )
+    .unwrap();
+    assert!(ctx.files.is_empty());
+    assert_eq!(ctx.entries, entries);
+    assert!(ctx.profiles.is_some_and(|p| !p.is_empty()));
+    assert!(!log.beats.is_empty());
+    let mut named = mk.clone();
+    let mut e = named.recordings[0].clone();
+    e.file = "a.wav".into();
+    named.recordings.push(e);
+    for e in [
+        entry_layout(kept, &named, None).unwrap_err(),
+        TakeContext::open(
+            kept,
+            &named,
+            settings(None),
+            Masks::Cut,
+            |_| Ok(None),
+            |_| Ok(None),
+            |_, _| {},
+        )
+        .err()
+        .unwrap(),
+    ] {
+        assert!(
+            e.contains("a.wav: the take is kept as its analysis alone"),
+            "{e}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(kept);
+}
+
+#[test]
+fn a_take_kept_as_its_analysis_is_laid_out_as_its_sound_was() {
+    let dir = synthetic_take("keep");
+    // Two entries over the whole take, as a kept take's entries read it.
+    std::fs::write(
+        dir.join("session.toml"),
+        "bph = 28800\n\
+         [[recording]]\nfile = \".\"\nposition = \"DU\"\nsettle_s = 10\nend_s = 90\n\
+         [[recording]]\nfile = \".\"\nposition = \"DD\"\nstart_s = 90\nsettle_s = 5\n",
+    )
+    .unwrap();
+    kept_is_laid_out_as_its_sound_was(&dir, &dir.with_extension("kept"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The corpus's takes whose entries read the whole take, kept as their
+/// analysis alone.
+#[test]
+fn the_corpus_takes_kept_as_their_analysis_are_laid_out_as_their_sound_was() {
+    let Some(corpus) = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from) else {
+        eprintln!("SKIP: set TIMEGRAPHER_CORPUS to keep the corpus's takes as their analysis");
+        return;
+    };
+    let base = corpus.join("takes").join("daytona4130_DU_30min");
+    let out = std::env::temp_dir().join(format!("tg-take-context-kept-{}", std::process::id()));
+    kept_is_laid_out_as_its_sound_was(&base, &out);
+}
+
+/// A take whose recordings were made at different sample rates has no one
+/// timeline, and says which file differs.
+#[test]
+fn recordings_at_another_sample_rate_are_refused() {
+    let dir = synthetic_take("rate");
+    let mut b = timegrapher_core::audio::load(&dir.join("b.wav")).unwrap();
+    b.sample_rate = 44_100;
+    timegrapher_core::audio::write_wav(&dir.join("b.wav"), &b).unwrap();
+    let e = entry_layout(&dir, &manifest(&dir), None).unwrap_err();
+    assert!(
+        e.contains("b.wav: recorded at 44100 Hz, unlike the take's other recordings"),
+        "{e}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// On a real take, each of a guided test's entries read at once, its
+/// sound opened once, reads exactly as `session` reads it entry by entry
+/// (Norm's (c) on #1958): the Datejust 41's ten positions as recorded,
+/// its eight Dynamic Poise stops of 30 s and of 60 s (the CU stop crossing
+/// the take's two breaks), and those 30 s stops with masks of their own.
+#[test]
+fn a_corpus_take_read_at_once_reads_as_each_entry_alone() {
+    let Some(corpus) = std::env::var_os("TIMEGRAPHER_CORPUS").map(PathBuf::from) else {
+        eprintln!("SKIP: set TIMEGRAPHER_CORPUS to read the corpus's takes");
+        return;
+    };
+    let base = corpus.join("takes").join("datejust41_3235_multipos_105min");
+    if !base.is_dir() {
+        eprintln!("SKIP: fetch datejust41_3235_multipos_105min");
+        return;
+    }
+    let read = |name: &str| -> Manifest {
+        toml::from_str(&std::fs::read_to_string(base.join(name)).unwrap()).unwrap()
+    };
+    let mut masked = read("poise30.toml");
+    masked.recordings[2].masked = vec![[1470.0, 1475.5]];
+    for e in &mut masked.recordings[4..] {
+        e.masked = vec![[e.start_s.unwrap() + 3.0, e.start_s.unwrap() + 4.25]];
+    }
+    let s = settings(None);
+    for (what, m) in [
+        ("positions", read("raw/session.toml")),
+        ("poise 30 s", read("poise30.toml")),
+        ("poise 60 s", read("poise60.toml")),
+        ("poise 30 s masked", masked),
+    ] {
+        let known = |first: &Path| take::correction_for(&m, first, None, None);
+        let at_once = timegrapher_core::take_context::measure_entries(
+            &base,
+            &m,
+            &s,
+            take::usb,
+            known,
+            |_, _| {},
+        );
+        for (e, once) in m.recordings.iter().zip(at_once) {
+            let alone = take::measure_entry(&base, &m, e, &s, take::usb, known);
+            // An entry with nothing to read says so alike (the first
+            // 10H30, shorter than its settling).
+            let (once, alone) = match (once, alone) {
+                (Ok(o), Ok(a)) => (o, a),
+                (o, a) => {
+                    assert_eq!(o.err(), a.err(), "{what}: {:?}", e.position);
+                    continue;
+                }
+            };
+            assert_eq!(
+                serde_json::to_value(&once.measurement).unwrap(),
+                serde_json::to_value(&alone.measurement).unwrap(),
+                "{what}: {:?} from {:?}",
+                e.position,
+                e.start_s
+            );
+        }
+    }
+}
+
+/// A take's entries measured at once, their sound opened once, read
+/// exactly as each measured alone: every figure, ± and caveat, with
+/// each entry's own masks (#1958).
+#[test]
+fn entries_measured_at_once_are_each_as_measured_alone() {
+    use timegrapher_core::synth::{generate, SynthConfig};
+    let dir = std::env::temp_dir().join(format!("tg-entries-once-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cfg = SynthConfig {
+        duration_s: 95.0,
+        ..SynthConfig::default()
+    };
+    let audio = generate(&cfg, |t| 300.0 - t, |_| 5.0);
+    timegrapher_core::audio::write_wav(&dir.join("take.wav"), &audio).unwrap();
+    let m: Manifest = toml::from_str(
+        "bph = 28800\nlift = 52\n\n\
+         [[recording]]\nfile = \".\"\nposition = \"DU\"\nstart_s = 0.0\nend_s = 30.0\nsettle_s = 0.0\n\
+         masked = [[10.0, 12.0]]\n\n\
+         [[recording]]\nfile = \".\"\nposition = \"CD\"\nstart_s = 32.0\nend_s = 62.0\nsettle_s = 0.0\n\n\
+         [[recording]]\nfile = \".\"\nposition = \"CL\"\nstart_s = 64.0\nend_s = 94.0\nsettle_s = 0.0\n\
+         masked = [[10.0, 12.0], [70.0, 71.5]]\n",
+    )
+    .unwrap();
+    let s = EntrySettings {
+        stream: take::stream_settings(&m, None, take::Given::default()),
+        card_clock: false,
+        settle_s: None,
+    };
+    let known = |_: &Path| Ok(Some((20.0, "stored for 'test'".to_string())));
+    let at_once = timegrapher_core::take_context::measure_entries(
+        &dir,
+        &m,
+        &s,
+        |_| Ok(None),
+        known,
+        |_, _| {},
+    );
+    assert_eq!(at_once.len(), 3);
+    for (e, once) in m.recordings.iter().zip(at_once) {
+        let alone = take::measure_entry(&dir, &m, e, &s, |_| Ok(None), known).unwrap();
+        let once = once.unwrap();
+        assert_eq!(
+            serde_json::to_value(&once.measurement).unwrap(),
+            serde_json::to_value(&alone.measurement).unwrap(),
+            "{:?}",
+            e.position
+        );
+        // Each with its own masks: the log each was read from too.
+        assert_eq!(
+            serde_json::to_value(&once.log).unwrap(),
+            serde_json::to_value(&alone.log).unwrap()
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

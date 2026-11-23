@@ -1,0 +1,2615 @@
+//! A take kept as its analysis alone: the beats, the amplitude windows,
+//! the Tick Tock profiles and the sample of beat sound the watch verdict
+//! reads ([`SOUND`]) the engine found in its sound, in an `analysis/`
+//! folder beside `session.toml`, `session.json` and `clock.csv`, with no
+//! audio. Everything read from the beats (readings, charts, steadiness,
+//! the Positions Test, cycles) reads from it as from the sound; only
+//! measuring the sound again, the waveform and replaying it are gone.
+//!
+//! The layout is documented in `docs/reference/sessions.md`.
+
+use crate::amplitude::AmplitudeWindow;
+use crate::audio::{self, AudioError};
+use crate::beats::{self, Beat};
+use crate::dsp::envelope;
+use crate::profile::{Side, TickProfile};
+use crate::session::{self, Manifest, ShapeSummary};
+use crate::shape;
+use crate::stream::{self, BeatLog, StreamConfig};
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use serde::{Deserialize, Serialize};
+use std::fs;
+#[cfg(test)]
+use std::io::Read;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+
+/// The folder the analysis is kept in, inside the take's folder.
+pub const DIR: &str = "analysis";
+/// Its header and marker.
+pub const HEADER: &str = "analysis.json";
+pub const BEATS: &str = "beats.csv.gz";
+pub const WINDOWS: &str = "windows.csv.gz";
+pub const PROFILES: &str = "profiles.bin.gz";
+/// The edges of window sides the amplitude gate left out at the kept
+/// lift, so a later lift can read them again (#1333). Optional: a take
+/// kept before it has none, and an older version ignores it.
+pub const CULLED: &str = "culled.csv.gz";
+/// The beats' sound the watch verdict reads under
+/// [`crate::measure::SHORT_SPAN_S`] (the beat log's `snippets`, a
+/// [`crate::sound_sample`] of at most
+/// [`crate::sound_sample::SOUND_SAMPLE_BEATS`] beats), kept exactly, so a
+/// kept take is judged from the same sound as with its sound (#2069).
+/// Optional: a take kept before it has none, and one that can't be read is
+/// read as none, so its short stretches wait for a verdict as before.
+pub const SOUND: &str = "sound.bin.gz";
+/// The layout's name and version, in the header's `format`.
+pub const FORMAT: &str = "timegrapher.analysis/2";
+/// The layout before #657: the same, but `usb_clock.ppm` is ppm slow. It
+/// is read with that sign changed, so a saved take keeps its meaning.
+pub const FORMAT_1: &str = "timegrapher.analysis/1";
+/// The fact the header states about the missing sound.
+pub const NO_SOUND: &str = "Saved without its sound: it can't be measured again, and the \
+     waveform (the Scope pane and Replay) can't come back.";
+/// The Tick Tock profiles are kept for each stretch of this many seconds.
+pub const PROFILE_EVERY_S: f64 = 2.0;
+/// Seconds of sound the beat shape is measured on, as `timegrapher
+/// session` measures it.
+pub const SHAPE_S: f64 = 60.0;
+
+/// At most 512 MiB decompressed per analysis file. A 100-hour take at
+/// 36,000 bph has 3,600,000 beats: even 64 bytes per CSV row is 230.4 MB.
+/// Its 180,000 two-second profiles, with at most 141 points per curve
+/// (28 ms / 0.2 ms, rounded up), use about 168.5 MB:
+/// 28 + 180,000 * (12 + 2 * (39 + 3 * 141)). Even one 256-byte window row
+/// per second uses only 92.2 MB. 512 MiB leaves over twice these sizes
+/// while bounding a crafted gzip's allocation.
+pub(crate) const MAX_ANALYSIS_FILE: u64 = 512 << 20;
+
+/// Kept profile points are this far apart, ms (every second point of the
+/// engine's 0.1 ms profile).
+const PROFILE_POINT_MS: f64 = 0.2;
+/// Levels are kept in quarter-dB steps below each profile's top, down to
+/// this many dB; lower is kept as 0.
+const PROFILE_RANGE_DB: f64 = 63.75;
+const PROFILE_MAGIC: &[u8; 8] = b"TGPROF\0\x01";
+/// [`PROFILE_MAGIC`] for a file whose stretches are not all on one time
+/// axis: each carries its own first point and points a curve
+/// ([`profiles_bin`], #1924). Its last byte is the version.
+const PROFILE_MAGIC_V2: &[u8; 8] = b"TGPROF\0\x02";
+/// The start of [`SOUND`]; its last byte is the version.
+const SOUND_MAGIC: &[u8; 8] = b"TGSOUND\x01";
+const BEATS_COLUMNS: &str = "index_step,residual_us,quality,clipped";
+const WINDOWS_COLUMNS: &str = "start_s,end_s,even_deg,odd_deg,beat_error_ms,\
+     beat_error_unlock_ms,even_unlock_ms,odd_unlock_ms,even_drop_ms,odd_drop_ms";
+const CULLED_COLUMNS: &str = "window,even_unlock_ms,even_drop_ms,odd_unlock_ms,odd_drop_ms";
+
+/// What `analysis/analysis.json` holds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Header {
+    /// [`FORMAT`].
+    pub format: String,
+    /// The software that measured the sound: name, version and commit.
+    pub software: serde_json::Value,
+    /// Always false: the take has no sound.
+    pub audio: bool,
+    /// [`NO_SOUND`].
+    pub note: String,
+    pub sample_rate: u32,
+    /// Bytes a frame of the sound took, for reading `clock.csv`'s audio
+    /// column as the sound's own file would.
+    pub bytes_per_frame: u32,
+    pub duration_s: f64,
+    pub bph: u32,
+    pub lift_deg: f64,
+    pub clipped_samples: usize,
+    /// Audio seconds where the beats jumped (the beat log's `jumps`).
+    pub jumps: Vec<f64>,
+    /// The jumps whose sides the sound told apart (the beat log's `sided`);
+    /// the others are named by the beat count alone.
+    pub sided: Vec<f64>,
+    /// The analysis settings that shaped the beats.
+    pub settings: serde_json::Value,
+    /// Rows in each of the other files.
+    pub beats: usize,
+    pub windows: usize,
+    pub profiles: usize,
+    /// The card's clock error from the USB lines in the sound's first ten
+    /// minutes, when they showed it.
+    pub usb_clock: Option<StoredUsbClock>,
+    /// The median, over the profiles' stretches, of the beats' peak over
+    /// the envelope's median (the signal figure the app shows).
+    pub signal_median: Option<f32>,
+    /// The beat shape of each recording in the session file, measured on
+    /// the sound when the take was saved.
+    pub shape: Vec<StoredShape>,
+    /// The beat log's `lock_template_kept` (#1503): left out when false,
+    /// as every take kept before it was.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lock_template_kept: bool,
+}
+
+/// [`crate::usbclock::UsbClock`], as kept.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct StoredUsbClock {
+    pub ppm: f64,
+    pub lines: usize,
+    pub spread_ppm: f64,
+}
+
+/// One recording's beat shape, measured when the take was saved.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredShape {
+    /// The recording's place in the session file, from 0.
+    pub recording: usize,
+    /// The stretch it was measured on, audio seconds.
+    pub from_s: f64,
+    pub to_s: f64,
+    pub summary: ShapeSummary,
+}
+
+/// The Tick Tock profiles of one stretch.
+#[derive(Debug, Clone)]
+pub struct StretchProfiles {
+    /// The stretch's end, audio seconds; it began [`PROFILE_EVERY_S`]
+    /// before.
+    pub end_s: f64,
+    /// The beats' peak over the envelope's median in it.
+    pub signal: Option<f32>,
+    pub sides: [Option<TickProfile>; 2],
+}
+
+impl StretchProfiles {
+    /// Tick and Tock the other way round, as a side swap names them.
+    pub fn swap_sides(&mut self) {
+        self.sides.swap(0, 1);
+        for (s, side) in self.sides.iter_mut().zip([Side::A, Side::B]) {
+            if let Some(s) = s {
+                s.side = side;
+            }
+        }
+    }
+}
+
+/// Everything an analysis-only take keeps.
+#[derive(Debug, Clone)]
+pub struct Stored {
+    pub header: Header,
+    /// The beat log, with the clipped beats.
+    pub log: BeatLog,
+    pub profiles: Vec<StretchProfiles>,
+}
+
+impl Stored {
+    /// The stored shape of recording `i` of the session file.
+    pub fn shape_of(&self, i: usize) -> Option<&StoredShape> {
+        self.header.shape.iter().find(|s| s.recording == i)
+    }
+}
+
+/// Whether `take` (a take's folder) is kept as its analysis alone: its
+/// `analysis/analysis.json` is there.
+pub fn is_analysis_only(take: &Path) -> bool {
+    take.join(DIR).join(HEADER).is_file()
+}
+
+/// Why Keep Analysis Only can't remove a take's sound, from its session
+/// file `m` alone: one source for the app's menu, which offers it only
+/// when it can (#1279), for the removal itself and for the CLI. `None`
+/// when it can.
+pub fn sound_kept_by_name(m: &Manifest) -> Option<String> {
+    use crate::take::MANIFEST;
+    (m.recordings.is_empty() || m.recordings.iter().any(|r| r.file != ".")).then(|| {
+        format!(
+            "its {MANIFEST} lists each sound file by name, and only takes whose {MANIFEST} \
+             names the whole folder, as the app writes it, can have their sound removed"
+        )
+    })
+}
+
+/// What Keep Analysis Only needs from a saved take before it reads the
+/// sound ([`plan_keep`]).
+#[derive(Debug)]
+pub struct KeepPlan {
+    /// The sound files, in the order they are read.
+    pub files: Vec<PathBuf>,
+    /// Their length together, seconds.
+    pub total_s: f64,
+    /// Every other file of the take, by its path in it (`/` between
+    /// folders), with `session.toml` marked `audio = false`: what [`save`]
+    /// writes beside the analysis.
+    pub companions: Vec<(String, Vec<u8>)>,
+    /// How the sound is read: the take's own settings, its calibre looked
+    /// up among the catalogue's and the user's own.
+    pub cfg: StreamConfig,
+    /// The beat shape's stretches ([`shape_stretches`]).
+    pub shapes: Vec<Option<(f64, f64)>>,
+}
+
+/// Plan keeping the saved take in `take` as its analysis alone, its
+/// calibre found in the catalogue and `user`'s; or why it can't be: its
+/// sound already removed, its session file listing files by name, sound in
+/// a subfolder, or a file that can't be read. Reads no sound but its
+/// headers. The app's Keep Analysis Only and the CLI's both start here.
+pub fn plan_keep(
+    take: &Path,
+    user: &crate::calibre_store::UserCalibres,
+) -> Result<KeepPlan, String> {
+    use crate::take::{self, MANIFEST};
+    let file = take.join(MANIFEST);
+    let text =
+        crate::recorder::read_settled(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let m: Manifest = toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    if m.audio == Some(false) {
+        return Err("its sound has already been removed".into());
+    }
+    if let Some(why) = sound_kept_by_name(&m) {
+        return Err(why);
+    }
+    let files = take::sound_files(&[take.to_path_buf()])?;
+    let mut total_s = 0.0;
+    for f in &files {
+        let i = audio::info(f).map_err(|e| format!("{}: {e}", f.display()))?;
+        let frames = i
+            .frames
+            .ok_or_else(|| format!("{} doesn't say how long it is", f.display()))?;
+        total_s += frames as f64 / f64::from(i.sample_rate.max(1));
+    }
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("{}: {e}", file.display()))?;
+    doc.insert("audio", toml_edit::value(false));
+    let mut companions = vec![(MANIFEST.to_string(), doc.to_string().into_bytes())];
+    keep_companions(take, take, &mut companions)?;
+    let cfg = keep_settings(&m, user);
+    let shapes = shape_stretches(&m, total_s);
+    Ok(KeepPlan {
+        files,
+        total_s,
+        companions,
+        cfg,
+        shapes,
+    })
+}
+
+/// Where Keep Analysis Only writes the take `take` kept as its analysis,
+/// beside it, before [`crate::library::Library::replace_take`] puts it in
+/// the take's place: a hidden folder the library's scan passes over.
+pub fn kept_beside(take: &Path) -> PathBuf {
+    let name = take
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    take.with_file_name(format!(".{name}.analysis"))
+}
+
+/// Keep Analysis Only's writing step, one for the app (on its own thread)
+/// and the CLI: the take planned in `plan` read and measured
+/// ([`measure`], `progress` as there), and kept as its analysis alone in
+/// a new folder beside it ([`kept_beside`], any left from an earlier try
+/// cleared first, [`save`] writing it whole). Nothing of the take itself
+/// is touched: [`crate::library::Library::replace_take`] then puts the
+/// returned folder in its place, and only that deletes the sound.
+pub fn write_kept(
+    take: &Path,
+    plan: &KeepPlan,
+    software: serde_json::Value,
+    progress: impl FnMut(f64),
+) -> Result<PathBuf, String> {
+    let dest = kept_beside(take);
+    let _ = fs::remove_dir_all(&dest);
+    let paths: Vec<&Path> = plan.files.iter().map(PathBuf::as_path).collect();
+    let stored =
+        measure(&paths, &plan.cfg, &plan.shapes, software, progress).map_err(|e| e.to_string())?;
+    save(&dest, &plan.companions, &stored).map_err(|e| e.to_string())
+}
+
+/// How a take kept as its analysis is read: its session file's own
+/// settings, its calibre found in the catalogue and `user`'s.
+pub fn keep_settings(m: &Manifest, user: &crate::calibre_store::UserCalibres) -> StreamConfig {
+    use crate::take;
+    let cal = m
+        .calibre
+        .as_deref()
+        .and_then(|n| take::calibre_named(n, user));
+    take::stream_settings(m, cal.as_ref(), take::Given::default())
+}
+
+/// Every file of take `take` under `dir` that Keep Analysis Only keeps
+/// beside its analysis, by its path in the take, subfolders too: all but
+/// its sound and its session file, which is written anew (#1323). The
+/// sound at its top goes, a WAV left beside its FLAC too, so no sound is
+/// kept; sound in a subfolder, or anything that is neither a file nor a
+/// folder, such as a link, is refused, so nothing is lost unseen.
+fn keep_companions(
+    take: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, Vec<u8>)>,
+) -> Result<(), String> {
+    use crate::take::MANIFEST;
+    for e in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+        let e = e.map_err(|e| e.to_string())?;
+        let path = e.path();
+        let rel = path.strip_prefix(take).map_err(|e| e.to_string())?;
+        let name = rel.to_string_lossy().into_owned();
+        let kind = e.file_type().map_err(|err| format!("{name}: {err}"))?;
+        let sound = crate::take::is_sound(&path);
+        if kind.is_dir() {
+            keep_companions(take, &path, out)?;
+        } else if !kind.is_file() {
+            return Err(format!(
+                "{name} is not a file or a folder, so it can't be kept with the analysis"
+            ));
+        } else if sound && dir != take {
+            return Err(format!(
+                "{name} is sound in a folder of the take, which isn't the take's own sound"
+            ));
+        } else if !(sound || name == MANIFEST) {
+            let bytes = fs::read(&path).map_err(|err| format!("{name}: {err}"))?;
+            // Stored with `/` between folders on every system.
+            let parts: Vec<_> = rel.iter().map(|p| p.to_string_lossy()).collect();
+            out.push((parts.join("/"), bytes));
+        }
+    }
+    Ok(())
+}
+
+/// The stretches the beat shape is measured on, one per recording of the
+/// session file, as `timegrapher session` picks them with the session
+/// file's own settling: the first unmasked [`SHAPE_S`] after settling, else
+/// the longest unmasked stretch. None for a recording with none, or when
+/// the session file turns the shape off.
+pub fn shape_stretches(m: &Manifest, duration_s: f64) -> Vec<Option<(f64, f64)>> {
+    m.recordings
+        .iter()
+        .map(|e| {
+            if m.shape == Some(false) {
+                return None;
+            }
+            let w = crate::take::reading_window(e, m, None, duration_s).ok()?;
+            shape_stretch(&session::masked_spans(&e.masked), w.from_s, w.to_s)
+                .map(|(from, len)| (from, from + len))
+        })
+        .collect()
+}
+
+/// Where the beat shape is measured, clear of masked stretches: the first
+/// unmasked stretch from `from_s` to `to_s` that is [`SHAPE_S`] long, else
+/// the longest; start and length, seconds. None when all of it is masked.
+pub fn shape_stretch(masked: &[(f64, f64)], from_s: f64, to_s: f64) -> Option<(f64, f64)> {
+    let mut clear = Vec::new();
+    let mut at = from_s;
+    for &(a, b) in masked {
+        if a > at {
+            clear.push((at, a.min(to_s)));
+        }
+        at = at.max(b);
+    }
+    clear.push((at, to_s));
+    let clear: Vec<(f64, f64)> = clear.into_iter().filter(|(a, b)| b > a).collect();
+    let pick = clear.iter().find(|(a, b)| b - a >= SHAPE_S).or_else(|| {
+        clear
+            .iter()
+            .max_by(|x, y| (x.1 - x.0).total_cmp(&(y.1 - y.0)))
+    })?;
+    Some((pick.0, SHAPE_S.min(pick.1 - pick.0)))
+}
+
+/// Measure the take whose sound is `files` (in the order it is read) for
+/// keeping as its analysis: the whole recording analysed as an opened take
+/// is, then read a second time for the profiles of each
+/// [`PROFILE_EVERY_S`], the signal figure, the USB-line clock and the beat
+/// shape of each stretch in `shapes` ([`shape_stretches`]). `progress` is
+/// called with the seconds of sound read so far, over both readings (so up
+/// to twice the take's length).
+pub fn measure(
+    files: &[&Path],
+    cfg: &StreamConfig,
+    shapes: &[Option<(f64, f64)>],
+    software: serde_json::Value,
+    mut progress: impl FnMut(f64),
+) -> Result<Stored, AudioError> {
+    let log = stream::analyze_files(files, cfg, &mut progress)?;
+    measure_from(log, files, cfg, shapes, software, progress)
+}
+
+/// [`measure`] of the sound `files` whose beats `log` were already found
+/// with `cfg`: the second reading alone, with `progress` counting on from
+/// the log's length.
+pub fn measure_from(
+    log: BeatLog,
+    files: &[&Path],
+    cfg: &StreamConfig,
+    shapes: &[Option<(f64, f64)>],
+    software: serde_json::Value,
+    mut progress: impl FnMut(f64),
+) -> Result<Stored, AudioError> {
+    let bytes_per_frame = audio::info(files[0])?.bytes_per_frame;
+    let first = log.duration_s;
+    let fs = log.sample_rate as f64;
+    let mut second = crate::keeper::SecondReading::new(log.sample_rate, shapes);
+    second.all_windows(&log.amplitude_windows);
+    for path in files {
+        audio::stream(path, 1 << 16, |block| {
+            second.audio(block);
+            second.profile_until(&log.beats, log.bph, cfg, (usize::MAX, None));
+            progress(first + second.read() as f64 / fs);
+        })?;
+    }
+    Ok(second.finish(log, cfg, shapes, bytes_per_frame, software))
+}
+
+/// The beat shape of the sound `x`, from `from_s` seconds into the
+/// recording: the one way `timegrapher session` measures it, from a take's
+/// sound or when a take is kept as its analysis. None for no sound.
+pub fn measure_shape(x: &[f32], fs: f64, bph: u32, from_s: f64) -> Option<ShapeSummary> {
+    if x.is_empty() {
+        return None;
+    }
+    // `session` measures the shape on the default envelope, whatever the
+    // beats were found with.
+    let env = envelope(x, fs, &crate::dsp::EnvelopeConfig::default());
+    let (r, _) = shape::of_envelope(&env, fs, bph);
+    Some(session::shape_summary(&r, from_s, x.len() as f64 / fs))
+}
+
+/// The analysis settings, as the header lists them.
+pub(crate) fn settings(cfg: &StreamConfig) -> serde_json::Value {
+    let a = &cfg.analysis;
+    serde_json::json!({
+        "bph": a.bph,
+        "lift_deg": a.amplitude.lift_deg,
+        "lift_known": a.lift_known,
+        "onset_fraction": a.amplitude.onset_fraction,
+        "escape_teeth": a.escape_teeth,
+        "rate_window_s": a.rate_window_s,
+        "amplitude_window_s": a.amplitude_window_s,
+        "envelope": {
+            "highpass_hz": a.envelope.highpass_hz,
+            "notch_hz": a.envelope.notch_hz,
+            "smooth_s": a.envelope.smooth_s,
+            "burst_gate": a.envelope.burst_gate,
+        },
+        "chunk_s": cfg.chunk_s,
+        "margin_s": cfg.margin_s,
+        "profile_every_s": PROFILE_EVERY_S,
+    })
+}
+
+pub(crate) fn invalid(m: String) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, m)
+}
+
+/// The files of `analysis/`, by name, ready to write.
+pub fn files(s: &Stored) -> io::Result<Vec<(&'static str, Vec<u8>)>> {
+    let header = serde_json::to_string_pretty(&s.header).map_err(io::Error::other)? + "\n";
+    Ok(vec![
+        (HEADER, header.into_bytes()),
+        (BEATS, gzip(beats_csv(&s.log).as_bytes())?),
+        (
+            WINDOWS,
+            gzip(windows_csv(&s.log.amplitude_windows).as_bytes())?,
+        ),
+        (PROFILES, gzip(&profiles_bin(&s.profiles))?),
+        (
+            CULLED,
+            gzip(culled_csv(&s.log.amplitude_windows).as_bytes())?,
+        ),
+        (SOUND, gzip(&sound_bin(&s.log))?),
+    ])
+}
+
+/// What a problem report carries of a take's analysis (#400) when the
+/// whole of it won't fit ([`report_analysis`]): its beats and amplitude
+/// windows, from which every reading, chart and Steadiness figure is read,
+/// without the Tick Tock profiles or the beat sound ([`SOUND`]). The
+/// profiles are most of an analysis's size (about 1.2 of its 1.5 MB an
+/// hour), so without them a long take fits beside the report's sound under
+/// GitHub's 25 MB. What the header says of the sound (its USB-line clock,
+/// signal figure and beat shapes) is kept.
+pub fn for_report(mut s: Stored) -> Stored {
+    s.profiles.clear();
+    s.header.profiles = 0;
+    s.log.snippets.clear();
+    s
+}
+
+/// GitHub's limit for a file attached to an issue, bytes: a problem
+/// report is kept under it.
+pub const ATTACHMENT_LIMIT_BYTES: u64 = 25_000_000;
+/// Room a report keeps for its manifest and the zip's own headers.
+const REPORT_OVERHEAD_BYTES: u64 = 100_000;
+/// The most one stretch's profiles of a take at `bph` take in
+/// `profiles.bin` before it is compressed, bytes: its end and signal
+/// figure (12), its own time axis in a version 2 file (6), and per side
+/// 39 bytes and 3 curves of a point each [`PROFILE_POINT_MS`] over the
+/// longest window a profile is cut on, the long one
+/// ([`crate::amplitude::UnlockWindow::long`], #1924), and a point to
+/// spare. At 28,800 bph and over the short window alone it was 936.
+fn profile_stretch_max_bytes(bph: u32) -> u64 {
+    let osc_s = 7200.0 / f64::from(bph.max(1));
+    let pre_s = crate::amplitude::UnlockWindow::long(osc_s).pre_s;
+    let points = ((pre_s + beats::POST_S) * 1000.0 / PROFILE_POINT_MS).ceil() as u64 + 1;
+    12 + 6 + 2 * (39 + 3 * points)
+}
+
+/// Where a problem report's analysis of a take comes from (#400).
+pub enum ReportFrom<'a> {
+    /// A take kept as its analysis alone: what it kept.
+    Kept(Box<Stored>),
+    /// A take's sound `files`, whose beats `log` were found with `cfg`.
+    Sound {
+        log: Box<BeatLog>,
+        files: &'a [&'a Path],
+        cfg: &'a StreamConfig,
+        software: serde_json::Value,
+    },
+}
+
+/// A take's analysis as a problem report carries it.
+#[derive(Debug)]
+pub struct ReportAnalysis {
+    /// Its files at their paths in the report: under `analysis/`, so the
+    /// unpacked report reads as a take's folder does with [`read`].
+    pub entries: Vec<(String, Vec<u8>)>,
+    /// What was left out of it and why, for the report's `left_out`; none
+    /// when it is whole.
+    pub left_out: Option<String>,
+}
+
+/// The take's analysis for a problem report (#400) beside its `other`
+/// files: whole, the Tick Tock profiles too, when the report
+/// stays under GitHub's limit ([`ATTACHMENT_LIMIT_BYTES`]) with it, else
+/// [`for_report`]'s beats and windows. From the sound, the profiles are
+/// read only when they can fit, judged by their most before compression,
+/// so a long take is not read a second time for profiles it can't carry.
+/// `redact` is applied to the header, the analysis's one file of words.
+pub fn report_analysis(
+    from: ReportFrom,
+    other: &[(String, Vec<u8>)],
+    redact: impl FnMut(&str) -> String,
+) -> Result<ReportAnalysis, String> {
+    let other_bytes: u64 = other.iter().map(|(_, d)| d.len() as u64).sum();
+    let fits = |bytes: u64| other_bytes + bytes + REPORT_OVERHEAD_BYTES <= ATTACHMENT_LIMIT_BYTES;
+    let size = |s: &Stored| -> Result<u64, String> {
+        let f = files(s).map_err(|e| e.to_string())?;
+        Ok(f.iter().map(|(_, b)| b.len() as u64).sum())
+    };
+    let whole = match from {
+        ReportFrom::Kept(s) => *s,
+        ReportFrom::Sound {
+            mut log,
+            files: sound,
+            cfg,
+            software,
+        } => {
+            let first = sound.first().ok_or("there is no sound")?;
+            let frame = audio::info(first)
+                .map_err(|e| e.to_string())?
+                .bytes_per_frame;
+            let snippets = std::mem::take(&mut log.snippets);
+            let mut cut = from_log(*log, cfg, frame, software.clone());
+            let stretches = (cut.header.duration_s / PROFILE_EVERY_S).ceil() as u64;
+            if !fits(size(&cut)? + stretches * profile_stretch_max_bytes(cut.log.bph)) {
+                return report_entries(cut, false, redact);
+            }
+            cut.log.snippets = snippets;
+            measure_from(cut.log, sound, cfg, &[], software, |_| {}).map_err(|e| e.to_string())?
+        }
+    };
+    if fits(size(&whole)?) {
+        report_entries(whole, true, redact)
+    } else {
+        report_entries(for_report(whole), false, redact)
+    }
+}
+
+/// [`report_analysis`]'s files of `s`, which is `whole` or cut.
+fn report_entries(
+    s: Stored,
+    whole: bool,
+    mut redact: impl FnMut(&str) -> String,
+) -> Result<ReportAnalysis, String> {
+    let header = redacted_header(&s.header, &mut redact)?;
+    let entries = files(&s)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(name, bytes)| {
+            let bytes = if name == HEADER {
+                header.clone()
+            } else {
+                bytes
+            };
+            (format!("{DIR}/{name}"), bytes)
+        })
+        .collect();
+    Ok(ReportAnalysis {
+        entries,
+        left_out: (!whole).then(|| {
+            "the Tick Tock profiles and the beat sound of the take's analysis: with them the \
+             report would be over GitHub's 25 MB limit for attachments"
+                .to_string()
+        }),
+    })
+}
+
+/// The report's `left_out` line for a take kept as its analysis alone,
+/// which has no sound to carry.
+pub const REPORT_NO_SOUND: &str = "the sound: the take was kept as its analysis alone";
+
+/// The report's `left_out` line when [`report_analysis`] fails with `e`.
+pub fn report_analysis_failed(e: &str) -> String {
+    format!("the take's analysis, which couldn't be read: {e}")
+}
+
+/// `header` as `analysis/analysis.json`, each of its words passed through
+/// `redact` and none of its keys, so a user or host name that is also a key
+/// can't break it; read back to be sure it still reads as a take's header,
+/// as a name that is part of the layout's own `format` would break it.
+fn redacted_header(
+    header: &Header,
+    redact: &mut impl FnMut(&str) -> String,
+) -> Result<Vec<u8>, String> {
+    fn walk(v: &mut serde_json::Value, redact: &mut impl FnMut(&str) -> String) {
+        match v {
+            serde_json::Value::String(t) => *t = redact(t),
+            serde_json::Value::Array(a) => a.iter_mut().for_each(|x| walk(x, redact)),
+            serde_json::Value::Object(o) => o.values_mut().for_each(|x| walk(x, redact)),
+            _ => {}
+        }
+    }
+    let mut v = serde_json::to_value(header).map_err(|e| e.to_string())?;
+    walk(&mut v, redact);
+    let back = serde_json::from_value::<Header>(v.clone())
+        .map_err(|e| format!("its header doesn't read after its scrub: {e}"))?;
+    if back.format != FORMAT {
+        return Err(format!(
+            "its header's format reads {:?} after its scrub",
+            back.format
+        ));
+    }
+    serde_json::to_string_pretty(&v)
+        .map(|t| (t + "\n").into_bytes())
+        .map_err(|e| e.to_string())
+}
+
+/// A take's analysis from its beat `log` alone, as a report carries it
+/// when the whole won't fit ([`for_report`]), for a take whose sound has
+/// already been read: no
+/// profiles, no beat sound ([`SOUND`]), and none of what [`measure`]
+/// reads from the sound a second time (the USB-line clock, the signal
+/// figure, the beat shapes). `bytes_per_frame` is the sound's, for
+/// reading `clock.csv`.
+pub fn from_log(
+    mut log: BeatLog,
+    cfg: &StreamConfig,
+    bytes_per_frame: u32,
+    software: serde_json::Value,
+) -> Stored {
+    let header = Header {
+        format: FORMAT.into(),
+        software,
+        audio: false,
+        note: NO_SOUND.into(),
+        sample_rate: log.sample_rate,
+        bytes_per_frame,
+        duration_s: log.duration_s,
+        bph: log.bph,
+        lift_deg: log.lift_deg,
+        clipped_samples: log.clipped_samples,
+        jumps: log.jumps.clone(),
+        sided: log.sided.clone(),
+        settings: settings(cfg),
+        beats: log.beats.len(),
+        windows: log.amplitude_windows.len(),
+        profiles: 0,
+        usb_clock: None,
+        signal_median: None,
+        shape: Vec::new(),
+        lock_template_kept: log.lock_template_kept,
+    };
+    log.snippets.clear();
+    Stored {
+        header,
+        log,
+        profiles: Vec::new(),
+    }
+}
+
+/// Write `analysis/` into the take folder `take`.
+pub fn write(take: &Path, s: &Stored) -> io::Result<()> {
+    let dir = take.join(DIR);
+    fs::create_dir_all(&dir)?;
+    for (name, bytes) in files(s)? {
+        fs::write(dir.join(name), bytes)?;
+    }
+    Ok(())
+}
+
+/// Read `analysis/` from the take folder `take`.
+pub fn read(take: &Path) -> io::Result<Stored> {
+    read_with_limit(take, MAX_ANALYSIS_FILE)
+}
+
+/// The header of `analysis/` in the take folder `take`, checked and
+/// brought up to [`FORMAT`] as a whole read would: quick, it reads none
+/// of the beats.
+pub fn read_header(take: &Path) -> io::Result<Header> {
+    let dir = take.join(DIR);
+    let text = fs::read_to_string(dir.join(HEADER))
+        .map_err(|e| io::Error::new(e.kind(), format!("{DIR}/{HEADER}: {e}")))?;
+    let format = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("format")?.as_str().map(String::from));
+    match format.as_deref() {
+        Some(FORMAT | FORMAT_1) => {}
+        Some(f) if f.starts_with("timegrapher.analysis/") => {
+            return Err(invalid(format!(
+                "{DIR}/{HEADER} is in the layout {f}, made by a newer version: \
+                 this one reads {FORMAT}"
+            )))
+        }
+        _ => return Err(invalid(format!("{DIR}/{HEADER} is not a take's analysis"))),
+    }
+    let mut header: Header =
+        serde_json::from_str(&text).map_err(|e| invalid(format!("{DIR}/{HEADER}: {e}")))?;
+    if header.format == FORMAT_1 {
+        if let Some(u) = header.usb_clock.as_mut() {
+            u.ppm = -u.ppm;
+        }
+        header.format = FORMAT.into();
+    }
+    check_header(&header).map_err(|e| invalid(format!("{DIR}/{HEADER}: {e}")))?;
+    Ok(header)
+}
+
+fn read_with_limit(take: &Path, limit: u64) -> io::Result<Stored> {
+    let dir = take.join(DIR);
+    let header = read_header(take)?;
+    let gunzip = |name: &str| -> io::Result<Vec<u8>> {
+        let file = fs::File::open(dir.join(name))
+            .map_err(|e| io::Error::new(e.kind(), format!("{DIR}/{name}: {e}")))?;
+        let out = crate::archive::read_limited(GzDecoder::new(io::BufReader::new(file)), limit)
+            .map_err(|e| invalid(format!("{DIR}/{name}: {e}")))?;
+        if out.len() as u64 > limit {
+            return Err(invalid(format!(
+                "{DIR}/{name} unpacks to more than {}",
+                crate::archive::unpacked_size(limit)
+            )));
+        }
+        Ok(out)
+    };
+    let text = |name: &str| -> io::Result<String> {
+        String::from_utf8(gunzip(name)?).map_err(|e| invalid(format!("{DIR}/{name}: {e}")))
+    };
+    let (beats, clipped) = parse_beats(&text(BEATS)?, header.bph)
+        .map_err(|e| invalid(format!("{DIR}/{BEATS}: {e}")))?;
+    let mut windows =
+        parse_windows(&text(WINDOWS)?).map_err(|e| invalid(format!("{DIR}/{WINDOWS}: {e}")))?;
+    // Optional: only a missing file is read as none.
+    match std::fs::metadata(dir.join(CULLED)) {
+        Ok(_) => parse_culled(&text(CULLED)?, &mut windows)
+            .map_err(|e| invalid(format!("{DIR}/{CULLED}: {e}")))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(invalid(format!("{DIR}/{CULLED}: {e}"))),
+    }
+    let profiles = parse_profiles(&gunzip(PROFILES)?)
+        .map_err(|e| invalid(format!("{DIR}/{PROFILES}: {e}")))?;
+    // Optional, and never a guessed verdict: a file that is missing or
+    // can't be read is no beat sound at all.
+    let snippets = gunzip(SOUND)
+        .ok()
+        .and_then(|raw| parse_sound(&raw, &beats).ok())
+        .unwrap_or_default();
+    for (name, want, got) in [
+        (BEATS, header.beats, beats.len()),
+        (WINDOWS, header.windows, windows.len()),
+        (PROFILES, header.profiles, profiles.len()),
+    ] {
+        if want != got {
+            return Err(invalid(format!(
+                "{DIR}/{name} holds {got} rows where {HEADER} says {want}"
+            )));
+        }
+    }
+    let mut stored = stored_from(header, (beats, clipped), windows, profiles);
+    stored.log.snippets = snippets;
+    Ok(stored)
+}
+
+/// The take kept with `header`: its beats, those at the `clipped` times
+/// clipped, its amplitude `windows` and its `profiles`.
+pub(crate) fn stored_from(
+    header: Header,
+    (beats, clipped): (Vec<Beat>, Vec<f64>),
+    windows: Vec<AmplitudeWindow>,
+    profiles: Vec<StretchProfiles>,
+) -> Stored {
+    let log = BeatLog {
+        lock_template_kept: header.lock_template_kept,
+        sample_rate: header.sample_rate,
+        duration_s: header.duration_s,
+        bph: header.bph,
+        lift_deg: header.lift_deg,
+        beats,
+        amplitude_windows: windows,
+        clipped_beats: clipped,
+        clipped_samples: header.clipped_samples,
+        by_count: crate::breaks::by_count(header.jumps.iter().copied(), &header.sided),
+        jumps: header.jumps.clone(),
+        sided: header.sided.clone(),
+        snippets: Vec::new(),
+    };
+    Stored {
+        header,
+        log,
+        profiles,
+    }
+}
+
+/// `v` when it is a finite number, else an error naming `what`.
+fn finite(what: &str, v: f64) -> Result<f64, String> {
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err(format!("{what} is {v}, not a number"))
+    }
+}
+
+/// `v` when it is a finite number above 0, else an error naming `what`.
+fn above_0(what: &str, v: f64) -> Result<f64, String> {
+    if finite(what, v)? > 0.0 {
+        Ok(v)
+    } else {
+        Err(format!("{what} is {v}: it must be above 0"))
+    }
+}
+
+/// Times that must be numbers and run forwards (equal times allowed).
+fn in_order(what: &str, times: &[f64]) -> Result<(), String> {
+    for (i, &t) in times.iter().enumerate() {
+        finite(&format!("{what} {}", i + 1), t)?;
+        if i > 0 && t < times[i - 1] {
+            return Err(format!(
+                "{what} {} runs backwards: {t} after {}",
+                i + 1,
+                times[i - 1]
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The header's figures, as a measurement would have written them: a
+/// sample rate, frame size, beat rate, lift and length above 0, and every
+/// other figure a number, with the jumps in order.
+pub(crate) fn check_header(h: &Header) -> Result<(), String> {
+    above_0("sample_rate", h.sample_rate as f64)?;
+    above_0("bytes_per_frame", h.bytes_per_frame as f64)?;
+    above_0("bph", h.bph as f64)?;
+    above_0("lift_deg", h.lift_deg)?;
+    above_0("duration_s", h.duration_s)?;
+    in_order("jump", &h.jumps)?;
+    in_order("sided jump", &h.sided)?;
+    if let Some(u) = &h.usb_clock {
+        finite("usb_clock.ppm", u.ppm)?;
+        finite("usb_clock.spread_ppm", u.spread_ppm)?;
+    }
+    if let Some(v) = h.signal_median {
+        finite("signal_median", v as f64)?;
+    }
+    for (i, sh) in h.shape.iter().enumerate() {
+        let what = |f: &str| format!("shape {} {f}", i + 1);
+        if finite(&what("from_s"), sh.from_s)? > finite(&what("to_s"), sh.to_s)? {
+            return Err(format!("{} ends before it starts", what("stretch")));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn gzip(bytes: &[u8]) -> io::Result<Vec<u8>> {
+    let mut e = GzEncoder::new(Vec::new(), flate2::Compression::default());
+    e.write_all(bytes)?;
+    e.finish()
+}
+
+/// The nominal beat in µs at `bph`.
+fn beat_us(bph: u32) -> i64 {
+    (3_600_000_000.0 / bph.max(1) as f64).round() as i64
+}
+
+/// One row a beat: the step in its number from the beat before (from 0
+/// for the first), its time in whole µs less where the beat before and
+/// that many nominal beats put it (from 0 µs for the first), its quality
+/// to 3 decimals, and 1 when it clipped.
+fn beats_csv(log: &BeatLog) -> String {
+    beats_rows(&log.beats, &log.clipped_beats, log.bph)
+}
+
+/// [`beats_csv`] for `beats` at `bph`, those at the `clipped` times
+/// clipped: from any beat on, its first row's step from 0.
+pub(crate) fn beats_rows(beats: &[Beat], clipped: &[f64], bph: u32) -> String {
+    let nominal = beat_us(bph);
+    let mut out = String::with_capacity(beats.len() * 16 + 64);
+    out.push_str(BEATS_COLUMNS);
+    out.push('\n');
+    let (mut idx, mut us) = (0i64, 0i64);
+    let mut clipped = clipped.iter().peekable();
+    for b in beats {
+        let t = (b.time * 1e6).round() as i64;
+        let step = b.index - idx;
+        let residual = t - us - step * nominal;
+        while clipped.next_if(|&&c| c < b.time).is_some() {}
+        let clip = clipped.next_if(|&&c| c == b.time).is_some();
+        out.push_str(&format!(
+            "{step},{residual},{},{}\n",
+            b.quality,
+            u8::from(clip)
+        ));
+        idx = b.index;
+        us = t;
+    }
+    out
+}
+
+pub(crate) fn parse_beats(text: &str, bph: u32) -> Result<(Vec<Beat>, Vec<f64>), String> {
+    let nominal = beat_us(bph);
+    let mut lines = text.lines();
+    if lines.next() != Some(BEATS_COLUMNS) {
+        return Err(format!("the first line isn't {BEATS_COLUMNS}"));
+    }
+    let (mut idx, mut us) = (0i64, 0i64);
+    let (mut beats, mut clipped) = (Vec::new(), Vec::new());
+    for (n, line) in lines.enumerate() {
+        let bad = || format!("row {} isn't a beat: {line}", n + 1);
+        let mut f = line.split(',');
+        let mut next = || f.next().ok_or_else(bad);
+        let step: i64 = next()?.parse().map_err(|_| bad())?;
+        let residual: i64 = next()?.parse().map_err(|_| bad())?;
+        let quality: f32 = next()?.parse().map_err(|_| bad())?;
+        let clip = next()? == "1";
+        // Each beat comes after the one before, in number and in time, and
+        // the numbers stay in range.
+        let wrong = |why: &str| format!("row {}: {why}: {line}", n + 1);
+        if !quality.is_finite() {
+            return Err(wrong("its quality isn't a number"));
+        }
+        if n > 0 && step < 1 {
+            return Err(wrong("its number doesn't follow the beat before"));
+        }
+        let (Some(i), Some(t)) = (
+            idx.checked_add(step),
+            step.checked_mul(nominal)
+                .and_then(|d| d.checked_add(residual))
+                .and_then(|d| d.checked_add(us)),
+        ) else {
+            return Err(wrong("its number or time is out of range"));
+        };
+        if t < 0 || (n > 0 && t <= us) {
+            return Err(wrong("its time doesn't come after the beat before"));
+        }
+        (idx, us) = (i, t);
+        let time = us as f64 / 1e6;
+        beats.push(Beat {
+            index: idx,
+            time,
+            quality,
+        });
+        if clip {
+            clipped.push(time);
+        }
+    }
+    Ok((beats, clipped))
+}
+
+pub(crate) fn windows_csv(windows: &[AmplitudeWindow]) -> String {
+    let o = |v: Option<f64>| v.map_or(String::new(), |v| v.to_string());
+    let mut out = String::from(WINDOWS_COLUMNS);
+    out.push('\n');
+    for w in windows {
+        out.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{},{}\n",
+            w.start_s,
+            w.end_s,
+            o(w.even_deg),
+            o(w.odd_deg),
+            o(w.beat_error_ms),
+            o(w.beat_error_unlock_ms),
+            o(w.even_unlock_ms),
+            o(w.odd_unlock_ms),
+            o(w.even_drop_ms),
+            o(w.odd_drop_ms)
+        ));
+    }
+    out
+}
+
+/// [`SOUND`]'s bytes for `log`: little-endian, [`SOUND_MAGIC`], the
+/// number of beats (u32), then each beat of `log.snippets` in order: its
+/// row in the beats (u32, from 0), the values in its envelope window
+/// (u32) and the values (f32), as they are. A beat's time is kept to
+/// 0.5 µs in [`BEATS`], so the row, not the time, names it.
+pub(crate) fn sound_bin(log: &BeatLog) -> Vec<u8> {
+    let rows = sound_rows(log);
+    let values: usize = rows.iter().map(|r| r.1.len()).sum();
+    let mut out = Vec::with_capacity(12 + 8 * rows.len() + 4 * values);
+    out.extend_from_slice(SOUND_MAGIC);
+    out.extend_from_slice(&(rows.len() as u32).to_le_bytes());
+    for (row, w) in rows {
+        out.extend_from_slice(&(row as u32).to_le_bytes());
+        out.extend_from_slice(&(w.len() as u32).to_le_bytes());
+        for v in w {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    out
+}
+
+/// Each of `log.snippets` with the row of the beat at its time.
+fn sound_rows(log: &BeatLog) -> Vec<(usize, &[f32])> {
+    let mut from = 0;
+    log.snippets
+        .iter()
+        .filter_map(|(t, w)| {
+            from += log.beats[from..].partition_point(|b| b.time < t - 1e-9);
+            let b = log.beats.get(from)?;
+            ((b.time - t).abs() < 1e-9).then_some((from, w.as_slice()))
+        })
+        .collect()
+}
+
+/// [`sound_bin`] read back against `beats`, the take's beats as kept:
+/// each window at its beat's time. An error for anything else.
+pub(crate) fn parse_sound(raw: &[u8], beats: &[Beat]) -> Result<Vec<(f64, Vec<f32>)>, String> {
+    let mut at = 0usize;
+    let mut take = |n: usize| -> Result<&[u8], String> {
+        let s = raw
+            .get(at..at.checked_add(n).ok_or("it is too long")?)
+            .ok_or_else(|| "it ends part way through".to_string())?;
+        at += n;
+        Ok(s)
+    };
+    let magic = take(8)?;
+    if magic[..7] != SOUND_MAGIC[..7] {
+        return Err("it doesn't start as a beat sound file".into());
+    }
+    if magic[7] != SOUND_MAGIC[7] {
+        return Err(format!(
+            "it is version {}, made by a newer version",
+            magic[7]
+        ));
+    }
+    let u32_at = |b: &[u8]| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
+    let n = u32_at(take(4)?);
+    let mut out: Vec<(f64, Vec<f32>)> = Vec::new();
+    let mut last: Option<usize> = None;
+    for _ in 0..n {
+        let row = u32_at(take(4)?);
+        if last.is_some_and(|l| row <= l) {
+            return Err(format!("beat row {row} is out of order"));
+        }
+        let beat = beats
+            .get(row)
+            .ok_or_else(|| format!("beat row {row} is past the {} beats", beats.len()))?;
+        last = Some(row);
+        let len = u32_at(take(4)?);
+        let bytes = take(len.checked_mul(4).ok_or("it is too long")?)?;
+        let w: Vec<f32> = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes(*b))
+            .collect();
+        if w.iter().any(|v| !v.is_finite()) {
+            return Err(format!("beat row {row} holds a value that is not a number"));
+        }
+        out.push((beat.time, w));
+    }
+    if at != raw.len() {
+        return Err("it runs on past its last beat".into());
+    }
+    Ok(out)
+}
+
+/// One row per window with a culled side: its index and each side's
+/// unlock and drop, empty for a side not culled.
+pub(crate) fn culled_csv(windows: &[AmplitudeWindow]) -> String {
+    let o = |v: Option<[f64; 2]>, i: usize| v.map_or(String::new(), |v| v[i].to_string());
+    let mut out = String::from(CULLED_COLUMNS);
+    out.push('\n');
+    for (i, w) in windows.iter().enumerate() {
+        let [e, d] = w.culled();
+        if e.is_some() || d.is_some() {
+            out.push_str(&format!(
+                "{i},{},{},{},{}\n",
+                o(e, 0),
+                o(e, 1),
+                o(d, 0),
+                o(d, 1)
+            ));
+        }
+    }
+    out
+}
+
+/// Reads [`culled_csv`] onto `windows`.
+pub(crate) fn parse_culled(text: &str, windows: &mut [AmplitudeWindow]) -> Result<(), String> {
+    let mut lines = text.lines();
+    if lines.next() != Some(CULLED_COLUMNS) {
+        return Err(format!("the first line isn't {CULLED_COLUMNS}"));
+    }
+    for (n, line) in lines.enumerate() {
+        let bad = || format!("row {} isn't a culled window: {line}", n + 1);
+        let f: Vec<&str> = line.split(',').collect();
+        if f.len() != 5 {
+            return Err(bad());
+        }
+        let num = |s: &str| match s.parse::<f64>() {
+            Ok(v) if v.is_finite() => Ok(v),
+            _ => Err(bad()),
+        };
+        let side = |u: &str, d: &str| -> Result<Option<[f64; 2]>, String> {
+            match (u.is_empty(), d.is_empty()) {
+                (true, true) => Ok(None),
+                (false, false) => Ok(Some([num(u)?, num(d)?])),
+                _ => Err(bad()),
+            }
+        };
+        let i: usize = f[0].parse().map_err(|_| bad())?;
+        let w = windows.get_mut(i).ok_or_else(bad)?;
+        if w.has_culled() {
+            return Err(format!("window {i} is listed twice"));
+        }
+        let c = [side(f[1], f[2])?, side(f[3], f[4])?];
+        if c == [None, None] {
+            return Err(bad());
+        }
+        w.set_culled(c);
+    }
+    Ok(())
+}
+
+pub(crate) fn parse_windows(text: &str) -> Result<Vec<AmplitudeWindow>, String> {
+    let mut lines = text.lines();
+    if lines.next() != Some(WINDOWS_COLUMNS) {
+        return Err(format!("the first line isn't {WINDOWS_COLUMNS}"));
+    }
+    lines
+        .enumerate()
+        .map(|(n, line)| {
+            let bad = || format!("row {} isn't a window: {line}", n + 1);
+            let f: Vec<&str> = line.split(',').collect();
+            if f.len() != 10 {
+                return Err(bad());
+            }
+            let num = |s: &str| s.parse::<f64>().map_err(|_| bad());
+            let opt = |s: &str| (!s.is_empty()).then(|| num(s)).transpose();
+            let w = AmplitudeWindow {
+                start_s: num(f[0])?,
+                end_s: num(f[1])?,
+                even_deg: opt(f[2])?,
+                odd_deg: opt(f[3])?,
+                beat_error_ms: opt(f[4])?,
+                beat_error_unlock_ms: opt(f[5])?,
+                even_unlock_ms: opt(f[6])?,
+                odd_unlock_ms: opt(f[7])?,
+                even_drop_ms: opt(f[8])?,
+                odd_drop_ms: opt(f[9])?,
+                extra: None,
+                sound_1: [f32::NAN; 2],
+            };
+            let figures = [
+                Some(w.start_s),
+                Some(w.end_s),
+                w.even_deg,
+                w.odd_deg,
+                w.beat_error_ms,
+                w.beat_error_unlock_ms,
+                w.even_unlock_ms,
+                w.odd_unlock_ms,
+                w.even_drop_ms,
+                w.odd_drop_ms,
+            ];
+            if figures.iter().flatten().any(|v| !v.is_finite()) || w.start_s > w.end_s {
+                return Err(bad());
+            }
+            Ok(w)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .and_then(|ws| {
+            in_order(
+                "window start",
+                &ws.iter().map(|w| w.start_s).collect::<Vec<_>>(),
+            )?;
+            Ok(ws)
+        })
+}
+
+/// The profiles, little-endian: the 8-byte magic, the stretch length (f32
+/// s), the first point and the spacing (f32 ms each), the points a curve
+/// (u16), 2 bytes kept at 0 and the stretches (u32); then each stretch:
+/// its end (f64 s) and signal figure (f32, NaN when none), then Tick and
+/// Tock, each a byte 0 (none) or 1 followed by: beats (u16), top and floor
+/// (f32 envelope levels), unlock, drop, peak, amplitude and sounds 1 to 3
+/// (f32, ms or degrees, NaN when none), then the median, 10th and 90th
+/// percentile curves, a byte a point: quarter-dB steps above
+/// [`PROFILE_RANGE_DB`] below the top, 0 for lower.
+///
+/// That is version 1, written whenever every stretch's profiles share
+/// the first's time axis, byte for byte as before. Where they don't (a
+/// run-down whose profiles went to the long window part way, #1924),
+/// version 2 ([`PROFILE_MAGIC_V2`]): the same, but each stretch carries
+/// its own first point (f32 ms) and points a curve (u16) after its
+/// signal figure; the header's are the first stretch's.
+pub(crate) fn profiles_bin(profiles: &[StretchProfiles]) -> Vec<u8> {
+    let first = profiles
+        .iter()
+        .flat_map(|p| p.sides.iter().flatten())
+        .next();
+    let stride = first.map_or(2, |p| {
+        (PROFILE_POINT_MS / p.step_ms).round().max(1.0) as usize
+    });
+    let axis = |p: &TickProfile| (p.t0_ms, p.median.len().div_ceil(stride));
+    let t0 = first.map_or(-beats::PRE_S * 1000.0, |p| p.t0_ms);
+    let step = first.map_or(PROFILE_POINT_MS, |p| p.step_ms * stride as f64);
+    let points = first.map_or(0, |p| p.median.len().div_ceil(stride));
+    let v2 = profiles
+        .iter()
+        .flat_map(|p| p.sides.iter().flatten())
+        .any(|p| axis(p) != (t0, points));
+    let mut out = Vec::with_capacity(32 + profiles.len() * (19 + 2 * (40 + 3 * points)));
+    out.extend_from_slice(if v2 { PROFILE_MAGIC_V2 } else { PROFILE_MAGIC });
+    out.extend_from_slice(&(PROFILE_EVERY_S as f32).to_le_bytes());
+    out.extend_from_slice(&(t0 as f32).to_le_bytes());
+    out.extend_from_slice(&(step as f32).to_le_bytes());
+    out.extend_from_slice(&(points as u16).to_le_bytes());
+    out.extend_from_slice(&[0, 0]);
+    out.extend_from_slice(&(profiles.len() as u32).to_le_bytes());
+    let f = |v: Option<f64>| v.map_or(f32::NAN, |v| v as f32).to_le_bytes();
+    for p in profiles {
+        out.extend_from_slice(&p.end_s.to_le_bytes());
+        out.extend_from_slice(&p.signal.unwrap_or(f32::NAN).to_le_bytes());
+        // Both sides of a stretch are cut on one window.
+        let (t0, points) = p.sides.iter().flatten().next().map_or((t0, points), axis);
+        if v2 {
+            out.extend_from_slice(&(t0 as f32).to_le_bytes());
+            out.extend_from_slice(&(points as u16).to_le_bytes());
+        }
+        for side in &p.sides {
+            let Some(s) = side else {
+                out.push(0);
+                continue;
+            };
+            out.push(1);
+            let top = s
+                .p90
+                .iter()
+                .chain(&s.median)
+                .copied()
+                .fold(0.0f32, f32::max);
+            out.extend_from_slice(&(s.beats.min(u16::MAX as usize) as u16).to_le_bytes());
+            out.extend_from_slice(&top.to_le_bytes());
+            out.extend_from_slice(&s.floor.to_le_bytes());
+            for v in [
+                s.unlock_ms,
+                s.drop_ms,
+                s.peak_ms,
+                s.amplitude_deg,
+                s.sound1_ms,
+                s.sound2_ms,
+                s.sound3_ms,
+            ] {
+                out.extend_from_slice(&f(v));
+            }
+            for curve in [&s.median, &s.p10, &s.p90] {
+                for i in 0..points {
+                    let v = curve.get(i * stride).copied().unwrap_or(0.0);
+                    out.push(level_byte(v, top));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn level_byte(v: f32, top: f32) -> u8 {
+    if v <= 0.0 || top <= 0.0 {
+        return 0;
+    }
+    let db = 20.0 * (v as f64 / top as f64).log10();
+    ((db + PROFILE_RANGE_DB) * 4.0).round().clamp(0.0, 255.0) as u8
+}
+
+fn byte_level(b: u8, top: f32) -> f32 {
+    if b == 0 {
+        return 0.0;
+    }
+    top * 10f64.powf((b as f64 / 4.0 - PROFILE_RANGE_DB) / 20.0) as f32
+}
+
+pub(crate) fn parse_profiles(raw: &[u8]) -> Result<Vec<StretchProfiles>, String> {
+    let mut at = 0usize;
+    let mut take = |n: usize| -> Result<&[u8], String> {
+        let s = raw
+            .get(at..at + n)
+            .ok_or_else(|| "it ends part way through".to_string())?;
+        at += n;
+        Ok(s)
+    };
+    let magic = take(8)?;
+    if magic[..7] != PROFILE_MAGIC[..7] {
+        return Err("it doesn't start as a profiles file".into());
+    }
+    let v2 = match magic[7] {
+        1 => false,
+        2 => true,
+        _ => return Err("it was written by a newer version of the app".into()),
+    };
+    let f32_of = |b: &[u8]| f32::from_le_bytes(b.try_into().expect("4 bytes"));
+    let u16_of = |b: &[u8]| u16::from_le_bytes(b.try_into().expect("2 bytes")) as usize;
+    let _every = f32_of(take(4)?);
+    let first_t0 = finite("the first point", f32_of(take(4)?) as f64)?;
+    let step = above_0("the spacing", f32_of(take(4)?) as f64)?;
+    let first_points = u16_of(take(2)?);
+    take(2)?;
+    let count = u32::from_le_bytes(take(4)?.try_into().expect("4 bytes")) as usize;
+    let mut out = Vec::with_capacity(count.min(1 << 20));
+    for _ in 0..count {
+        let end_s = finite(
+            "a stretch's end",
+            f64::from_le_bytes(take(8)?.try_into().expect("8 bytes")),
+        )?;
+        // NaN is how a missing figure is written; any other figure is a
+        // number.
+        let mark = |v: f32| -> Result<Option<f32>, String> {
+            match v {
+                v if v.is_nan() => Ok(None),
+                v => finite("a profile figure", v as f64).map(|_| Some(v)),
+            }
+        };
+        let signal = mark(f32_of(take(4)?))?;
+        let (t0, points) = if v2 {
+            let t0 = finite("a stretch's first point", f32_of(take(4)?) as f64)?;
+            (t0, u16_of(take(2)?))
+        } else {
+            (first_t0, first_points)
+        };
+        let mut sides: [Option<TickProfile>; 2] = [None, None];
+        for (i, side) in [Side::A, Side::B].into_iter().enumerate() {
+            if take(1)?[0] == 0 {
+                continue;
+            }
+            let beats = u16::from_le_bytes(take(2)?.try_into().expect("2 bytes")) as usize;
+            let top = finite("a profile's top", f32_of(take(4)?) as f64)? as f32;
+            let floor = finite("a profile's floor", f32_of(take(4)?) as f64)? as f32;
+            let mut marks = [None; 7];
+            for m in &mut marks {
+                *m = mark(f32_of(take(4)?))?.map(f64::from);
+            }
+            let mut curve = || -> Result<Vec<f32>, String> {
+                Ok(take(points)?.iter().map(|&b| byte_level(b, top)).collect())
+            };
+            let (median, p10, p90) = (curve()?, curve()?, curve()?);
+            sides[i] = Some(TickProfile {
+                side,
+                beats,
+                t0_ms: t0,
+                step_ms: step,
+                median,
+                p10,
+                p90,
+                floor,
+                unlock_ms: marks[0],
+                drop_ms: marks[1],
+                peak_ms: marks[2],
+                amplitude_deg: marks[3],
+                sound1_ms: marks[4],
+                sound2_ms: marks[5],
+                sound3_ms: marks[6],
+            });
+        }
+        out.push(StretchProfiles {
+            end_s,
+            signal,
+            sides,
+        });
+    }
+    if at != raw.len() {
+        return Err("it runs on past its last stretch".into());
+    }
+    in_order(
+        "stretch end",
+        &out.iter().map(|p| p.end_s).collect::<Vec<_>>(),
+    )?;
+    Ok(out)
+}
+
+/// Write every file under `dir`, and `dir` and its folders' entries, to
+/// the disk: a crash or power cut after this can't leave one empty.
+fn sync_tree(dir: &Path, sync: &Syncs) -> io::Result<()> {
+    for e in fs::read_dir(dir)? {
+        let e = e?;
+        let kind = e.file_type()?;
+        if kind.is_dir() {
+            sync_tree(&e.path(), sync)?;
+        } else if kind.is_file() {
+            (sync.file)(&e.path())?;
+        }
+    }
+    (sync.folder)(dir)
+}
+
+/// How [`save`] writes a file and a folder's entries to the disk: the
+/// disk's own ([`crate::recorder::sync_file`], [`crate::recorder::sync_folder`]),
+/// or in a test, ones that note or fail.
+struct Syncs<'a> {
+    file: &'a dyn Fn(&Path) -> io::Result<()>,
+    folder: &'a dyn Fn(&Path) -> io::Result<()>,
+}
+
+/// Keep the take whose sound is in `source` (its folder: `session.toml`,
+/// `session.json`, `clock.csv` and the sound) as its analysis alone in a
+/// new folder `dest`: every file but the sound copied, at its path in
+/// the take, subfolders too (#1323), `session.toml`
+/// replaced by `manifest_toml` (which says `audio = false`), and
+/// `analysis/` written from `stored`. Written beside `dest` first and
+/// moved into place whole, so a failure leaves nothing half-written; an
+/// existing `dest` is never touched.
+pub fn save(dest: &Path, companions: &[(String, Vec<u8>)], stored: &Stored) -> io::Result<PathBuf> {
+    let disk = Syncs {
+        file: &crate::recorder::sync_file,
+        folder: &crate::recorder::sync_folder,
+    };
+    save_with(dest, companions, stored, &disk)
+}
+
+/// [`save`], writing to the disk with `sync`.
+fn save_with(
+    dest: &Path,
+    companions: &[(String, Vec<u8>)],
+    stored: &Stored,
+    sync: &Syncs,
+) -> io::Result<PathBuf> {
+    if fs::symlink_metadata(dest).is_ok() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("{} is already there", dest.display()),
+        ));
+    }
+    let parent = dest
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no folder to save in"))?;
+    fs::create_dir_all(parent)?;
+    let name = dest
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no name to save under"))?;
+    let staged = parent.join(format!(
+        ".timegrapher-save-{}-{}",
+        std::process::id(),
+        name.to_string_lossy()
+    ));
+    let _ = fs::remove_dir_all(&staged);
+    let result = (|| {
+        fs::create_dir(&staged)?;
+        for (file, bytes) in companions {
+            // A path inside the take: plain names only, never the
+            // analysis's own folder at its top.
+            let path = Path::new(file);
+            let mut parts = path.components();
+            let plain = path
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)));
+            if !plain
+                || parts
+                    .next()
+                    .is_none_or(|c| c.as_os_str().eq_ignore_ascii_case(DIR))
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("invalid companion file name: {file}"),
+                ));
+            }
+            if let Some(dir) = staged.join(path).parent() {
+                fs::create_dir_all(dir)?;
+            }
+            fs::write(staged.join(path), bytes)?;
+        }
+        write(&staged, stored)?;
+        // Read back what was written before it goes into place.
+        let back = read(&staged)?;
+        if back.log.beats.len() != stored.log.beats.len() {
+            return Err(invalid("the analysis didn't read back as written".into()));
+        }
+        // On the disk before it goes into place, and its new name after,
+        // since the caller may delete the take's sound next (#1336).
+        sync_tree(&staged, sync)?;
+        crate::recorder::rename_settled(&staged, dest)?;
+        // Its name not on the disk: the save fails and the take is kept,
+        // so the copy goes too, and a retry finds no twin in the way.
+        (sync.folder)(parent).inspect_err(|_| {
+            let _ = fs::remove_dir_all(dest);
+        })
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&staged);
+    }
+    result.map(|()| dest.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::timing;
+
+    /// Sound too short for one beat's window, as a 1 s entry after its
+    /// settling leaves, is measured without a panic (#1207): silence, hiss
+    /// and a lone click, at 8 and 48 kHz. Where no beat is heard (silence,
+    /// one sample) the shape holds no figure, as 10 s of silence gives on
+    /// main: every interval and ratio None, the first sound found in none
+    /// of the windows, no extra sounds.
+    #[test]
+    fn the_shape_of_a_moment_of_sound_is_measured_without_a_panic() {
+        let no_figure = |m: &session::ShapeSummary| {
+            [&m.even, &m.odd].iter().all(|s| {
+                [s.i12_ms, s.i13_ms, s.ratio13, s.ratio23, s.noise_ratio]
+                    .iter()
+                    .all(Option::is_none)
+                    && s.sound1_found == 0.0
+                    && s.extra_pre.is_empty()
+                    && s.extra_post.is_empty()
+            })
+        };
+        for fs in [8_000.0, 48_000.0] {
+            for s in [1.0 / fs, 0.01, 0.1, 0.124, 0.126, 0.25, 1.0] {
+                let n = (fs * s) as usize;
+                let silence = vec![0.0f32; n];
+                let hiss: Vec<f32> = (0..n)
+                    .map(|i| ((i * 7919) % 101) as f32 / 500.0 - 0.1)
+                    .collect();
+                let mut click = vec![0.0f32; n];
+                click[n / 2] = 0.9;
+                let quiet = measure_shape(&silence, fs, 28_800, 0.0);
+                assert!(quiet.as_ref().is_some_and(no_figure), "{fs} Hz, {s} s");
+                let _ = measure_shape(&hiss, fs, 28_800, 0.0);
+                let one = measure_shape(&click, fs, 28_800, 0.0);
+                if n == 1 {
+                    assert!(one.as_ref().is_some_and(no_figure), "{fs} Hz, one sample");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_shape_is_measured_clear_of_masked_stretches() {
+        assert_eq!(shape_stretch(&[], 30.0, 600.0), Some((30.0, SHAPE_S)));
+        // A bump in the first minute: the next clear minute.
+        assert_eq!(
+            shape_stretch(&[(50.0, 58.0)], 30.0, 600.0),
+            Some((58.0, SHAPE_S))
+        );
+        // No clear minute: the longest clear stretch.
+        assert_eq!(
+            shape_stretch(&[(40.0, 50.0), (70.0, 75.0)], 30.0, 100.0),
+            Some((75.0, 25.0))
+        );
+        // A short clear stretch first: passed over for a whole minute.
+        assert_eq!(
+            shape_stretch(&[(40.0, 50.0)], 30.0, 600.0),
+            Some((50.0, SHAPE_S))
+        );
+        // The longest clear stretch is the first one, not the last.
+        assert_eq!(
+            shape_stretch(&[(70.0, 75.0), (85.0, 95.0)], 30.0, 100.0),
+            Some((30.0, 40.0))
+        );
+        assert_eq!(shape_stretch(&[(0.0, 700.0)], 30.0, 600.0), None);
+    }
+    use crate::synth::{generate, SynthConfig};
+
+    fn take(dir: &Path, seconds: f64) -> PathBuf {
+        let audio = generate(
+            &SynthConfig {
+                duration_s: seconds,
+                beat_error_ms: 0.6,
+                odd_gains: Some([0.9, 0.25, 1.0]),
+                ..Default::default()
+            },
+            |t| 270.0 + 10.0 * (t / 10.0).sin(),
+            |_| 0.0,
+        );
+        let path = dir.join("take_part01-001.wav");
+        audio::write_wav(&path, &audio).unwrap();
+        path
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("tg-analysis-take-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn software() -> serde_json::Value {
+        serde_json::json!({"name": "timegrapher", "version": "test"})
+    }
+
+    /// What is kept reads back as it was measured: every beat to the µs
+    /// with its number, quality and clipping, every amplitude window
+    /// exactly, the profiles to a quarter dB, and the header.
+    #[test]
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "over the limit before it was set; split it (architecture guide, section 12)"
+    )]
+    fn a_kept_analysis_reads_back_as_measured() {
+        let dir = scratch("roundtrip");
+        let wav = take(&dir, 40.0);
+        let m = Manifest {
+            recordings: vec![session::RecordingEntry {
+                file: ".".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let cfg = StreamConfig::default();
+        let shapes = shape_stretches(&m, 40.0);
+        let mut s = measure(&[wav.as_path()], &cfg, &shapes, software(), |_| {}).unwrap();
+        // A clipped beat, to see it kept.
+        let clip = s.log.beats[10].time;
+        s.log.clipped_beats = vec![clip];
+        assert!(s.log.beats.len() > 300);
+        assert!(s.profiles.len() >= 19, "{}", s.profiles.len());
+        assert!(s.header.signal_median.is_some_and(|v| v > 4.0));
+        assert_eq!(s.header.shape.len(), 1);
+        assert_eq!(s.header.shape[0].from_s, 20.0);
+        assert!(!is_analysis_only(&dir));
+        write(&dir, &s).unwrap();
+        assert!(is_analysis_only(&dir));
+        let back = read(&dir).unwrap();
+        assert_eq!(back.log.beats.len(), s.log.beats.len());
+        for (a, b) in back.log.beats.iter().zip(&s.log.beats) {
+            assert_eq!(a.index, b.index);
+            assert!(
+                (a.time - b.time).abs() <= 0.5e-6 + 1e-9,
+                "{} {}",
+                a.time,
+                b.time
+            );
+            assert_eq!(a.quality, b.quality);
+        }
+        assert_eq!(back.log.clipped_beats.len(), 1);
+        assert!((back.log.clipped_beats[0] - clip).abs() < 1e-6);
+        assert_eq!(
+            windows_csv(&back.log.amplitude_windows),
+            windows_csv(&s.log.amplitude_windows)
+        );
+        assert_eq!(back.log.jumps, s.log.jumps);
+        assert_eq!(back.log.sided, s.log.sided);
+        assert_eq!(back.log.by_count, s.log.by_count);
+        assert_eq!(back.log.duration_s, s.log.duration_s);
+        assert_eq!(back.profiles.len(), s.profiles.len());
+        for (a, b) in back.profiles.iter().zip(&s.profiles) {
+            assert_eq!(a.end_s, b.end_s);
+            for (x, y) in a.sides.iter().zip(&b.sides) {
+                let (x, y) = (x.as_ref().unwrap(), y.as_ref().unwrap());
+                assert_eq!(x.beats, y.beats);
+                assert_eq!(
+                    x.amplitude_deg.map(|v| v as f32),
+                    y.amplitude_deg.map(|v| v as f32)
+                );
+                let top = y.p90.iter().copied().fold(0.0f32, f32::max);
+                for (i, &v) in x.median.iter().enumerate() {
+                    let want = y.median[i * 2];
+                    if want > top * 1e-3 {
+                        let db = 20.0 * (v / want).log10();
+                        assert!(db.abs() <= 0.13, "point {i}: {v} for {want}");
+                    }
+                }
+            }
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The beats of the kept take give the same readings as the sound.
+    #[test]
+    fn readings_from_the_kept_beats_match_the_sound() {
+        let dir = scratch("readings");
+        let wav = take(&dir, 60.0);
+        let cfg = StreamConfig::default();
+        let s = measure(&[wav.as_path()], &cfg, &[], software(), |_| {}).unwrap();
+        write(&dir, &s).unwrap();
+        let back = read(&dir).unwrap();
+        let fit = |l: &BeatLog| timing::fit(&l.beats, l.bph).unwrap();
+        let (a, b) = (fit(&s.log), fit(&back.log));
+        assert!((a.rate_s_per_day - b.rate_s_per_day).abs() < 0.05);
+        assert!((a.beat_error_ms - b.beat_error_ms).abs() < 0.001);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The analysis a report carries (#400) reads back with every beat and
+    /// window and no profiles, whether cut from a kept analysis or made
+    /// from a beat log alone, and gives the sound's readings.
+    #[test]
+    fn a_report_analysis_reads_back_without_profiles() {
+        let dir = scratch("report");
+        let wav = take(&dir, 60.0);
+        let cfg = StreamConfig::default();
+        let full = measure(&[wav.as_path()], &cfg, &[], software(), |_| {}).unwrap();
+        assert!(!full.profiles.is_empty());
+        let fit = |l: &BeatLog| timing::fit(&l.beats, l.bph).unwrap();
+        let sound = fit(&full.log);
+        let bytes = |s: &Stored| -> usize { files(s).unwrap().iter().map(|(_, b)| b.len()).sum() };
+        let whole = bytes(&full);
+        let log = full.log.clone();
+        let usb = full.header.usb_clock;
+        for (what, s) in [
+            ("cut", for_report(full)),
+            ("from the log", from_log(log, &cfg, 2, software())),
+        ] {
+            assert!(bytes(&s) * 3 < whole, "{what}: {} of {whole}", bytes(&s));
+            let take = dir.join(what);
+            write(&take, &s).unwrap();
+            let back = read(&take).unwrap();
+            assert!(back.profiles.is_empty(), "{what}");
+            assert_eq!(back.header.profiles, 0, "{what}");
+            assert_eq!(back.log.beats.len(), s.log.beats.len(), "{what}");
+            assert_eq!(
+                windows_csv(&back.log.amplitude_windows),
+                windows_csv(&s.log.amplitude_windows),
+                "{what}"
+            );
+            let r = fit(&back.log);
+            assert!(
+                (r.rate_s_per_day - sound.rate_s_per_day).abs() < 0.05,
+                "{what}"
+            );
+            assert!(
+                (r.beat_error_ms - sound.beat_error_ms).abs() < 0.001,
+                "{what}"
+            );
+            // What the header says of the sound stays when it is cut.
+            if what == "cut" {
+                assert_eq!(back.header.usb_clock, usb);
+            }
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A report's analysis is whole when the report fits under GitHub's
+    /// limit with it, and its beats and windows alone when it wouldn't,
+    /// saying why; from the sound, the profiles are read only when they
+    /// can fit. The header is redacted.
+    #[test]
+    fn a_report_analysis_is_whole_when_it_fits() {
+        let dir = scratch("report-fit");
+        let wav = take(&dir, 60.0);
+        let cfg = StreamConfig::default();
+        let paths = [wav.as_path()];
+        let kept = measure(&paths, &cfg, &[], software(), |_| {}).unwrap();
+        let whole: u64 = files(&kept)
+            .unwrap()
+            .iter()
+            .map(|(_, b)| b.len() as u64)
+            .sum();
+        let profiles = kept.profiles.len();
+        // The report's other files, `n` bytes in all, over two files so the
+        // whole of them counts.
+        let room = |n: u64| -> Vec<(String, Vec<u8>)> {
+            let half = usize::try_from(n / 2).unwrap();
+            let rest = usize::try_from(n - n / 2).unwrap();
+            vec![("a".into(), vec![0; half]), ("b".into(), vec![0; rest])]
+        };
+        let unpack = |r: &ReportAnalysis, to: &str| -> Stored {
+            let at = dir.join(to);
+            for (p, d) in &r.entries {
+                let f = at.join(p);
+                fs::create_dir_all(f.parent().unwrap()).unwrap();
+                fs::write(f, d).unwrap();
+            }
+            read(&at).unwrap()
+        };
+        // The software's version stands in for a user name, and "bph", a
+        // key, for a host name: only words are scrubbed, never keys.
+        let redact = |t: &str| t.replace("test", "<redacted>").replace("bph", "<host>");
+        // Room for it all: whole, and the header redacted.
+        let r =
+            report_analysis(ReportFrom::Kept(Box::new(kept.clone())), &room(0), redact).unwrap();
+        assert!(r.left_out.is_none());
+        assert_eq!(unpack(&r, "kept-whole").profiles.len(), profiles);
+        let header = &r
+            .entries
+            .iter()
+            .find(|(p, _)| p.ends_with(HEADER))
+            .unwrap()
+            .1;
+        let header = String::from_utf8_lossy(header);
+        assert!(header.contains("<redacted>"), "{header}");
+        assert!(header.contains("\"bph\""), "keys are kept: {header}");
+        // A byte short of the room it needs: cut, and why.
+        let full = ATTACHMENT_LIMIT_BYTES - REPORT_OVERHEAD_BYTES - whole;
+        let r = report_analysis(
+            ReportFrom::Kept(Box::new(kept.clone())),
+            &room(full + 1),
+            redact,
+        )
+        .unwrap();
+        assert!(r.left_out.as_deref().is_some_and(|w| w.contains("25 MB")));
+        let cut = unpack(&r, "kept-cut");
+        assert!(cut.profiles.is_empty());
+        assert_eq!(cut.log.beats.len(), kept.log.beats.len());
+        let r = report_analysis(
+            ReportFrom::Kept(Box::new(kept.clone())),
+            &room(full),
+            redact,
+        )
+        .unwrap();
+        assert!(r.left_out.is_none(), "exactly at the limit is whole");
+        // A scrub that would break the header, as a user named for the
+        // layout's own format would: an error, not a header that won't read.
+        let e = report_analysis(ReportFrom::Kept(Box::new(kept.clone())), &room(0), |t| {
+            t.replace("analysis", "<user>")
+        })
+        .unwrap_err();
+        assert!(e.contains("format"), "{e}");
+        // From the sound: the profiles read when they can fit, else not.
+        let sound = |other| {
+            let from = ReportFrom::Sound {
+                log: Box::new(kept.log.clone()),
+                files: &paths,
+                cfg: &cfg,
+                software: software(),
+            };
+            report_analysis(from, &room(other), |t: &str| t.to_string()).unwrap()
+        };
+        let r = sound(0);
+        assert!(r.left_out.is_none());
+        assert_eq!(unpack(&r, "sound-whole").profiles.len(), profiles);
+        let r = sound(ATTACHMENT_LIMIT_BYTES - REPORT_OVERHEAD_BYTES - whole / 4);
+        assert!(r.left_out.is_some());
+        let cut = unpack(&r, "sound-cut");
+        assert!(cut.profiles.is_empty());
+        assert_eq!(cut.log.beats.len(), kept.log.beats.len());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A take saved as its analysis gets every file but the sound, in a
+    /// new folder; an existing folder is left alone.
+    #[test]
+    fn saving_writes_a_new_folder_and_never_an_old_one() {
+        let dir = scratch("save");
+        let wav = take(&dir, 20.0);
+        let s = measure(
+            &[wav.as_path()],
+            &StreamConfig::default(),
+            &[],
+            software(),
+            |_| {},
+        )
+        .unwrap();
+        let dest = dir.join("kept");
+        let companions = vec![
+            ("session.toml".to_string(), b"audio = false\n".to_vec()),
+            ("clock.csv".to_string(), b"".to_vec()),
+            ("report/notes/a.txt".to_string(), b"kept".to_vec()),
+        ];
+        save(&dest, &companions, &s).unwrap();
+        assert!(is_analysis_only(&dest));
+        assert!(dest.join("clock.csv").is_file());
+        // A file in a subfolder keeps its place (#1323).
+        assert_eq!(fs::read(dest.join("report/notes/a.txt")).unwrap(), b"kept");
+        // Never outside the take, nor into the analysis's own folder.
+        for (i, bad) in ["../out.txt", "/abs.txt", "analysis/x", "ANALYSIS", "a/../b"]
+            .into_iter()
+            .enumerate()
+        {
+            let d = dir.join(format!("bad{i}"));
+            let err = save(&d, &[(bad.to_string(), Vec::new())], &s).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{bad}");
+            assert!(!d.exists(), "{bad}");
+        }
+        assert!(!dir.join("out.txt").exists());
+        let names: Vec<_> = fs::read_dir(&dest)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(!names
+            .iter()
+            .any(|n| n.ends_with(".wav") || n.ends_with(".flac")));
+        let err = save(&dest, &companions, &s).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert!(fs::read_dir(&dir).unwrap().all(|e| !e
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".timegrapher")));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// What a save writes is synced, every file and folder, before it
+    /// goes into place (#1336). No test can cut the power; this checks the
+    /// walk reaches a nested file, and that a sync that fails is an error,
+    /// so the save fails and the caller keeps the take.
+    #[test]
+    fn a_save_is_on_the_disk_before_it_goes_into_place() {
+        let dir = scratch("sync");
+        fs::create_dir_all(dir.join("a/b")).unwrap();
+        fs::write(dir.join("a/b/c.txt"), b"kept").unwrap();
+        fs::write(dir.join("top.txt"), b"").unwrap();
+        let disk = Syncs {
+            file: &crate::recorder::sync_file,
+            folder: &crate::recorder::sync_folder,
+        };
+        sync_tree(&dir, &disk).unwrap();
+        assert_eq!(fs::read(dir.join("a/b/c.txt")).unwrap(), b"kept");
+        fs::remove_dir_all(&dir).unwrap();
+        let err = sync_tree(&dir, &disk).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    /// A take measured and the companions it keeps, in a scratch folder.
+    fn kept_parts(tag: &str) -> (PathBuf, Stored, Vec<(String, Vec<u8>)>) {
+        let dir = scratch(tag);
+        let wav = take(&dir, 20.0);
+        let s = measure(
+            &[wav.as_path()],
+            &StreamConfig::default(),
+            &[],
+            software(),
+            |_| {},
+        )
+        .unwrap();
+        let companions = vec![
+            ("session.toml".to_string(), b"audio = false\n".to_vec()),
+            ("report/notes/a.txt".to_string(), b"kept".to_vec()),
+        ];
+        (dir, s, companions)
+    }
+
+    /// Every file and folder of a save is synced, in its subfolders too,
+    /// before it goes into place, and the folder it goes into after (#1336,
+    /// #1350).
+    #[test]
+    fn a_save_syncs_every_file_and_folder_before_its_move() {
+        let (dir, s, companions) = kept_parts("synced");
+        let dest = dir.join("kept");
+        let files = std::cell::RefCell::new(Vec::new());
+        let folders = std::cell::RefCell::new(Vec::new());
+        // Each noted as it lies once moved: inside dest, or the parent.
+        let place = |p: &Path| -> PathBuf {
+            let staged = p.ancestors().find(|a| {
+                a.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with(".timegrapher-save-"))
+            });
+            match staged {
+                Some(st) => dest.join(p.strip_prefix(st).unwrap()),
+                None => p.to_path_buf(),
+            }
+        };
+        let noting = Syncs {
+            file: &|p| {
+                files.borrow_mut().push(place(p));
+                Ok(())
+            },
+            folder: &|p| {
+                folders.borrow_mut().push(place(p));
+                Ok(())
+            },
+        };
+        save_with(&dest, &companions, &s, &noting).unwrap();
+        let mut on_disk_files = Vec::new();
+        let mut on_disk_folders = vec![dest.clone()];
+        let mut todo = vec![dest.clone()];
+        while let Some(d) = todo.pop() {
+            for e in fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    on_disk_folders.push(p.clone());
+                    todo.push(p);
+                } else {
+                    on_disk_files.push(p);
+                }
+            }
+        }
+        let mut synced = files.borrow().clone();
+        synced.sort();
+        on_disk_files.sort();
+        assert_eq!(synced, on_disk_files);
+        assert!(synced.contains(&dest.join("report/notes/a.txt")));
+        assert!(synced.contains(&dest.join(DIR).join(HEADER)));
+        // Each folder before the move, the folder it went into last.
+        let folders = folders.borrow().clone();
+        assert_eq!(folders.last(), Some(&dir));
+        let mut before = folders[..folders.len() - 1].to_vec();
+        before.sort();
+        on_disk_folders.sort();
+        assert_eq!(before, on_disk_folders);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A sync that fails fails the save, so Keep Analysis Only keeps the
+    /// take; and it leaves no copy and nothing staged behind, so a save
+    /// again isn't refused (#1350).
+    #[test]
+    fn a_failed_sync_fails_the_save_and_leaves_nothing() {
+        let (dir, s, companions) = kept_parts("unsynced");
+        let failed = || Err(io::Error::other("the disk refused"));
+        let at = |name: &'static str| {
+            move |p: &Path| {
+                if p.ends_with(name) {
+                    failed()
+                } else {
+                    Ok(())
+                }
+            }
+        };
+        let fine = |_: &Path| Ok(());
+        let parent = dir.clone();
+        let parent_fails = move |p: &Path| if p == parent { failed() } else { Ok(()) };
+        let cases: [(&str, Syncs); 4] = [
+            // A file in a subfolder; the analysis's own header.
+            (
+                "nested file",
+                Syncs {
+                    file: &at("a.txt"),
+                    folder: &fine,
+                },
+            ),
+            (
+                "analysis",
+                Syncs {
+                    file: &at(HEADER),
+                    folder: &fine,
+                },
+            ),
+            // A subfolder's entries; the folder it goes into, after the
+            // move.
+            (
+                "folder",
+                Syncs {
+                    file: &fine,
+                    folder: &at("notes"),
+                },
+            ),
+            (
+                "parent",
+                Syncs {
+                    file: &fine,
+                    folder: &parent_fails,
+                },
+            ),
+        ];
+        for (what, sync) in cases {
+            let dest = dir.join(format!("kept-{}", what.replace(' ', "-")));
+            let err = save_with(&dest, &companions, &s, &sync).unwrap_err();
+            assert_eq!(err.to_string(), "the disk refused", "{what}");
+            assert!(!dest.exists(), "{what}");
+            assert!(
+                fs::read_dir(&dir).unwrap().all(|e| !e
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".timegrapher")),
+                "{what}"
+            );
+            // The same save, synced, then goes through.
+            save(&dest, &companions, &s).unwrap();
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A profiles file of a later version is refused as newer, not as
+    /// damaged (#1924): a take kept as its analysis alone has no sound
+    /// to read it again from.
+    #[test]
+    fn a_later_profiles_version_is_refused_as_newer() {
+        let mut bin = profiles_bin(&[]);
+        assert_eq!(&bin[..8], PROFILE_MAGIC);
+        assert!(parse_profiles(&bin).unwrap().is_empty());
+        bin[7] = 3;
+        let e = parse_profiles(&bin).unwrap_err();
+        assert!(e.contains("newer"), "{e}");
+        bin[0] = b'X';
+        let e = parse_profiles(&bin).unwrap_err();
+        assert!(e.contains("doesn't start as a profiles file"), "{e}");
+    }
+
+    /// Stretches on one window are written as version 1, read back as
+    /// written; a stretch on another (#1924) makes it version 2, each
+    /// stretch on its own axis, read back as written too.
+    #[test]
+    fn profiles_on_one_window_are_version_1_and_on_two_version_2() {
+        let side = |t0_ms: f64, n: usize, unlock: f64| TickProfile {
+            side: Side::A,
+            beats: 30,
+            t0_ms,
+            step_ms: 0.1,
+            median: (0..n).map(|i| 1.0 + (i % 7) as f32).collect(),
+            p10: vec![0.5; n],
+            p90: vec![9.0; n],
+            floor: 0.25,
+            unlock_ms: Some(unlock),
+            drop_ms: Some(-0.5),
+            peak_ms: Some(0.0),
+            amplitude_deg: Some(150.0),
+            sound1_ms: None,
+            sound2_ms: None,
+            sound3_ms: Some(1.0),
+        };
+        let stretch = |end_s: f64, t0_ms: f64, n: usize, unlock: f64| StretchProfiles {
+            end_s,
+            signal: Some(30.0),
+            sides: [
+                Some(side(t0_ms, n, unlock)),
+                Some(TickProfile {
+                    side: Side::B,
+                    ..side(t0_ms, n, unlock)
+                }),
+            ],
+        };
+        let short = |end_s| stretch(end_s, -20.0, 280, -9.0);
+        let one = vec![short(2.0), short(4.0)];
+        let bin = profiles_bin(&one);
+        assert_eq!(&bin[..8], PROFILE_MAGIC);
+        let back = parse_profiles(&bin).unwrap();
+        assert_eq!(profiles_bin(&back), bin);
+
+        let two = vec![short(2.0), stretch(4.0, -32.5, 405, -21.0), short(6.0)];
+        let bin = profiles_bin(&two);
+        assert_eq!(&bin[..8], PROFILE_MAGIC_V2);
+        let back = parse_profiles(&bin).unwrap();
+        assert_eq!(profiles_bin(&back), bin);
+        for (a, b) in two.iter().zip(&back) {
+            for (x, y) in a.sides.iter().zip(&b.sides) {
+                let (x, y) = (x.as_ref().unwrap(), y.as_ref().unwrap());
+                assert_eq!(x.t0_ms, y.t0_ms);
+                assert_eq!(x.median.len().div_ceil(2), y.median.len());
+                assert_eq!(x.unlock_ms, y.unlock_ms);
+            }
+        }
+    }
+
+    /// The bound a report reckons a stretch's profiles by covers the
+    /// longest window a profile is cut on: at 28,800 bph more than the
+    /// 936 bytes of the short one alone, and more at slower rates.
+    #[test]
+    fn a_stretch_s_profile_bytes_are_bounded_on_the_long_window() {
+        for bph in [12_000, 18_000, 28_800, 36_000] {
+            let osc = 7200.0 / bph as f64;
+            let w = crate::amplitude::UnlockWindow::long(osc);
+            let n = ((w.pre_s + beats::POST_S) / 0.0002).ceil() as usize;
+            let s = StretchProfiles {
+                end_s: 2.0,
+                signal: None,
+                sides: [0, 1].map(|_| {
+                    Some(TickProfile {
+                        side: Side::A,
+                        beats: 1,
+                        t0_ms: -w.pre_s * 1000.0,
+                        step_ms: 0.1,
+                        median: vec![1.0; 2 * n + 1],
+                        p10: vec![1.0; 2 * n + 1],
+                        p90: vec![1.0; 2 * n + 1],
+                        floor: 0.0,
+                        unlock_ms: None,
+                        drop_ms: None,
+                        peak_ms: None,
+                        amplitude_deg: None,
+                        sound1_ms: None,
+                        sound2_ms: None,
+                        sound3_ms: None,
+                    })
+                }),
+            };
+            let mut short = StretchProfiles {
+                end_s: 4.0,
+                ..s.clone()
+            };
+            for p in short.sides.iter_mut().flatten() {
+                p.t0_ms = -20.0;
+            }
+            // Version 2, each stretch with its own axis, past the header.
+            let bin = profiles_bin(&[short, s]);
+            assert_eq!(&bin[..8], PROFILE_MAGIC_V2);
+            let stretches = (bin.len() - profiles_bin(&[]).len()) as u64;
+            assert!(
+                stretches <= 2 * profile_stretch_max_bytes(bph),
+                "{bph}: {stretches}"
+            );
+        }
+        assert!(profile_stretch_max_bytes(28_800) > 936);
+    }
+
+    /// A header from a later layout says so, rather than misreading it.
+    #[test]
+    fn a_later_layout_is_refused_by_name() {
+        let dir = scratch("later");
+        fs::create_dir_all(dir.join(DIR)).unwrap();
+        fs::write(
+            dir.join(DIR).join(HEADER),
+            r#"{"format": "timegrapher.analysis/3"}"#,
+        )
+        .unwrap();
+        let e = read(&dir).unwrap_err().to_string();
+        assert!(
+            e.contains("timegrapher.analysis/3") && e.contains("newer"),
+            "{e}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A kept analysis with numbers no measurement writes is refused with
+    /// the file and what is wrong, and never panics: the five cases of the
+    /// 2026-10-26 audit (finding ARCH-04).
+    #[test]
+    fn culled_sides_are_kept_and_read_back() {
+        let dir = scratch("culled");
+        let wav = take(&dir, 20.0);
+        let mut s = measure(
+            &[wav.as_path()],
+            &StreamConfig::default(),
+            &[],
+            software(),
+            |_| {},
+        )
+        .unwrap();
+        // Two windows' sides as the gate left them out (#1333).
+        s.log.amplitude_windows[1].set_culled([Some([-21.5, 0.25]), None]);
+        s.log.amplitude_windows[3].set_culled([None, Some([-4.75, 0.5])]);
+        write(&dir, &s).unwrap();
+        let back = read(&dir).unwrap();
+        let culled = |s: &Stored| -> Vec<_> {
+            s.log
+                .amplitude_windows
+                .iter()
+                .map(AmplitudeWindow::culled)
+                .collect()
+        };
+        assert_eq!(culled(&back), culled(&s));
+        // A take kept before #1333 has no such file: none culled.
+        fs::remove_file(dir.join(DIR).join(CULLED)).unwrap();
+        let old = read(&dir).unwrap();
+        assert!(old.log.amplitude_windows.iter().all(|w| !w.has_culled()));
+        // A row with one edge of a side, past the last window, or a window
+        // listed twice, is refused.
+        for row in [
+            "1,-21.5,,,",
+            "999,-21.5,0.25,,",
+            "1,x,0.25,,",
+            "1,-21.5,0.25,,\n1,,,-21.5,0.25",
+            "1,,,,\n1,-21.5,0.25,,",
+        ] {
+            let text = format!("{CULLED_COLUMNS}\n{row}\n");
+            fs::write(dir.join(DIR).join(CULLED), gzip(text.as_bytes()).unwrap()).unwrap();
+            let e = read(&dir).map(|_| ()).unwrap_err().to_string();
+            assert!(e.contains(CULLED), "{row}: {e}");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn corrupt_numbers_are_refused_by_name() {
+        let dir = scratch("corrupt");
+        let wav = take(&dir, 20.0);
+        let good = measure(
+            &[wav.as_path()],
+            &StreamConfig::default(),
+            &[],
+            software(),
+            |_| {},
+        )
+        .unwrap();
+        let refused = |s: &Stored, edit: &dyn Fn(&Path)| -> String {
+            write(&dir, s).unwrap();
+            edit(&dir.join(DIR));
+            read(&dir).map(|_| ()).unwrap_err().to_string()
+        };
+        let none = |_: &Path| {};
+        assert!({
+            write(&dir, &good).unwrap();
+            read(&dir).is_ok()
+        });
+        // 1. Header figures.
+        for (field, value, file) in [
+            ("sample_rate", "0", HEADER),
+            ("bph", "0", HEADER),
+            ("lift_deg", "-52.0", HEADER),
+            ("duration_s", "-10.0", HEADER),
+        ] {
+            let e = refused(&good, &|d: &Path| {
+                let p = d.join(HEADER);
+                let mut v: serde_json::Value =
+                    serde_json::from_str(&fs::read_to_string(&p).unwrap()).unwrap();
+                v[field] = serde_json::from_str(value).unwrap();
+                fs::write(&p, v.to_string()).unwrap();
+            });
+            assert!(e.contains(file) && e.contains(field), "{field}: {e}");
+        }
+        // 2. A beat's quality, and a window's amplitude and beat error,
+        // that are not numbers.
+        let set_beat = |d: &Path, i: usize, row: &str| {
+            let raw = fs::read(d.join(BEATS)).unwrap();
+            let mut text = String::new();
+            GzDecoder::new(&raw[..]).read_to_string(&mut text).unwrap();
+            let mut rows: Vec<&str> = text.lines().collect();
+            rows[i] = row;
+            fs::write(
+                d.join(BEATS),
+                gzip((rows.join("\n") + "\n").as_bytes()).unwrap(),
+            )
+            .unwrap();
+        };
+        let e = refused(&good, &|d: &Path| set_beat(d, 3, "1,0,NaN,0"));
+        assert!(e.contains(BEATS) && e.contains("row 3"), "{e}");
+        let mut s = good.clone();
+        s.log.amplitude_windows[1].even_deg = Some(f64::INFINITY);
+        let e = refused(&s, &none);
+        assert!(e.contains(WINDOWS) && e.contains("row 2"), "{e}");
+        let mut s = good.clone();
+        s.log.amplitude_windows[0].beat_error_ms = Some(f64::NAN);
+        let e = refused(&s, &none);
+        assert!(e.contains(WINDOWS) && e.contains("row 1"), "{e}");
+        // 3. Beats going backwards, by a negative step.
+        let e = refused(&good, &|d: &Path| set_beat(d, 2, "-1,0,1,0"));
+        assert!(e.contains(BEATS) && e.contains("row 2"), "{e}");
+        // 4. A step that overflows the arithmetic.
+        let e = refused(&good, &|d: &Path| {
+            set_beat(d, 2, &format!("{},0,1,0", i64::MAX))
+        });
+        assert!(e.contains(BEATS) && e.contains("out of range"), "{e}");
+        // 5. A profile stretch whose end is not a number.
+        let mut s = good.clone();
+        s.profiles[0].end_s = f64::INFINITY;
+        let e = refused(&s, &none);
+        assert!(e.contains(PROFILES), "{e}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn shape_stretches_skip_masks_and_settling() {
+        let m = Manifest {
+            settle_s: Some(10.0),
+            recordings: vec![
+                session::RecordingEntry {
+                    file: ".".into(),
+                    end_s: Some(200.0),
+                    masked: vec![[30.0, 40.0]],
+                    ..Default::default()
+                },
+                session::RecordingEntry {
+                    file: ".".into(),
+                    start_s: Some(200.0),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let s = shape_stretches(&m, 300.0);
+        assert_eq!(s, vec![Some((40.0, 100.0)), Some((210.0, 270.0))]);
+        let off = Manifest {
+            shape: Some(false),
+            ..m
+        };
+        assert_eq!(shape_stretches(&off, 300.0), vec![None, None]);
+    }
+
+    /// Keep Analysis Only removes a take's sound only when its session file
+    /// names the whole folder, as the app writes it (#1731): one naming
+    /// sound files, one mixing the two, and one with no recordings at all
+    /// are refused, with the reason the menu and the CLI show.
+    #[test]
+    fn only_a_session_naming_the_whole_folder_may_lose_its_sound() {
+        let listing = |files: &[&str]| Manifest {
+            recordings: files
+                .iter()
+                .map(|f| session::RecordingEntry {
+                    file: (*f).into(),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        assert_eq!(sound_kept_by_name(&listing(&["."])), None);
+        assert_eq!(sound_kept_by_name(&listing(&[".", "."])), None);
+        for files in [&["take.flac"][..], &[".", "b.wav"], &[]] {
+            let why = sound_kept_by_name(&listing(files));
+            let why = why.unwrap_or_else(|| panic!("{files:?} may lose its sound"));
+            assert!(why.contains("by name"), "{why}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod size_limit_tests {
+    use super::*;
+
+    fn take(tag: &str) -> PathBuf {
+        let p =
+            std::env::temp_dir().join(format!("tg-analysis-limit-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&p);
+        let dir = p.join(DIR);
+        fs::create_dir_all(&dir).unwrap();
+        let header = serde_json::json!({
+            "format": FORMAT, "software": {}, "audio": false, "note": NO_SOUND,
+            "sample_rate": 48000, "bytes_per_frame": 2, "duration_s": 1.0,
+            "bph": 36000, "lift_deg": 52.0, "clipped_samples": 0,
+            "jumps": [], "sided": [], "settings": {}, "beats": 1,
+            "windows": 0, "profiles": 0, "shape": []
+        });
+        fs::write(dir.join(HEADER), header.to_string()).unwrap();
+        fs::write(
+            dir.join(BEATS),
+            gzip(format!("{BEATS_COLUMNS}\n1,0,1,0\n").as_bytes()).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            dir.join(WINDOWS),
+            gzip(format!("{WINDOWS_COLUMNS}\n").as_bytes()).unwrap(),
+        )
+        .unwrap();
+        fs::write(dir.join(PROFILES), gzip(&profiles_bin(&[])).unwrap()).unwrap();
+        p
+    }
+
+    #[test]
+    fn analysis_gzip_bombs_are_refused_by_file() {
+        for name in [BEATS, WINDOWS, PROFILES] {
+            let p = take(name);
+            let (field, rows, raw) = match name {
+                BEATS => (
+                    "beats",
+                    1,
+                    format!("{BEATS_COLUMNS}\n1,0,1,0,{}\n", "0".repeat(1 << 20)).into_bytes(),
+                ),
+                WINDOWS => (
+                    "windows",
+                    32_768,
+                    format!("{WINDOWS_COLUMNS}\n{}", "0,1,,,,,,,,\n".repeat(32_768)).into_bytes(),
+                ),
+                _ => {
+                    let profiles = vec![
+                        StretchProfiles {
+                            end_s: 2.0,
+                            signal: None,
+                            sides: [None, None]
+                        };
+                        32_768
+                    ];
+                    ("profiles", profiles.len(), profiles_bin(&profiles))
+                }
+            };
+            let header_path = p.join(DIR).join(HEADER);
+            let mut header: serde_json::Value =
+                serde_json::from_slice(&fs::read(&header_path).unwrap()).unwrap();
+            header[field] = serde_json::json!(rows);
+            fs::write(header_path, header.to_string()).unwrap();
+            let compressed = gzip(&raw).unwrap();
+            assert!(
+                compressed.len() < 4096,
+                "{name}: {} compressed bytes",
+                compressed.len()
+            );
+            fs::write(p.join(DIR).join(name), compressed).unwrap();
+            let result = std::panic::catch_unwind(|| read_with_limit(&p, 1024));
+            let err = result.expect("reader panicked").unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+            let message = err.to_string();
+            assert!(
+                message.contains(name) && message.contains("more than 1024 bytes"),
+                "{message}"
+            );
+            fs::remove_dir_all(p).unwrap();
+        }
+    }
+
+    #[test]
+    fn analysis_decompressed_limit_is_inclusive() {
+        let p = take("boundary");
+        let mut text = format!("{BEATS_COLUMNS}\n1,0,1,0,");
+        text.extend(std::iter::repeat_n('0', 1023 - text.len()));
+        text.push('\n');
+        assert_eq!(text.len(), 1024);
+        fs::write(p.join(DIR).join(BEATS), gzip(text.as_bytes()).unwrap()).unwrap();
+        assert_eq!(read_with_limit(&p, 1024).unwrap().log.beats.len(), 1);
+        // An extra CSV field is accepted by the existing parser, so size alone fails.
+        text.insert(text.len() - 1, '0');
+        fs::write(p.join(DIR).join(BEATS), gzip(text.as_bytes()).unwrap()).unwrap();
+        let err = read_with_limit(&p, 1024).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string().contains(BEATS) && err.to_string().contains("more than 1024 bytes"),
+            "{err}"
+        );
+        fs::remove_dir_all(p).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod limit_wording_tests {
+    use super::*;
+
+    #[test]
+    fn analysis_limit_error_uses_megabytes() {
+        let path = std::env::temp_dir().join(format!("tg-analysis-words-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(path.join(DIR)).unwrap();
+        let header = serde_json::json!({
+            "format": FORMAT, "software": {}, "audio": false, "note": NO_SOUND,
+            "sample_rate": 48000, "bytes_per_frame": 2, "duration_s": 1.0,
+            "bph": 36000, "lift_deg": 52.0, "clipped_samples": 0,
+            "jumps": [], "sided": [], "settings": {}, "beats": 1,
+            "windows": 0, "profiles": 0, "shape": []
+        });
+        fs::write(path.join(DIR).join(HEADER), header.to_string()).unwrap();
+        fs::write(
+            path.join(DIR).join(WINDOWS),
+            gzip(format!("{WINDOWS_COLUMNS}\n").as_bytes()).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            path.join(DIR).join(PROFILES),
+            gzip(&profiles_bin(&[])).unwrap(),
+        )
+        .unwrap();
+        let raw = format!("{BEATS_COLUMNS}\n1,0,1,0,{}\n", "0".repeat(1 << 20));
+        fs::write(path.join(DIR).join(BEATS), gzip(raw.as_bytes()).unwrap()).unwrap();
+        let err = read_with_limit(&path, 1 << 20).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string()
+                .contains("beats.csv.gz unpacks to more than 1 MB"),
+            "{err}"
+        );
+        assert_eq!(crate::archive::unpacked_size(MAX_ANALYSIS_FILE), "512 MB");
+        fs::remove_dir_all(path).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod clock_sign_tests {
+    use super::*;
+
+    /// A take's analysis with USB lines at `ppm`, in the layout `format`.
+    fn kept(tag: &str, format: &str, ppm: f64) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("tg-analysis-sign-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&p);
+        let dir = p.join(DIR);
+        fs::create_dir_all(&dir).unwrap();
+        let header = serde_json::json!({
+            "format": format, "software": {}, "audio": false, "note": NO_SOUND,
+            "sample_rate": 48000, "bytes_per_frame": 2, "duration_s": 1.0,
+            "bph": 36000, "lift_deg": 52.0, "clipped_samples": 0,
+            "jumps": [], "sided": [], "settings": {}, "beats": 1,
+            "windows": 0, "profiles": 0, "shape": [],
+            "usb_clock": { "ppm": ppm, "lines": 3, "spread_ppm": 0.1 }
+        });
+        fs::write(dir.join(HEADER), header.to_string()).unwrap();
+        let beats = gzip(format!("{BEATS_COLUMNS}\n1,0,1,0\n").as_bytes()).unwrap();
+        fs::write(dir.join(BEATS), beats).unwrap();
+        let windows = gzip(format!("{WINDOWS_COLUMNS}\n").as_bytes()).unwrap();
+        fs::write(dir.join(WINDOWS), windows).unwrap();
+        fs::write(dir.join(PROFILES), gzip(&profiles_bin(&[])).unwrap()).unwrap();
+        p
+    }
+
+    /// A take kept before #657 gave its USB lines' error ppm slow: it is
+    /// read ppm fast, so a card 20 ppm slow reads -20 in either layout.
+    #[test]
+    fn a_take_kept_before_the_sign_flip_keeps_its_meaning() {
+        for (tag, format, ppm) in [("old", FORMAT_1, 20.0), ("new", FORMAT, -20.0)] {
+            let p = kept(tag, format, ppm);
+            let back = read(&p).unwrap();
+            assert_eq!(
+                back.header.usb_clock.map(|u| u.ppm),
+                Some(-20.0),
+                "{format}"
+            );
+            assert_eq!(back.header.format, FORMAT);
+            let _ = fs::remove_dir_all(&p);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "analysis_take_sound_tests.rs"]
+mod sound_tests;

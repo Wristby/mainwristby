@@ -1,0 +1,2998 @@
+//! Finding every beat.
+//!
+//! Two passes. A first pass tracks the loudest point of each beat on the
+//! envelope, keeping each side on one sound, and builds a median beat
+//! template from it with each side's beats moved onto their drop. The
+//! second pass correlates the whole envelope with that template and tracks
+//! the correlation peaks, which is far more robust than picking maxima: a
+//! beat whose unlock happens to be louder than its drop still lines up with
+//! the template as a whole. The second pass is run again with a template
+//! rebuilt from its own beats.
+
+use crate::dsp::{argmax, correlate, median_f32, moving_average, parabolic, upper_median_f32};
+use realfft::RealFftPlanner;
+use serde::Serialize;
+
+/// Standard beat rates in vibrations (beats) per hour.
+pub const STANDARD_BPH: [u32; 11] = [
+    12000, 14400, 17280, 18000, 19800, 21600, 25200, 28800, 36000, 43200, 72000,
+];
+
+/// Fractional rate slack for beat and full-oscillation rate inference.
+/// Beat error moves alternating intervals, but not their sum.
+const GUESS_RATE_SLACK: f64 = 0.004;
+/// Search alternating intervals up to 10 ms either side of one beat,
+/// covering large beat errors without widening the full-oscillation search.
+const GUESS_BEAT_ERROR_S: f64 = 0.010;
+/// Retain the established half-best evidence threshold for rate candidates.
+const GUESS_SCORE_SHARE: f64 = 0.5;
+
+/// Evidence for both alternating intervals and their full oscillation.
+/// Count the central-lag background once and the weaker split peak's
+/// excess twice, capped by the full oscillation. Doubling the background
+/// too would promote a half-beat lag on a slowly rising sound. One
+/// displaced peak alone must not promote a neighbouring standard rate.
+fn alternating_score(ac: &[f64], period: f64, fs: f64) -> f64 {
+    let centre = (2.0 * period).round() as usize;
+    let slack = (2.0 * period * GUESS_RATE_SLACK).ceil() as usize + 1;
+    let Some((lag, &full)) = (centre.saturating_sub(slack)..=centre + slack)
+        .filter_map(|i| ac.get(i).map(|v| (i, v)))
+        .max_by(|a, b| a.1.total_cmp(b.1))
+    else {
+        return 0.0;
+    };
+    let centre = lag / 2;
+    let pair = (0..=((GUESS_BEAT_ERROR_S * fs) as usize).min(centre))
+        .filter_map(|d| Some(ac.get(centre - d)?.min(*ac.get(centre + d)?)))
+        .fold(f64::NEG_INFINITY, f64::max);
+    (2.0 * pair - ac[centre]).min(full)
+}
+
+/// How many beats on from a beat `dt_s` seconds after it, `beat_s` a beat:
+/// the nearest whole count, at least one. Peaks are numbered on by it.
+pub fn beats_on(dt_s: f64, beat_s: f64) -> i64 {
+    (dt_s / beat_s).round().max(1.0) as i64
+}
+
+/// Guess the beat rate from the envelope's autocorrelation.
+///
+/// Score each standard rate against its full oscillation and both
+/// alternating intervals. Split intervals carry half the beats each, so
+/// their weaker excess above the central lag is doubled and capped by
+/// the full oscillation, with the central background counted once.
+/// Pick the fastest supported rate only when the other supported rates
+/// are its subharmonics; otherwise keep the established single-lag choice.
+/// A candidate needs positive evidence and at least half the best score.
+///
+/// The 10 s looked at start where sound does ([`sound_onset`]): silence
+/// before a watch is placed holds no beat, and a rate with no beat energy
+/// behind it (a score of 0 or below) is never picked (#476). With none
+/// scoring above 0, as in digital silence, the guess is 28,800 bph.
+pub fn guess_bph(env: &[f32], fs: f64) -> u32 {
+    let env = &env[sound_onset(env, fs).unwrap_or(0)..];
+    let n = env.len().min((fs * 10.0) as usize);
+    // Smooth over 2 ms so beat error and jitter don't split the peaks.
+    let smooth = crate::dsp::moving_average(&env[..n], (0.002 * fs) as usize);
+    let seg = &smooth[..];
+    let mean = seg.iter().map(|&v| v as f64).sum::<f64>() / n as f64;
+    let l = (2 * n).next_power_of_two();
+    let mut planner = RealFftPlanner::<f64>::new();
+    let fwd = planner.plan_fft_forward(l);
+    let inv = planner.plan_fft_inverse(l);
+    let mut buf = vec![0.0f64; l];
+    for (b, &v) in buf.iter_mut().zip(seg) {
+        *b = v as f64 - mean;
+    }
+    let mut spec = fwd.make_output_vec();
+    fwd.process(&mut buf, &mut spec).expect("fft");
+    for c in spec.iter_mut() {
+        *c = realfft::num_complex::Complex::new(c.norm_sqr(), 0.0);
+    }
+    inv.process(&mut spec, &mut buf).expect("ifft");
+    let ac = |lag: f64| -> f64 {
+        // Allow a little slack around the nominal lag for a fast or slow
+        // watch, and for beat error, which moves the tick-to-toc lag by
+        // the beat error either way (Witschi's example fault is 3 ms).
+        let c = lag.round() as usize;
+        let w = (lag * GUESS_RATE_SLACK + 0.004 * fs).ceil() as usize + 1;
+        (c.saturating_sub(w)..=c + w)
+            .filter_map(|i| buf.get(i).copied())
+            .fold(f64::NEG_INFINITY, f64::max)
+    };
+    let scores: Vec<(u32, f64)> = STANDARD_BPH
+        .iter()
+        .filter(|&&b| 3600.0 / b as f64 * fs * 1.1 < n as f64 / 2.0)
+        .map(|&b| (b, ac(3600.0 / b as f64 * fs)))
+        .collect();
+    let best = scores.iter().map(|s| s.1).fold(f64::NEG_INFINITY, f64::max);
+    let previous = scores
+        .iter()
+        .filter(|s| s.1 > 0.0 && s.1 >= GUESS_SCORE_SHARE * best)
+        .map(|s| s.0)
+        .max()
+        .unwrap_or(28800);
+    let paired: Vec<(u32, f64)> = scores
+        .iter()
+        .map(|&(b, _)| (b, alternating_score(&buf, 3600.0 / b as f64 * fs, fs)))
+        .collect();
+    let best = paired.iter().map(|s| s.1).fold(f64::NEG_INFINITY, f64::max);
+    let supported: Vec<u32> = paired
+        .iter()
+        .filter(|s| s.1 > 0.0 && s.1 >= GUESS_SCORE_SHARE * best)
+        .map(|s| s.0)
+        .collect();
+    match supported.iter().max().copied() {
+        Some(b) if supported.iter().all(|s| b % s == 0) => b,
+        _ => previous,
+    }
+}
+
+/// Length of the stretches [`sound_onset`] judges, seconds: longer than
+/// the slowest standard rate's beat, so a stretch of a watch holds a beat.
+const ONSET_BLOCK_S: f64 = 1.0;
+
+/// Where sound starts in `env`, samples: the start of the first
+/// [`ONSET_BLOCK_S`] stretch whose loudest point reaches a quarter of the
+/// loud stretches' (the 90th percentile of the stretches' loudest points,
+/// by core's one rule, [`crate::dsp::quantile_f32`]).
+/// So digital silence or a low noise before a watch is placed is passed
+/// over. `None` when the envelope is all zero.
+pub fn sound_onset(env: &[f32], fs: f64) -> Option<usize> {
+    let w = ((ONSET_BLOCK_S * fs) as usize).max(1);
+    let tops: Vec<f32> = env
+        .chunks(w)
+        .map(|c| c.iter().copied().fold(0.0, f32::max))
+        .collect();
+    let mut sorted = tops.clone();
+    sorted.sort_by(f32::total_cmp);
+    if sorted.is_empty() {
+        return None;
+    }
+    let loud = crate::dsp::quantile_f32(&sorted, 0.9);
+    if loud <= 0.0 {
+        return None;
+    }
+    tops.iter().position(|&t| t >= 0.25 * loud).map(|i| i * w)
+}
+
+/// One detected beat.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct Beat {
+    /// Beat number from the start, counting any skipped beats.
+    pub index: i64,
+    /// Time of the beat's reference point (the drop), seconds.
+    pub time: f64,
+    /// Correlation with the beat template at that point, relative to the
+    /// median over the recording; ~1 for a typical beat, near 0 when lost.
+    pub quality: f32,
+}
+
+impl Beat {
+    /// Whether this beat is good enough to time from: quality better than
+    /// [`JUMP_QUALITY`]. The one rule for the timing fit, the jump search,
+    /// the scatter and the beat-sound snippets alike.
+    pub fn is_good(&self) -> bool {
+        self.quality > JUMP_QUALITY
+    }
+}
+
+/// Track one peak per beat in `x`, starting near the strongest peak of the
+/// first beat-and-a-half. A simple phase-locked loop follows rate changes.
+///
+/// With a `gate` (seconds), each beat after the first two is the highest
+/// peak within that distance of where the same side's last beat predicts
+/// it, so each side stays on one sound even when another sound of the beat
+/// is about as loud. The whole search span is used instead when it holds a
+/// peak more than twice as high, so a lost track finds the beats again.
+///
+/// Without a gate, once the track is running, a beat whose best match in
+/// the span is too far from where it is due (a knock) is looked for within
+/// [`BEAT_WINDOW_S`] of where it is due instead, and taken from there if it
+/// matches at least [`BEAT_WINDOW_FLOOR`] of that side's typical beat, so
+/// the knock does not cost the beat.
+///
+/// `level` is the typical beat's match carried from the sound before `x`
+/// (as this returns it). With it, a peak far weaker than that does not
+/// steer the track, and is dropped where it lies in a run missed, so a
+/// stretch that opens on silence, or falls silent, does not take the noise
+/// for the beat. Without it, as for a take's first stretch and live
+/// listening's short windows, every peak may be a beat.
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
+fn track_peaks(
+    x: &[f32],
+    fs: f64,
+    beat: f64,
+    gate: Option<f64>,
+    level: Option<f32>,
+) -> (Vec<(f64, f32)>, Option<f32>) {
+    let n = x.len();
+    let start_span = (beat * fs * 1.5) as usize;
+    let Some((first, _)) = argmax(x, 0, start_span) else {
+        return (Vec::new(), level);
+    };
+    // Found peaks with the number of the beat each one is, and whether
+    // later beats may be predicted from it (not from one found by the beat
+    // window, which may be a knock's tail where the track was already off).
+    // And whether it is weak (below), kept only between beats that are not
+    // a run missed apart.
+    let mut out: Vec<(f64, f32, i64, bool, bool)> = Vec::new();
+    let mut per = beat * fs;
+    let mut pred = first as f64;
+    let mut k = 0i64;
+    let mut misses = 0;
+    // Faint peaks in a row each where its beat was due, and, once lost,
+    // the last faint peak and how many in a row came a beat apart.
+    let mut quiet_run = 0;
+    let mut steady: Option<(f64, usize)> = None;
+    // A slow average of each side's match, for the beat window's floor.
+    let mut typical = [level.unwrap_or(0.0); 2];
+    // A slow average of the match halfway between beats, where a watch
+    // is silent: the noise, measured only while the track holds.
+    let mut noise: Option<f32> = None;
+    let half = 0.3 * beat * fs;
+    while pred + half < n as f64 {
+        // With a level to judge by, a track lost (a long run missed) looks
+        // over a whole beat, so a watch heard again out of step with it is
+        // found wherever it is.
+        let lost = level.is_some() && misses >= MAX_MISSES;
+        let reach = if lost { 0.5 * per } else { half };
+        let a = (pred - reach).max(0.0) as usize;
+        let b = (pred + reach) as usize;
+        let Some((mut i, mut v)) = argmax(x, a, b) else {
+            break;
+        };
+        let mut rescued = false;
+        if let Some(g) = gate.filter(|_| out.len() >= 2) {
+            let g = g * fs;
+            let near = argmax(x, (pred - g).max(0.0) as usize, (pred + g) as usize + 1);
+            if let Some((j, w)) = near.filter(|&(_, w)| 2.0 * w >= v) {
+                (i, v) = (j, w);
+            }
+        } else if out.len() >= 4
+            && typical[side(k)] > 0.0
+            && (i as f64 - pred).abs() >= MAX_OFFSET * per
+        {
+            // The best match is too far from where the beat is due to be
+            // the beat, which would cost a beat. But the beat is where it
+            // is due to within a fraction of a millisecond, so a good match
+            // there is the beat, hidden by a knock elsewhere in the span.
+            // Only then: a window that always took a fair match near the
+            // prediction would hold the track on another sound of the beat
+            // once a knock had put it there. The best point must be a peak,
+            // not the window's edge on the flank of something outside it.
+            let g = BEAT_WINDOW_S * fs;
+            let (lo, hi) = ((pred - g).max(1.0) as usize, (pred + g) as usize);
+            let near = argmax(x, lo, hi + 1).filter(|&(j, w)| {
+                j > lo && j < hi && j + 1 < n && w >= BEAT_WINDOW_FLOOR * typical[side(k)]
+            });
+            if let Some((j, w)) = near {
+                (i, v) = (j, w);
+                rescued = true;
+            }
+        }
+        let t = parabolic(x, i);
+        // Once the correlation track is running, a peak far from where the
+        // beat is due is a knock or other noise, not the beat: count the
+        // beat as missed rather than let it pull the track off by a beat.
+        // After MAX_MISSES in a row the track takes the strongest beat it
+        // finds, to recover, if it is a peak: in digital silence the best
+        // point is the span's edge, and taking those would count more beats
+        // than the silence holds (#782). Pass 1 (with a gate) only feeds a
+        // median template, so it takes every peak.
+        // A match below a thousandth of the side's typical beat
+        // ([`NOTHING`]) is the correlation's rounding error near a beat in
+        // digital silence. It is kept like a faint peak but never steers:
+        // a track with no level that timed itself from it as the watch fell
+        // silent, or took itself up on it before the watch was heard again,
+        // stayed off the beats after the silence (#786).
+        // With a level to judge by, a peak far weaker than the side's
+        // typical beat may be a faint beat or, in a silence, the noise: it
+        // is kept, but neither steers the track nor ends a run missed (#609).
+        // The watch heard more quietly (turned, the mic touched, a gain
+        // control) is told from noise by its timing: a run of weak peaks
+        // each where its beat is due, or, once the track is lost, each a
+        // beat after the last, is the watch, and steers the track again.
+        // A peak lost in the noise is faint whatever the typical
+        // beat, so a track that has followed the watch down to the noise
+        // does not then steer by the noise. And only a peak counts towards
+        // a run: in digital silence the best "match" is the span's first
+        // sample, a beat after the last one.
+        let clear = noise.is_none_or(|m| v >= CLEAR * m);
+        let faint = level.is_some() && (v < TRACK_FLOOR * typical[side(k)] || !clear);
+        let peaked = i > 0 && i + 1 < n && x[i - 1] < v && x[i + 1] < v;
+        let due_by = |at: f64| clear && peaked && (t - at).abs() < BEAT_WINDOW_S * fs;
+        quiet_run = if faint && !lost && due_by(pred) {
+            quiet_run + 1
+        } else {
+            0
+        };
+        steady = match steady {
+            Some((at, run)) if faint && lost && due_by(at + per) => Some((t, run + 1)),
+            _ if faint && lost => Some((t, 1)),
+            _ => None,
+        };
+        let regular = quiet_run >= QUIET_RUN || steady.is_some_and(|(_, run)| run >= QUIET_RUN);
+        // A match of nothing never steers the correlation track, with a
+        // level or without (#786).
+        let nothing = gate.is_none() && v < NOTHING * typical[side(k)];
+        let weak = faint && !regular || nothing;
+        let take = gate.is_some()
+            || out.len() < 4
+            || (t - pred).abs() < MAX_OFFSET * per
+            || misses >= MAX_MISSES && !weak && peaked;
+        if take && !weak {
+            let anchors = out.iter().rev().filter(|o| o.3).take(3);
+            // Nothing heard times nothing: in digital silence the gate's
+            // pick is its edge, a little early every beat, and timing from
+            // those shrank the period beat by beat until the track stood
+            // still (#782).
+            let heard = v > 0.0;
+            let same_side = anchors.clone().find(|o| o.2 == k - 2 && !rescued && heard);
+            if let Some(&(t2, ..)) = same_side {
+                // Update on the tick-to-tick interval so beat error doesn't pull the loop.
+                let meas = (t - t2) / 2.0;
+                if (meas - per).abs() < 0.05 * per {
+                    // Kept no shorter than PER_MIN of the beat whatever it is
+                    // fed, so each beat is looked for later than the last.
+                    per = (0.9 * per + 0.1 * meas).max(PER_MIN * beat * fs);
+                }
+            }
+            out.push((t, v, k, !rescued, false));
+            misses = 0;
+            let (w, mid) = (0.01 * fs, t + 0.5 * per);
+            if mid + w < n as f64 {
+                let m = rms(&x[(mid - w) as usize..(mid + w) as usize]);
+                noise = Some(noise.map_or(m, |o| 0.95 * o + 0.05 * m));
+            }
+            let ty = &mut typical[side(k)];
+            *ty = if *ty > 0.0 { 0.95 * *ty + 0.05 * v } else { v };
+        } else {
+            if take {
+                out.push((t, v, k, false, true));
+            }
+            misses += 1;
+        }
+        k += 1;
+        // Predict beat k from the same side's last beat once there are
+        // three beats, so beat error does not enter the prediction.
+        let mut anchors = out.iter().rev().filter(|o| o.3);
+        let same_side = anchors.clone().take(3).find(|o| o.2 == k - 2);
+        pred = match same_side.filter(|_| out.len() > 2) {
+            Some(&(t2, ..)) => t2 + 2.0 * per,
+            None => match anchors.next() {
+                Some(&(t1, _, k1, ..)) => t1 + (k - k1) as f64 * per,
+                None => pred + per,
+            },
+        };
+    }
+    let level = (typical[0] > 0.0 && typical[1] > 0.0)
+        .then(|| 0.5 * (typical[0] + typical[1]))
+        .or(level);
+    // Weak peaks across a run missed (MAX_MISSES beats or more between
+    // the beats either side) are a silence's noise, not beats.
+    let strong: Vec<i64> = out.iter().filter(|o| !o.4).map(|o| o.2).collect();
+    let in_silence = |k: i64| {
+        let at = strong.partition_point(|&s| s < k);
+        let before = at.checked_sub(1).map_or(i64::MIN / 2, |i| strong[i]);
+        let after = strong.get(at).copied().unwrap_or(i64::MAX / 2);
+        after - before > MAX_MISSES as i64
+    };
+    let peaks = out
+        .into_iter()
+        .filter(|o| !(o.4 && in_silence(o.2)))
+        .map(|(t, v, ..)| (t / fs, v))
+        .collect();
+    (peaks, level)
+}
+
+fn rms(x: &[f32]) -> f32 {
+    (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
+}
+
+/// The shortest the tracked beat period may become, as a fraction of the
+/// nominal beat. A watch 1 % fast gains 864 s a day, so this allows ten
+/// times any watch's error.
+const PER_MIN: f64 = 0.9;
+
+/// A match below this share of the side's typical beat is nothing heard:
+/// the correlation's rounding error near a beat in digital silence is a
+/// hundred-millionth of a beat, a silent stand's match a few percent.
+const NOTHING: f32 = 1e-3;
+
+/// How far from where it is due a beat may be found once the track is
+/// running, as a fraction of the beat period. Beat-to-beat changes in
+/// timing are far smaller; a knock lands anywhere.
+const MAX_OFFSET: f64 = 0.1;
+
+fn side(k: i64) -> usize {
+    k.rem_euclid(2) as usize
+}
+
+/// Half-width of the window around where a beat is due that pass 2
+/// searches when a knock outmatches the beat, seconds. Beat-to-beat
+/// changes in timing are tenths of a millisecond; professional
+/// timegraphers gate to about 2 ms.
+const BEAT_WINDOW_S: f64 = 0.002;
+/// How well the best match in that window must compare with the typical
+/// beat's to be taken as the beat; below it the whole span is searched.
+const BEAT_WINDOW_FLOOR: f32 = 0.5;
+/// Beats in a row that may be missed before the track takes the strongest
+/// beat it finds anywhere, so it can recover from a real jump.
+const MAX_MISSES: usize = 16;
+
+/// How strong a peak must be, against its side's typical beat, to steer a
+/// track that has a level to judge by; a weaker one is weak. Noise on a
+/// silent stand matches the template at a few percent of a beat, and a
+/// watch's beats seldom fall below half their typical match, but a faint
+/// beat now and then does, so a weak peak is still kept unless it lies in
+/// a run missed; and a run of them on time is the watch ([`QUIET_RUN`]).
+const TRACK_FLOOR: f32 = 0.25;
+
+/// How far above the noise (the RMS of the match halfway between beats)
+/// a peak must stand to be told from it. A watch heard 18 dB down over a
+/// quiet stand clears it, and is read; at 20 dB its beats are lost in the
+/// noise as often as not, and are left out rather than tracked by the
+/// noise's strongest points, which give a rate tens of s/d out. Every
+/// beat of the stored takes clears it; at 6 a few on the Dandong do not.
+const CLEAR: f32 = 4.0;
+
+/// Faint peaks in a row, each where its beat is due (or, for a lost
+/// track, each a beat after the last), that are the watch heard more
+/// quietly rather than noise, which lands anywhere in the span.
+const QUIET_RUN: usize = 4;
+
+/// Window around each beat used for templates: from `PRE_S` before the
+/// drop to `POST_S` after it. 20 ms before covers the unlock down to
+/// about 150 degrees of amplitude at common beat rates.
+pub const PRE_S: f64 = 0.020;
+pub const POST_S: f64 = 0.008;
+
+/// Timing scatter, as a fraction of the beat period, at or above which no
+/// regular beat is found. A watch's beats sit within a millisecond of a
+/// straight line (0.7 ms at most in every stored take, 0.6% of the beat);
+/// on an empty stand the tracker still finds a "beat" in each window, but
+/// anywhere in it, and the scatter is 5% of the beat (8.1 and 8.6 ms in the
+/// silence take at 21,600). 2% leaves a factor of three on each side.
+/// On a short stretch noise can scatter less: see [`NOISE_DOUBT_FRACTION`].
+pub const NO_WATCH_JITTER_FRACTION: f64 = 0.02;
+
+/// Timing scatter, as a fraction of the beat period, from which a stretch
+/// under [`NO_WATCH_JITTER_FRACTION`] may still be noise. The beat track
+/// steers to where it expects the next beat, so on a short stretch of
+/// noise its picks scatter less than across the whole window: 1.2% of the
+/// beat at the least over 200 draws of 30 s of stand noise, and 1.8% over
+/// 90 s (#675). But a reading is judged on 10 s windows, and one 10 s
+/// reading of an empty stand, at 390 s of 20 minutes, scattered 0.78% of a
+/// beat at 18,000 bph (ym42_DU_65h_excerpt_emptystand, opened, #1965),
+/// under the 0.8% this was first. A watch in the corpus stays under 0.6%, so from 0.6% the
+/// sound is asked: none of the corpus's 10 s readings of a watch changed
+/// verdict when it moved to 0.6% (#1965). One about to stop can scatter
+/// more: up to 1.4% in the last 25 minutes of a recorded take. From here a
+/// beat sound that shows no watch can veto
+/// ([`crate::measure::no_watch_reason`]).
+pub const NOISE_DOUBT_FRACTION: f64 = 0.006;
+
+/// False when a regular beat was looked for and not found: the median
+/// timing scatter in the rate windows (see [`crate::timing::WindowFit`])
+/// is at or above [`NO_WATCH_JITTER_FRACTION`] of a beat, or too few beats
+/// were found to fit at all. The readers apply it only with 10 s of sound
+/// or more; see [`crate::measure::watch_heard`].
+pub fn watch_heard(jitter_us: Option<f64>, bph: u32) -> bool {
+    timing_scatter_fraction(jitter_us, bph).is_some_and(|f| f < NO_WATCH_JITTER_FRACTION)
+}
+
+/// The beats `seconds` of a watch at `bph` hold.
+pub fn expected_beats(seconds: f64, bph: u32) -> f64 {
+    seconds * bph as f64 / 3600.0
+}
+
+/// The timing scatter as a share of the beat period (0 to 1): `jitter_us`
+/// over the beat period in microseconds, 3.6e9 / `bph`.
+pub fn timing_scatter_fraction(jitter_us: Option<f64>, bph: u32) -> Option<f64> {
+    jitter_us.map(|j| j / (3.6e9 / bph.max(1) as f64))
+}
+
+/// The words for no regular beat found, from the timing scatter in µs
+/// and as a share of the beat (see [`timing_scatter_fraction`]): "No
+/// regular beat found (timing scatter 8.6 ms, 5.2% of a beat)". Without a
+/// fraction (no supplied rate), only ms; without a scatter (too few
+/// beats to fit), just the fact.
+pub fn no_regular_beat_text(jitter_us: Option<f64>, fraction: Option<f64>) -> String {
+    match (jitter_us, fraction) {
+        (Some(j), Some(f)) => format!(
+            "No regular beat found (timing scatter {:.1} ms, {:.1}% of a beat)",
+            j / 1000.0,
+            f * 100.0
+        ),
+        (Some(j), None) => format!(
+            "No regular beat found (timing scatter {:.1} ms)",
+            j / 1000.0
+        ),
+        (None, _) => "No regular beat found (too few beats to time)".to_string(),
+    }
+}
+
+/// Median of the windows around the given beat times (sample by sample),
+/// or None when no beat's window fits in the sound ([`median_window`]).
+pub fn median_template(env: &[f32], fs: f64, times: &[f64]) -> Option<Vec<f32>> {
+    median_window(env, fs, times, PRE_S, POST_S)
+}
+
+/// Share of beats dropped from each end, point by point, when averaging
+/// beats into the template that amplitude, beat error from the unlock and
+/// the tick and tock profiles are measured on. Keeping the middle half
+/// ignores stray clicks as a median does but averages away more hiss.
+pub const TEMPLATE_TRIM: f64 = 0.25;
+
+/// Trimmed mean (see [`TEMPLATE_TRIM`]) of the windows from `PRE_S` before
+/// to `POST_S` after each time, or None when no window fits.
+pub fn trimmed_template(env: &[f32], fs: f64, times: &[f64]) -> Option<Vec<f32>> {
+    trimmed_template_from(env, fs, times, PRE_S)
+}
+
+/// [`trimmed_template`] from `pre_s` before each time.
+pub fn trimmed_template_from(env: &[f32], fs: f64, times: &[f64], pre_s: f64) -> Option<Vec<f32>> {
+    window_stat(env, fs, times, pre_s, POST_S, |c| {
+        crate::dsp::trimmed_mean_f32(c, TEMPLATE_TRIM)
+    })
+}
+
+/// Median of the windows from `pre_s` before to `post_s` after each time,
+/// taken per sample as the upper of the two middle values
+/// ([`upper_median_f32`]). Windows that run off either end of the envelope
+/// are left out, and with none left there is no template: None, not a
+/// template of NaN (#1210).
+///
+/// Not the mean of the two middle values (#839): on the seeded stand noise
+/// that would read all four known false watches as `no_watch`, but a brief
+/// watch after a stand noise would then read as a watch over the whole
+/// file, which `a_watch_heard_briefly_after_the_stand_noise_is_no_watch_live_or_saved`
+/// keeps as no watch. That trade-off is #844's to settle.
+pub fn median_window(
+    env: &[f32],
+    fs: f64,
+    times: &[f64],
+    pre_s: f64,
+    post_s: f64,
+) -> Option<Vec<f32>> {
+    window_stat(env, fs, times, pre_s, post_s, upper_median_f32)
+}
+
+fn window_stat(
+    env: &[f32],
+    fs: f64,
+    times: &[f64],
+    pre_s: f64,
+    post_s: f64,
+    stat: impl Fn(&mut [f32]) -> f32,
+) -> Option<Vec<f32>> {
+    let pre = (pre_s * fs).round() as usize;
+    let post = (post_s * fs).round() as usize;
+    let len = pre + post;
+    let starts: Vec<usize> = times
+        .iter()
+        .filter_map(|&t| {
+            let c = (t * fs).round() as isize - pre as isize;
+            (c >= 0 && c as usize + len <= env.len()).then_some(c as usize)
+        })
+        .collect();
+    if starts.is_empty() {
+        return None;
+    }
+    let mut col = vec![0.0f32; starts.len()];
+    let window = (0..len)
+        .map(|k| {
+            for (c, &s) in col.iter_mut().zip(&starts) {
+                *c = env[s + k];
+            }
+            stat(&mut col)
+        })
+        .collect();
+    Some(window)
+}
+
+/// Find every beat in an envelope.
+///
+/// Pass 1 follows the envelope's maxima to build a template. The loudest
+/// sound of a beat can change from beat to beat when two of its sounds are
+/// about as loud, and a template built on whichever is loudest is a blend
+/// of beats aligned on different sounds; on a watch whose two sides differ
+/// in shape, its correlation peaks then land on different sounds from beat
+/// to beat. So pass 1 keeps each side on one sound, which can be a different
+/// one on each side, and each side's beats are moved onto that side's drop
+/// before the template is built.
+pub fn detect(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>) {
+    let (beats, template, _) = detect_levelled(env, fs, bph);
+    (beats, template)
+}
+
+/// [`detect`], with the level to carry on to the sound after
+/// ([`detect_after`]).
+pub fn detect_levelled(env: &[f32], fs: f64, bph: u32) -> (Vec<Beat>, Vec<f32>, Option<f32>) {
+    let beat = 3600.0 / bph as f64;
+    // Pass 1: maxima, used only to build the template.
+    let (coarse, _) = track_peaks(env, fs, beat, Some(PASS1_GATE_S), None);
+    let origin = (PRE_S * fs).round() as usize;
+    let mut sample = Vec::new();
+    let heard_any = coarse.iter().any(|c| c.1 > 0.0);
+    for side in 0..2 {
+        // A maximum of nothing is no beat: in digital silence pass 1 still
+        // follows the beat, and a template built on its picks there would
+        // be a template of silence (#782). Sound that is all silence keeps
+        // every pick, as there is nothing else to build one from.
+        let times: Vec<f64> = coarse
+            .iter()
+            .skip(side)
+            .step_by(2)
+            .filter(|c| c.1 > 0.0 || !heard_any)
+            .map(|c| c.0)
+            .collect();
+        let step = (times.len() / 1000).max(1);
+        let times: Vec<f64> = times.into_iter().step_by(step).collect();
+        let drop = if times.len() >= 3 {
+            median_window(env, fs, &times, PRE_S, PRE_S)
+                .and_then(|wide| drop_offset(&wide, fs, origin))
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        sample.extend(times.iter().map(|t| t + drop));
+    }
+    // Sound too short for a beat's window has no template, so no beats:
+    // an empty template, never one of NaN (#1210).
+    let Some(template) = median_template(env, fs, &sample) else {
+        return (Vec::new(), Vec::new(), None);
+    };
+    let (beats, level) = detect_after(env, fs, bph, &template, None);
+    // Pass 2 lines the beats up more closely than the maxima did, so a
+    // template rebuilt from its beats is sharper for the final pass.
+    let good: Vec<f64> = beats
+        .iter()
+        .filter(|b| b.is_good())
+        .map(|b| b.time)
+        .collect();
+    let step = (good.len() / 2000).max(1);
+    let sample: Vec<f64> = good.into_iter().step_by(step).collect();
+    if sample.len() < 10 {
+        return (beats, template, level);
+    }
+    let Some(template) = median_template(env, fs, &sample) else {
+        return (beats, template, level);
+    };
+    let (beats, level) = detect_after(env, fs, bph, &template, None);
+    (beats, template, level)
+}
+
+/// How far from its last beat pass 1 looks for a side's next one, seconds.
+/// Sounds within a beat are further apart than this, and the beat-to-beat
+/// change in timing much less.
+const PASS1_GATE_S: f64 = 0.001;
+
+/// How high a later sound must stand against a beat's highest to be its
+/// drop, the last sound of the beat ([`drop_offset`], [`onto_the_drop`]).
+const DROP_SHARE: f32 = 0.6;
+/// How far the sound between two must fall, as a share of the lower of
+/// them, for them to be two sounds and not one lumpy one.
+const DROP_DIP: f32 = 0.5;
+
+/// Where the drop sits on a template, seconds from `origin`: the last
+/// sound that reaches [`DROP_SHARE`] of the template's highest peak above
+/// the floor and is separated from the sound before it by a dip below
+/// [`DROP_DIP`] of the lower of the two. A drop's lumpy tail does not count, since it neither stands
+/// that high nor dips that far.
+fn drop_offset(template: &[f32], fs: f64, origin: usize) -> Option<f64> {
+    let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
+    let quiet = ((0.003 * fs) as usize).min(t.len());
+    let mut floor_v = t[..quiet].to_vec();
+    let floor = median_f32(&mut floor_v);
+    let (top, top_v) = argmax(&t, quiet, t.len())?;
+    let h_top = top_v - floor;
+    if h_top <= 0.0 {
+        return None;
+    }
+    let mut drop = top;
+    for j in top + 1..t.len().saturating_sub(1) {
+        let h = t[j] - floor;
+        if h < DROP_SHARE * h_top || t[j] < t[j - 1] || t[j] <= t[j + 1] {
+            continue;
+        }
+        let dip = t[drop..j].iter().copied().fold(f32::INFINITY, f32::min) - floor;
+        if dip <= DROP_DIP * h.min(t[drop] - floor) {
+            drop = j;
+        }
+    }
+    Some((parabolic(&t, drop) - origin as f64) / fs)
+}
+
+/// Find every beat by correlating with a given template. Long recordings
+/// are processed in chunks with one template throughout, so the beat's
+/// reference point cannot shift from one chunk to the next.
+pub fn detect_with_template(env: &[f32], fs: f64, bph: u32, template: &[f32]) -> Vec<Beat> {
+    detect_after(env, fs, bph, template, None).0
+}
+
+/// [`detect_with_template`] on sound that starts `off` seconds into the
+/// take ([`detect_after_at`]).
+pub fn detect_with_template_at(
+    env: &[f32],
+    fs: f64,
+    bph: u32,
+    template: &[f32],
+    off: f64,
+) -> Vec<Beat> {
+    detect_after_at(env, fs, bph, template, None, off).0
+}
+
+/// [`detect_with_template`] on sound that follows sound already tracked,
+/// whose typical beat matched the template at `level`: returns the beats
+/// and the level to carry on to the sound after. A stretch heard as
+/// silence then gives no beats, rather than the noise's peaks (#609).
+pub fn detect_after(
+    env: &[f32],
+    fs: f64,
+    bph: u32,
+    template: &[f32],
+    level: Option<f32>,
+) -> (Vec<Beat>, Option<f32>) {
+    detect_after_at(env, fs, bph, template, level, 0.0)
+}
+
+/// [`detect_after`] on sound that starts `off` seconds into the take, so
+/// that each beat is put on its drop on the take's own grid of
+/// [`DROP_BLOCK_S`] ([`onto_the_drop`]), the same however the sound is
+/// cut into reads.
+pub fn detect_after_at(
+    env: &[f32],
+    fs: f64,
+    bph: u32,
+    template: &[f32],
+    level: Option<f32>,
+    off: f64,
+) -> (Vec<Beat>, Option<f32>) {
+    let beat = 3600.0 / bph as f64;
+    // Pass 2: correlate with the zero-mean template and track its peaks.
+    let mean = template.iter().sum::<f32>() / template.len().max(1) as f32;
+    let zm: Vec<f32> = template.iter().map(|v| v - mean).collect();
+    let corr = correlate(env, &zm);
+    let pre = PRE_S * fs;
+    let (peaks, level) = track_peaks(&corr, fs, beat, None, level);
+    let mut q: Vec<f32> = peaks.iter().map(|p| p.1).collect();
+    let typical = median_f32(&mut q).max(f32::MIN_POSITIVE);
+
+    let mut beats = Vec::with_capacity(peaks.len());
+    let mut index = 0i64;
+    for (k, &(t, v)) in peaks.iter().enumerate() {
+        if k > 0 {
+            index += beats_on(t - peaks[k - 1].0, beat);
+        }
+        beats.push(Beat {
+            index,
+            time: t + pre / fs,
+            quality: v / typical,
+        });
+    }
+    keep_sides_on_one_sound(&corr, fs, typical, &mut beats);
+    onto_the_drop(env, fs, template, &mut beats, off);
+    (beats, level)
+}
+
+/// The template's drop on its own, from this long before it ...
+const DROP_PRE_S: f64 = 0.002;
+/// ... to this long after: the drop and its ring, not the sounds before.
+const DROP_POST_S: f64 = 0.003;
+
+/// Each beat moved onto its drop, where the whole template matched it on
+/// an earlier sound of the beat (#1819). The template is built on the drop
+/// ([`drop_offset`]), but as a watch runs down a sound before the drop can
+/// grow to match as well, and the beat is then timed on it, a few ms
+/// early. The drop alone ([`DROP_PRE_S`], [`DROP_POST_S`]) is matched over
+/// the sound. One beat's match is too noisy to tell its drop from an
+/// impulse as loud, so the beats of a side are taken together, in blocks
+/// of [`DROP_BLOCK_S`] on the take's own clock (the sound starts `off`
+/// seconds into the take): a saved read and live, which cut the sound
+/// into reads differently, take the same beats together. The matches of a
+/// block's beats that are on the side's line there ([`side_line`]) are
+/// added up, [`PRE_S`] either side of it, the template's reach before its
+/// drop. That sum shows the side's sounds, and [`side_sounds`] picks the
+/// drop among them with [`DROP_SHARE`] and [`DROP_DIP`], which
+/// [`drop_offset`] also uses on the template, though not in the same way
+/// (see [`side_sounds`]), and the
+/// side's other sounds: those [`SIDE_SOUND_GAP_S`] or more from the drop,
+/// with the sum dipping between them, and not lobes of one lumpy drop. A
+/// beat whose own match peaks within [`DROP_SNAP_S`] of one of those other
+/// sounds, and nearer it than the drop, takes its match's highest peak within
+/// [`DROP_SNAP_S`] of where the sum puts the drop from that sound, and
+/// moves by the distance between the two peaks. A
+/// beat on its drop, or on no sound of the side (as after a jump), is
+/// left as found, and so is a block with fewer than [`DROP_BLOCK_MIN`] of
+/// the side's beats, or whose beats on the line stray from it by more than
+/// [`DROP_LINE_SCATTER_S`], or whose drop stands under [`DROP_SUM_SNR`]
+/// times the sum's median, as noise taken for beats does.
+fn onto_the_drop(env: &[f32], fs: f64, template: &[f32], beats: &mut [Beat], off: f64) {
+    let origin = (PRE_S * fs).round() as usize;
+    let a = origin.saturating_sub((DROP_PRE_S * fs).round() as usize);
+    let b = (origin + (DROP_POST_S * fs).round() as usize).min(template.len());
+    if b <= a + 2 || beats.is_empty() {
+        return;
+    }
+    let mean = template[a..b].iter().sum::<f32>() / (b - a) as f32;
+    let zm: Vec<f32> = template[a..b].iter().map(|v| v - mean).collect();
+    let corr = correlate(env, &zm);
+    let lead = (origin - a) as f64;
+    let reach = (PRE_S * fs).round() as usize;
+    let span = 2 * reach + 1;
+    let half = (SIDE_SOUND_GAP_S * fs / 2.0) as usize;
+    // Where the match of a sound at time `t` peaks, if a span lies whole
+    // in the match either side of it.
+    let at = |t: f64| {
+        let c = (t * fs - lead).round();
+        (c >= (reach + 1) as f64 && (c as usize) + reach + 1 < corr.len()).then_some(c as usize)
+    };
+    let snap = (DROP_SNAP_S * fs).round() as usize;
+    // The highest peak of the match within `w` of sample `c`.
+    let peak_within = |c: usize, w: usize| {
+        (c.saturating_sub(w).max(1)..(c + w + 1).min(corr.len() - 1))
+            .filter(|&j| corr[j] >= corr[j - 1] && corr[j] > corr[j + 1])
+            .max_by(|&x, &y| corr[x].total_cmp(&corr[y]))
+    };
+    let peak = |c: usize| peak_within(c, half);
+    let block = |t: f64| ((t + off) / DROP_BLOCK_S).floor() as i64;
+    let mut groups: Vec<((i64, i64), Vec<usize>)> = Vec::new();
+    for (j, bt) in beats.iter().enumerate() {
+        let key = (block(bt.time), bt.index.rem_euclid(2));
+        match groups.iter_mut().rev().take(2).find(|g| g.0 == key) {
+            Some(g) => g.1.push(j),
+            None => groups.push((key, vec![j])),
+        }
+    }
+    for (_, on) in groups {
+        let run: Vec<(i64, f64)> = on
+            .iter()
+            .map(|&j| (beats[j].index, beats[j].time))
+            .collect();
+        let Some(line) = side_line(&run) else {
+            continue;
+        };
+        // Only beats on the line are added up, so that beats on another
+        // sound, or past a jump, add no sound of their own.
+        let mut sum = vec![0f32; span];
+        for &(n, t) in &run {
+            let (Some(c), Some(l)) = (at(t), at(line(n))) else {
+                continue;
+            };
+            if peak(c).is_some_and(|p| p.abs_diff(l) <= half) {
+                let s = l - reach;
+                sum.iter_mut()
+                    .zip(&corr[s..s + span])
+                    .for_each(|(v, c)| *v += c);
+            }
+        }
+        let apart = (SIDE_SOUND_GAP_S * fs).round() as usize;
+        let Some((drop, others)) = side_sounds(&sum, half, apart) else {
+            continue;
+        };
+        // A watch's beats on its line keep to it within a tenth of a ms or
+        // so; noise taken for beats doesn't, and is left as found rather
+        // than lined up on a sound of its own.
+        let mut off_line: Vec<f64> = (run.iter())
+            .map(|&(n, t)| (t - line(n)).abs())
+            .filter(|&d| d <= SIDE_SOUND_GAP_S / 2.0)
+            .collect();
+        if run.len() < DROP_BLOCK_MIN
+            || off_line.len() < DROP_LINED_MIN
+            || crate::dsp::median(&mut off_line) > DROP_LINE_SCATTER_S
+        {
+            continue;
+        }
+        // A watch's drop stands far above the rest of the sum; noise
+        // taken for beats sums to peaks not much above its own run.
+        let mut level: Vec<f64> = sum.iter().map(|v| v.abs() as f64).collect();
+        if (sum[drop] as f64) < DROP_SUM_SNR * crate::dsp::median(&mut level) {
+            continue;
+        }
+        for &j in &on {
+            let bt = &beats[j];
+            let (Some(c), Some(l)) = (at(bt.time), at(line(bt.index))) else {
+                continue;
+            };
+            let Some(own) = peak(c) else {
+                continue;
+            };
+            // The other sound of the side the beat is on, if any: the
+            // sound of the sum nearest the beat, when that is not the
+            // drop. The drop then lies as far from the beat as on the sum.
+            let near = |s: &usize| own.abs_diff(l + s - reach);
+            let Some(on) = others
+                .iter()
+                .filter(|s| near(s) <= snap && near(s) < near(&drop))
+                .min_by_key(|s| near(s))
+            else {
+                continue;
+            };
+            let Some(to) = (own + drop)
+                .checked_sub(*on)
+                .and_then(|e| peak_within(e, snap))
+            else {
+                continue;
+            };
+            if to != own {
+                beats[j].time += (parabolic(&corr, to) - parabolic(&corr, own)) / fs;
+            }
+        }
+    }
+}
+
+/// The blocks of the take's clock, seconds, in which a side's beats are
+/// taken together to find its drop ([`onto_the_drop`]): the grid of the
+/// amplitude windows ([`crate::distribution::STRETCH_S`]), which live and
+/// a saved read already share, and short enough for a block to lie whole
+/// in one of live's reads.
+pub const DROP_BLOCK_S: f64 = crate::distribution::STRETCH_S;
+
+/// How near where its side's sum puts it a beat's own drop must peak,
+/// seconds ([`onto_the_drop`]): on the DayDate 36 run-down a drop's match
+/// had a lesser peak about 1.9 ms from it, which a reach of half
+/// [`SIDE_SOUND_GAP_S`] took for the drop in one read and not another,
+/// while a beat's sounds keep their spacing to within a few hundredths of
+/// a ms (#1819).
+const DROP_SNAP_S: f64 = 0.0005;
+
+/// How far a block's beats on its side's line may lie from it, as their
+/// median, for the block to be a watch's, whose beats are moved onto their
+/// drop ([`onto_the_drop`]), seconds. A watch's beats keep to their line
+/// within a few hundredths of a ms; beats tracked in noise scatter over
+/// the whole reach of the line, half of [`SIDE_SOUND_GAP_S`] either side
+/// (#1819).
+const DROP_LINE_SCATTER_S: f64 = 0.0002;
+
+/// Fewer of a block's beats than this on its side's line, and the block
+/// is left as found ([`onto_the_drop`]): how far they stray from it is
+/// their median, which needs three.
+const DROP_LINED_MIN: usize = 3;
+
+/// How far a block's drop must stand above the median of its side's
+/// added-up match, as a ratio, for the block to be a watch's
+/// ([`onto_the_drop`]). Measured on 2 s blocks: 30 s of stand noise as
+/// `edge_all_silence` makes it reached 7 at the most, the near-tie
+/// synthetic at 20% noise 12 at the least, and the DayDate 36 run-down
+/// (hour 084) 16.7 at the least (#1819).
+const DROP_SUM_SNR: f64 = 10.0;
+
+/// Fewer of a side's beats than this in a block, and they are left as
+/// found ([`onto_the_drop`]): a line through two or three beats fits
+/// them whatever they are. A block holds 4 or 5 of a side's beats at
+/// 14,400 bph, so slower watches are left as found.
+const DROP_BLOCK_MIN: usize = 4;
+
+/// A side's line through `run`, its beats' (index, time): the time a beat
+/// of each index would have, the median step between the beats on and
+/// the median time off it, so that the sound most of the beats are on
+/// sets it, and a beat on another sound does not move it.
+fn side_line(run: &[(i64, f64)]) -> Option<impl Fn(i64) -> f64> {
+    let mut steps: Vec<f64> = (run.windows(2))
+        .filter(|w| w[1].0 > w[0].0)
+        .map(|w| (w[1].1 - w[0].1) / (w[1].0 - w[0].0) as f64)
+        .collect();
+    if steps.is_empty() {
+        return None;
+    }
+    steps.sort_by(f64::total_cmp);
+    let step = steps[steps.len() / 2];
+    let n0 = run[0].0;
+    let mut off: Vec<f64> = (run.iter())
+        .map(|&(n, t)| t - step * (n - n0) as f64)
+        .collect();
+    off.sort_by(f64::total_cmp);
+    let t0 = off[off.len() / 2];
+    Some(move |n: i64| t0 + step * (n - n0) as f64)
+}
+
+/// The sounds on `sum`, a side's added-up matches of its drop: its peaks
+/// [`DROP_SHARE`] as high as the highest, measured from zero with no
+/// floor, leaving out any within `gap` of a higher one. Of these the drop
+/// is the last after the highest with the sum between the two falling to
+/// [`DROP_DIP`] of that peak's own height, or the highest itself. Unlike
+/// [`drop_offset`], each dip is measured from the highest peak, not from
+/// the drop picked so far; it is returned with the sounds that
+/// are another sound of the beat: at least `apart` from the drop and
+/// [`DROP_DIP`] apart from it.
+fn side_sounds(sum: &[f32], gap: usize, apart: usize) -> Option<(usize, Vec<usize>)> {
+    let peaks: Vec<(usize, f32)> = (1..sum.len() - 1)
+        .filter(|&j| sum[j] > 0.0 && sum[j] >= sum[j - 1] && sum[j] > sum[j + 1])
+        .map(|j| (j, sum[j]))
+        .collect();
+    let top = *peaks.iter().max_by(|x, y| x.1.total_cmp(&y.1))?;
+    let sounds: Vec<(usize, f32)> = (peaks.iter())
+        .filter(|p| p.1 >= DROP_SHARE * top.1)
+        .filter(|p| !peaks.iter().any(|q| q.1 > p.1 && q.0.abs_diff(p.0) <= gap))
+        .copied()
+        .collect();
+    let dip = |p: &(usize, f32), q: &(usize, f32)| {
+        let (a, b) = (p.0.min(q.0), p.0.max(q.0));
+        sum[a..=b].iter().copied().fold(f32::INFINITY, f32::min)
+    };
+    let drop = *(sounds.iter().rev())
+        .find(|p| p.0 > top.0 && dip(p, &top) <= DROP_DIP * p.1)
+        .unwrap_or(&top);
+    // Another sound of the side is one the drop is not part of: as far
+    // from it as two sounds of a beat lie apart, and with the sum falling
+    // between them as [`DROP_DIP`] asks of two sounds, not a lumpy one.
+    let others = (sounds.iter())
+        .filter(|p| p.0 != drop.0 && p.0.abs_diff(drop.0) >= apart)
+        .filter(|p| dip(p, &drop) <= DROP_DIP * p.1.min(drop.1))
+        .map(|p| p.0)
+        .collect();
+    Some((drop.0, others))
+}
+
+/// Same-side beats either way of a beat that set where its side's beats
+/// lie, for [`keep_sides_on_one_sound`]: about 10 s at 28,800 bph.
+const SIDE_LINE_HALF: usize = 20;
+/// Fewer same-side beats than this in a run, and the run is left as found.
+const SIDE_LINE_MIN: usize = 9;
+/// A gap in the beats found, in beats, that ends a run: the beats may have
+/// jumped across it.
+const SIDE_RUN_GAP: i64 = 4;
+/// How far off its side's line a beat must be to have landed on another
+/// sound, seconds. A watch's beats sit within a millisecond of their line
+/// (see [`NO_WATCH_JITTER_FRACTION`]); a beat's sounds are a few ms apart.
+const SIDE_SOUND_GAP_S: f64 = 0.003;
+
+/// Put each beat back on the sound the rest of its side is on.
+///
+/// One side of a beat can have two sounds a few ms apart that both match
+/// the template well; the track then lands on one on some beats and on the
+/// other on the rest, a step of several ms in that side's timing. In a
+/// fake-mic take of the Daytona at about 160° the Tock had a sound 6 ms
+/// before its drop that outmatched the drop on 16% of beats, which put a
+/// 1.9 ms line in the beat timing and swung 10 s rates by ±13 s/d. Within
+/// each run of beats without a gap, each side's beats should lie along a
+/// line to within tenths of a ms; a beat [`SIDE_SOUND_GAP_S`] or more off
+/// the running median of its side's is moved to the best match within
+/// [`BEAT_WINDOW_S`] of that line, when there is one at least
+/// [`BEAT_WINDOW_FLOOR`] as good as the match it had. Most of a side's beats
+/// decide which sound it is timed on, whichever came first.
+fn keep_sides_on_one_sound(corr: &[f32], fs: f64, typical: f32, beats: &mut [Beat]) {
+    let pre = PRE_S * fs;
+    let g = BEAT_WINDOW_S * fs;
+    let value = |t: f64| -> Option<f32> {
+        let i = (t * fs - pre).round();
+        (i >= 0.0 && (i as usize) < corr.len()).then(|| corr[i as usize])
+    };
+    let mut start = 0;
+    while start < beats.len() {
+        let mut end = start + 1;
+        while end < beats.len() && beats[end].index - beats[end - 1].index <= SIDE_RUN_GAP {
+            end += 1;
+        }
+        for side in 0..2 {
+            let at: Vec<usize> = (start..end)
+                .filter(|&k| beats[k].index.rem_euclid(2) == side)
+                .collect();
+            if at.len() < SIDE_LINE_MIN {
+                continue;
+            }
+            let mut steps: Vec<f64> = at
+                .windows(2)
+                .map(|w| {
+                    let (a, b) = (&beats[w[0]], &beats[w[1]]);
+                    (b.time - a.time) / (b.index - a.index) as f64
+                })
+                .collect();
+            let period = crate::dsp::median(&mut steps);
+            let y: Vec<f64> = at
+                .iter()
+                .map(|&k| beats[k].time - beats[k].index as f64 * period)
+                .collect();
+            for (n, &k) in at.iter().enumerate() {
+                let (lo, hi) = (
+                    n.saturating_sub(SIDE_LINE_HALF),
+                    (n + SIDE_LINE_HALF + 1).min(at.len()),
+                );
+                let mut near = y[lo..hi].to_vec();
+                let line = crate::dsp::median(&mut near);
+                let off = y[n] - line;
+                if off.abs() < SIDE_SOUND_GAP_S {
+                    continue;
+                }
+                let Some(v) = value(beats[k].time) else {
+                    continue;
+                };
+                let due = (beats[k].time - off) * fs - pre;
+                let (a, b) = ((due - g).max(1.0) as usize, (due + g) as usize);
+                if b + 1 >= corr.len() {
+                    continue;
+                }
+                let found = argmax(corr, a, b + 1)
+                    .filter(|&(j, w)| j > a && j < b && w >= BEAT_WINDOW_FLOOR * v);
+                if let Some((j, w)) = found {
+                    beats[k].time = (parabolic(corr, j) + pre) / fs;
+                    beats[k].quality = w / typical;
+                }
+            }
+        }
+        start = end;
+    }
+}
+
+/// The sound of each side of the beat over a stretch: the median envelope
+/// around the even-numbered beats and around the odd-numbered ones, each
+/// scaled to a peak of 1. Tick and Tock seldom sound the same, so after a
+/// jump in the beats (listening paused, the computer suspended) the sides
+/// are told apart by their sound rather than by counting.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SideSounds {
+    pub even: Vec<f32>,
+    pub odd: Vec<f32>,
+}
+
+/// Beats on each side a stretch needs before its sides are compared: a
+/// side check reads the first this many good beats of each side after a
+/// jump, and with fewer before it the count stands.
+pub const MIN_SIDE_BEATS: usize = 16;
+/// Good beats of each side a side check reads before a jump: at most the
+/// last this many.
+pub const SIDE_BEATS: usize = 2 * MIN_SIDE_BEATS;
+/// A beat whose sound a side check reads is better than this
+/// ([`Beat::quality`]).
+pub const SIDE_QUALITY: f32 = 0.5;
+/// A beat whose sound a side check reads comes this near, ms, the typical
+/// interval from the beat two before it (of its own side, so the beat
+/// error doesn't enter, whichever side is which). Where the watch stumbles
+/// the tracker can follow other sounds for a minute or two, beats that
+/// pass for good ones but come at the wrong times; the sides read there
+/// would be neither Tick nor Tock.
+pub const SIDE_STEADY_MS: f64 = 1.0;
+/// Intervals the typical one is the median of.
+const SIDE_STEPS: usize = 32;
+
+/// How a jump's stretch compares with the side sounds before it: the
+/// correlation of each side with the same side before, less its correlation
+/// with the other side, summed over both sides. Positive when the sides kept
+/// their names, negative when they swapped. Over 20 s of every stored take
+/// it is 0.03 or more (0.03 to 0.42); the stretch after the suspend in the
+/// crown-right Yacht-Master take reads -0.15.
+pub fn side_margin(before: &SideSounds, after: &SideSounds) -> f64 {
+    let r = |a: &[f32], b: &[f32]| pearson(a, b);
+    (r(&after.even, &before.even) + r(&after.odd, &before.odd))
+        - (r(&after.even, &before.odd) + r(&after.odd, &before.even))
+}
+
+/// Below this margin in size the sides of a stretch are not told apart.
+pub const SIDE_MARGIN_MIN: f64 = 0.02;
+
+impl SideSounds {
+    /// The median of each side's beat windows (each cut as
+    /// [`crate::profile::snippet`] cuts it), scaled to a peak of 1, or
+    /// `None` when either side has fewer than [`MIN_SIDE_BEATS`].
+    pub fn of<'a>(
+        even: impl IntoIterator<Item = &'a [f32]>,
+        odd: impl IntoIterator<Item = &'a [f32]>,
+    ) -> Option<SideSounds> {
+        fn side<'a>(v: impl IntoIterator<Item = &'a [f32]>) -> Option<Vec<f32>> {
+            let v: Vec<&[f32]> = v.into_iter().collect();
+            let len = v.iter().map(|s| s.len()).min()?;
+            if v.len() < MIN_SIDE_BEATS || len == 0 {
+                return None;
+            }
+            let mut w: Vec<f32> = (0..len)
+                .map(|i| median_f32(&mut v.iter().map(|s| s[i]).collect::<Vec<_>>()))
+                .collect();
+            let top = w.iter().copied().fold(0.0f32, f32::max);
+            if top <= 0.0 {
+                return None;
+            }
+            w.iter_mut().for_each(|x| *x /= top);
+            Some(w)
+        }
+        Some(SideSounds {
+            even: side(even)?,
+            odd: side(odd)?,
+        })
+    }
+}
+
+/// What a side check found at a jump.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SideCall {
+    /// The sides after the jump sound as they did before: the count kept
+    /// them.
+    Kept,
+    /// They sound the other way round: every beat from the jump on is
+    /// numbered one further, which swaps them back.
+    Swapped,
+    /// Too alike to tell, by their sound and by the beat error's sign:
+    /// the count stands.
+    Unsure,
+}
+
+/// A good beat's window, by the beat's time.
+type SideSnip = (f64, Vec<f32>);
+
+/// Below this size, ms, a side check does not read the sides from the
+/// sign of the beat error: about three times the split's scatter (about
+/// 0.035 ms) over the [`MIN_SIDE_BEATS`] beats of each side a side check
+/// reads after a jump, when each beat scatters by 0.1 ms.
+pub const SIDE_SPLIT_MIN_MS: f64 = 0.1;
+
+/// Half the difference between the interval from an even beat to the odd
+/// beat after it and that from an odd beat to the even beat after it, ms,
+/// from each side's beat times: the beat error's sign and size near the
+/// drop, which turns over when the sides swap. Only next beats count (a
+/// gap under one and a half times the typical one). `None` with fewer than
+/// half [`MIN_SIDE_BEATS`] intervals each way.
+pub fn timing_split(even: &[f64], odd: &[f64]) -> Option<f64> {
+    let mut all: Vec<(f64, usize)> = even
+        .iter()
+        .map(|&t| (t, 0))
+        .chain(odd.iter().map(|&t| (t, 1)))
+        .collect();
+    all.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut gaps: Vec<f64> = all
+        .windows(2)
+        .filter(|p| p[0].1 != p[1].1)
+        .map(|p| p[1].0 - p[0].0)
+        .collect();
+    if gaps.is_empty() {
+        return None;
+    }
+    let typical = crate::dsp::median(&mut gaps);
+    let mut after = [Vec::new(), Vec::new()];
+    for p in all.windows(2) {
+        let d = p[1].0 - p[0].0;
+        if p[0].1 != p[1].1 && d < 1.5 * typical {
+            after[p[0].1].push(d);
+        }
+    }
+    if after.iter().any(|v| v.len() < MIN_SIDE_BEATS / 2) {
+        return None;
+    }
+    let [mut a, mut b] = after;
+    Some(500.0 * (crate::dsp::median(&mut a) - crate::dsp::median(&mut b)))
+}
+
+/// The sides after a jump told apart by the sign of the beat error
+/// ([`timing_split`]) before and after it: kept when it is the same,
+/// swapped when it turned over, unsure when it is under
+/// [`SIDE_SPLIT_MIN_MS`] either side, or changed size by more than half.
+/// Each is the beat times of the even side, then the odd.
+pub fn side_by_timing(before: &[Vec<f64>; 2], after: &[Vec<f64>; 2]) -> SideCall {
+    let (Some(b), Some(a)) = (
+        timing_split(&before[0], &before[1]),
+        timing_split(&after[0], &after[1]),
+    ) else {
+        return SideCall::Unsure;
+    };
+    if b.abs() < SIDE_SPLIT_MIN_MS
+        || a.abs() < SIDE_SPLIT_MIN_MS
+        || (a.abs() - b.abs()).abs() > 0.5 * a.abs().max(b.abs())
+    {
+        return SideCall::Unsure;
+    }
+    if a.signum() == b.signum() {
+        SideCall::Kept
+    } else {
+        SideCall::Swapped
+    }
+}
+
+/// The one check of Tick and Tock across a jump, for a whole file and for
+/// live listening alike.
+///
+/// Counting beats names the sides only while the beats run on without a
+/// jump. Where listening stopped and started again (a pause, the computer
+/// suspended, a join between two takes, the watch handled for a new
+/// position) the count across the hole is a guess, and half the time it
+/// swaps the sides. Tick and Tock seldom sound the same, so the first
+/// [`MIN_SIDE_BEATS`] good beats of each side after the jump are compared
+/// with the last [`SIDE_BEATS`] before it ([`side_margin`]). Where they
+/// sound too alike to tell, the sign of the beat error before and after
+/// tells them ([`side_by_timing`]), when it is large enough to have one.
+/// Those are the same beats however the sound arrives, a file in chunks or
+/// listening in passes, so the answer is the same too.
+///
+/// Feed it each good beat in time order ([`SideCheck::beat`]) and each
+/// jump ([`SideCheck::jump`], which may come after beats past it were
+/// fed), and ask [`SideCheck::settle`] after feeding beats. On
+/// [`SideCall::Swapped`] the caller numbers its beats from the jump on one
+/// further.
+#[derive(Debug, Clone, Default)]
+pub struct SideCheck {
+    /// The last good beats of each side (even, odd) whose sides are known,
+    /// newest last.
+    kept: [std::collections::VecDeque<SideSnip>; 2],
+    /// A jump whose sides are still to be checked: its time, and each
+    /// side's good beats since.
+    pending: Option<(f64, [Vec<SideSnip>; 2])>,
+    /// Stretches, start and end in seconds, whose sides were never told
+    /// apart: between two jumps too close for a check.
+    unsided: Vec<(f64, f64)>,
+    /// The jumps whose sides were told apart by their sound, seconds.
+    sided: Vec<f64>,
+    /// The last two good beats' times and numbers, newest last.
+    last: [Option<(f64, i64)>; 2],
+    /// The latest intervals, seconds, to good beats from the good beat
+    /// two before.
+    steps: std::collections::VecDeque<f64>,
+    /// Whether the take's sides are named by the beat error's sign
+    /// ([`SideCheck::beat`]).
+    named: bool,
+    /// The sides were just named the other way round: [`SideCheck::settle`]
+    /// owes the caller a swap of every beat.
+    swap_owed: bool,
+}
+
+impl SideCheck {
+    /// A beat at `t` seconds, numbered `index`, of quality `quality`, with
+    /// its window as [`crate::profile::snippet`] cuts it. Beats no better
+    /// than [`SIDE_QUALITY`] are passed over, and so are beats not
+    /// [`SIDE_STEADY_MS`] near the typical interval from the beat two
+    /// before.
+    pub fn beat(&mut self, t: f64, index: i64, quality: f32, window: &[f32]) {
+        if quality <= SIDE_QUALITY {
+            return;
+        }
+        let side = index.rem_euclid(2) as usize;
+        let two_before = self.last[0];
+        self.last = [self.last[1], Some((t, index))];
+        let Some(step) = two_before.and_then(|(lt, li)| (index == li + 2).then_some(t - lt)) else {
+            return;
+        };
+        let steps = &mut self.steps;
+        steps.push_back(step);
+        if steps.len() > SIDE_STEPS {
+            steps.pop_front();
+        }
+        if steps.len() < MIN_SIDE_BEATS {
+            return;
+        }
+        let typical = crate::dsp::median(&mut steps.iter().copied().collect::<Vec<f64>>());
+        if (step - typical).abs() * 1000.0 > SIDE_STEADY_MS {
+            return;
+        }
+        let snip = (t, window.to_vec());
+        match &mut self.pending {
+            Some((_, got)) => got[side].push(snip),
+            None => {
+                let kept = &mut self.kept[side];
+                kept.push_back(snip);
+                if kept.len() > SIDE_BEATS {
+                    kept.pop_front();
+                }
+                self.name_sides();
+            }
+        }
+    }
+
+    /// Each take starts positive: once [`SIDE_BEATS`] steady beats of each
+    /// side are kept and their beat error ([`timing_split`]) has a sign
+    /// ([`SIDE_SPLIT_MIN_MS`] or more), the side that comes late is named
+    /// Tick, once. Counting names the take's first beat Tick, so this is
+    /// the first stretch with a clear sign, mostly its first 10 s. Named
+    /// the other way round, every beat so far is numbered one further.
+    /// Near no beat error the count stands.
+    fn name_sides(&mut self) {
+        if self.named || self.kept.iter().any(|k| k.len() < SIDE_BEATS) {
+            return;
+        }
+        let times = self
+            .kept
+            .each_ref()
+            .map(|k| k.iter().map(|x| x.0).collect::<Vec<f64>>());
+        let Some(split) = timing_split(&times[0], &times[1]) else {
+            return;
+        };
+        if split.abs() < SIDE_SPLIT_MIN_MS {
+            return;
+        }
+        self.named = true;
+        // A positive split is the even-to-odd half-beat longer: Tock comes
+        // late, a negative beat error.
+        if split > 0.0 {
+            self.kept.swap(0, 1);
+            for (_, index) in self.last.iter_mut().flatten() {
+                *index += 1;
+            }
+            self.swap_owed = true;
+        }
+    }
+
+    /// A jump at `t` seconds: the sides from there are checked once enough
+    /// good beats of each are heard. A check still owed from an earlier
+    /// jump moves here, and the stretch between the two is never told
+    /// apart: that stretch is returned. Without [`MIN_SIDE_BEATS`] good
+    /// beats a side before, the count stands.
+    pub fn jump(&mut self, t: f64) -> Option<(f64, f64)> {
+        match self.pending.take() {
+            Some((t0, got)) if t0 < t => {
+                self.unsided.push((t0, t));
+                let got = got.map(|g| g.into_iter().filter(|s| s.0 >= t).collect());
+                self.pending = Some((t, got));
+                Some((t0, t))
+            }
+            Some((t0, got)) => {
+                // Found after a later jump: the sound before is cut back to
+                // this one, and the stretch between can't be told apart.
+                self.unsided.push((t, t0));
+                self.kept.iter_mut().for_each(|s| s.retain(|x| x.0 < t));
+                let known = self.kept.iter().all(|s| s.len() >= MIN_SIDE_BEATS);
+                self.pending = known.then_some((t0, got));
+                Some((t, t0))
+            }
+            None => {
+                let known = self
+                    .kept
+                    .iter()
+                    .all(|s| s.iter().filter(|x| x.0 < t).count() >= MIN_SIDE_BEATS);
+                if known {
+                    let got = self.kept.each_mut().map(|s| {
+                        let k = s.partition_point(|x| x.0 < t);
+                        s.split_off(k).into()
+                    });
+                    self.pending = Some((t, got));
+                }
+                None
+            }
+        }
+    }
+
+    /// The jump whose sides are still to be checked, seconds, if any: a
+    /// swap may still come at it ([`SideCheck::settle`]).
+    pub fn pending_since(&self) -> Option<f64> {
+        self.pending.as_ref().map(|p| p.0)
+    }
+
+    /// Once the beats after a pending jump have [`MIN_SIDE_BEATS`] good
+    /// beats of each side, compare the first of them with the sides' sound
+    /// before: the jump's time and what was found. On [`SideCall::Swapped`]
+    /// the beats fed since are taken as numbered one further, as the caller
+    /// now numbers them. When the take's sides were just named the other
+    /// way round ([`SideCheck::beat`]), the time is minus infinity: every
+    /// beat is numbered one further.
+    pub fn settle(&mut self) -> Option<(f64, SideCall)> {
+        if std::mem::take(&mut self.swap_owed) {
+            return Some((f64::NEG_INFINITY, SideCall::Swapped));
+        }
+        if self
+            .pending
+            .as_ref()
+            .is_none_or(|(_, got)| got.iter().any(|g| g.len() < MIN_SIDE_BEATS))
+        {
+            return None;
+        }
+        let (t, mut got) = self.pending.take()?;
+        let [even, odd] = &self.kept;
+        let was = SideSounds::of(
+            even.iter().map(|s| s.1.as_slice()),
+            odd.iter().map(|s| s.1.as_slice()),
+        );
+        fn first(g: &[SideSnip]) -> Vec<&[f32]> {
+            g.iter()
+                .take(MIN_SIDE_BEATS)
+                .map(|s| s.1.as_slice())
+                .collect()
+        }
+        let now = SideSounds::of(first(&got[0]), first(&got[1]));
+        let by_sound = match (&was, &now) {
+            (Some(b), Some(a)) => match side_margin(b, a) {
+                m if m <= -SIDE_MARGIN_MIN => SideCall::Swapped,
+                m if m >= SIDE_MARGIN_MIN => SideCall::Kept,
+                _ => SideCall::Unsure,
+            },
+            _ => SideCall::Unsure,
+        };
+        // Sides that sound alike are told apart by their timing, when the
+        // beat error is large enough to have a sign on both sides of the
+        // jump.
+        let call = match by_sound {
+            SideCall::Unsure => {
+                let times = |s: &[SideSnip]| s.iter().map(|x| x.0).collect::<Vec<f64>>();
+                let after: [Vec<f64>; 2] = [
+                    times(&got[0][..MIN_SIDE_BEATS]),
+                    times(&got[1][..MIN_SIDE_BEATS]),
+                ];
+                let before = self
+                    .kept
+                    .each_ref()
+                    .map(|k| k.iter().map(|x| x.0).collect());
+                side_by_timing(&before, &after)
+            }
+            call => call,
+        };
+        if call != SideCall::Unsure {
+            self.sided.push(t);
+        }
+        if call == SideCall::Swapped {
+            got.swap(0, 1);
+        }
+        self.kept = got.map(|g| {
+            let skip = g.len().saturating_sub(SIDE_BEATS);
+            g.into_iter().skip(skip).collect()
+        });
+        Some((t, call))
+    }
+
+    /// The jump whose sides are still to be checked, seconds.
+    pub fn pending(&self) -> Option<f64> {
+        self.pending.as_ref().map(|p| p.0)
+    }
+
+    /// Whether Tick and Tock are told apart at `t` seconds: false from a
+    /// pending jump on, and in a stretch never told apart.
+    pub fn known_at(&self, t: f64) -> bool {
+        !self.pending().is_some_and(|p| p <= t)
+            && !self.unsided.iter().any(|&(a, b)| a <= t && t < b)
+    }
+
+    /// The jumps whose sides were told apart by their sound, seconds.
+    pub fn sided(&self) -> &[f64] {
+        &self.sided
+    }
+}
+
+/// A step in the beats' timing of more than this, on both sides, is a
+/// jump, seconds. Where listening stopped and started again the step is
+/// anywhere up to half a beat (62.5 ms at 28,800), so 4 ms misses about one
+/// hole in sixteen; the largest step both sides make together in a stored
+/// take with no hole is 2.3 ms (the ETA 2824 in the holder), and the
+/// crown-right Yacht-Master's suspend steps 8.5 ms.
+pub const JUMP_S: f64 = 0.004;
+/// Beats of each side, either side of a step, whose median timing is
+/// compared.
+const JUMP_SPAN: usize = 5;
+/// Beats from before a chunk that [`jumps`] needs to see a jump at its
+/// start.
+pub const JUMP_CONTEXT: usize = 2 * JUMP_SPAN + 2;
+
+/// Which of a pass's or chunk's `local` beats, at `off` seconds plus their
+/// own times, the count runs on from: the first in `from..to` that is a
+/// new beat, half a beat or more after the `last` beat kept. The last beat
+/// kept, found again a little moved by the next window, is not a new one:
+/// numbered on from, it would count that beat twice and call the next a
+/// jump (#733). The one choice for a whole file and for live listening.
+pub fn anchor_of(
+    local: &[Beat],
+    off: f64,
+    from: f64,
+    to: f64,
+    last: Option<&Beat>,
+    beat: f64,
+) -> Option<usize> {
+    local.iter().position(|b| {
+        let t = b.time + off;
+        t >= from && t < to && last.is_none_or(|l| t - l.time >= 0.5 * beat)
+    })
+}
+
+/// A pass's or chunk's beats numbered on from the `last` beat kept, `beat`
+/// seconds apart: `local[anchor]`, at `anchor_t` seconds, gets the whole
+/// number of beats since (at least one), and the rest follow it. The first
+/// beat of a take is numbered 0. Also how far the count is off a whole
+/// number of beats (0 for a take's first beat), which says whether it is a
+/// guess. The one numbering for a whole file and for live listening.
+pub fn number_on(
+    local: &[Beat],
+    anchor: usize,
+    anchor_t: f64,
+    last: Option<&Beat>,
+    beat: f64,
+) -> (Vec<Beat>, f64) {
+    let (anchor_index, off) = match last {
+        Some(last) => {
+            let count = (anchor_t - last.time) / beat;
+            let n = count.round().max(1.0);
+            (last.index + n as i64, count - n)
+        }
+        None => (0, 0.0),
+    };
+    let shift = anchor_index - local[anchor].index;
+    let numbered = local
+        .iter()
+        .map(|b| Beat {
+            index: b.index + shift,
+            ..*b
+        })
+        .collect();
+    (numbered, off)
+}
+
+/// Positions `p` in `beats` where the timing of both sides steps by more
+/// than [`JUMP_S`], and by about the same: where listening stopped and
+/// started again, so the watch's phase moved on. Each side's step is the
+/// median offset of its next `JUMP_SPAN` beats from where the typical
+/// intervals put them, against that of its last five; a stray beat moves
+/// neither median. A tracker moving from one sound of a beat to another
+/// (a few milliseconds, on one side) is not a jump: the other side stays.
+/// `before` are the beats just before `beats[0]` (same time base), so a
+/// jump at or just before the first of `beats` is found too: as position
+/// 0, when `before` runs too near its end to have seen it.
+pub fn jumps(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
+    let all: Vec<Beat> = before.iter().chain(beats).copied().collect();
+    let n = before.len();
+    let mut out: Vec<usize> = jumps_in(&all)
+        .into_iter()
+        .filter(|&p| p + 2 * JUMP_SPAN >= n)
+        .map(|p| p.saturating_sub(n))
+        .collect();
+    out.dedup();
+    out
+}
+
+/// A good beat ([`Beat::is_good`]) has a [`Beat::quality`] better than
+/// this.
+pub const JUMP_QUALITY: f32 = 0.4;
+
+/// [`jumps`] on the good beats alone ([`Beat::is_good`]), the
+/// one jump search for a whole file and for live listening alike. Where
+/// the sound was lost for a moment (a dropout in the audio), the tracker
+/// follows noise for a few seconds until it finds the beats again; those
+/// noise beats would hide the step from the beats either side of it, and
+/// the count across such a stretch is a guess that swaps Tick and Tock
+/// half the time. Positions are in `beats`; `before` may hold noise beats
+/// too (see [`good_tail`]).
+pub fn jumps_among_good(beats: &[Beat], before: &[Beat]) -> Vec<usize> {
+    let at: Vec<usize> = (0..beats.len()).filter(|&k| beats[k].is_good()).collect();
+    let found: Vec<Beat> = at.iter().map(|&k| beats[k]).collect();
+    let before: Vec<Beat> = before.iter().copied().filter(Beat::is_good).collect();
+    jumps(&found, &before).into_iter().map(|p| at[p]).collect()
+}
+
+/// The watch's last beat, seconds: the end of the latest run of good beats
+/// ([`Beat::is_good`]) as long as a piece the timing fit keeps
+/// ([`crate::timing::spans_piece`]), with no pause between them
+/// ([`crate::clean::paused`]). Good beats only, so a quiet stand's hiss,
+/// whose beats are poor, can't bridge a pause, and a stray good beat in
+/// it is a run too short to count. `None` when no run is that long. The
+/// one rule for where a stopped take's readings end (Norm on #2081).
+pub fn last_watch_beat_s(beats: &[Beat]) -> Option<f64> {
+    let mut good = beats.iter().rev().filter(|b| b.is_good());
+    let mut end = good.next()?;
+    let mut start = end;
+    for b in good {
+        if crate::clean::paused(b, start) {
+            end = b;
+        } else if crate::timing::spans_piece(b, end) {
+            return Some(end.time);
+        }
+        start = b;
+    }
+    crate::timing::spans_piece(start, end).then_some(end.time)
+}
+
+/// How long the watch was heard in `beats`, seconds: the runs of good
+/// beats ([`Beat::is_good`]) with no pause between them, each as long as a
+/// piece the fit keeps, summed; the runs [`last_watch_beat_s`] counts. At
+/// a pause Auto keeps the rate that heard the most of them (#2142).
+pub fn watch_heard_s(beats: &[Beat]) -> f64 {
+    let mut good = beats.iter().filter(|b| b.is_good());
+    let Some(first) = good.next() else {
+        return 0.0;
+    };
+    let (mut start, mut end, mut sum) = (first, first, 0.0);
+    let run = |a: &Beat, b: &Beat| {
+        if crate::timing::spans_piece(a, b) {
+            b.time - a.time
+        } else {
+            0.0
+        }
+    };
+    for b in good {
+        if crate::clean::paused(end, b) {
+            sum += run(start, end);
+            start = b;
+        }
+        end = b;
+    }
+    sum + run(start, end)
+}
+
+/// Beats kept so far that the jump search looks back through for the good
+/// beats before a jump ([`good_tail`]): about four minutes at 28,800 bph,
+/// longer than the tracker follows noise after a dropout. The one reach for
+/// a whole file and for live listening alike, so both find the same jumps
+/// after a long stretch of noise.
+pub const JUMP_LOOK_BACK: usize = 2000;
+
+/// The last `n` good beats of `beats` ([`Beat::is_good`]) with
+/// the noise beats among them, looking back at most [`JUMP_LOOK_BACK`]
+/// beats: the stretch [`jumps_among_good`] reads.
+pub fn good_tail(beats: &[Beat], n: usize) -> &[Beat] {
+    let back = &beats[beats.len().saturating_sub(JUMP_LOOK_BACK)..];
+    &back[good_tail_start(back, n)..]
+}
+
+/// Where in `beats` the last `n` good beats ([`Beat::is_good`])
+/// begin, or 0 when there are fewer: the stretch [`jumps_among_good`] reads.
+pub fn good_tail_start(beats: &[Beat], n: usize) -> usize {
+    beats
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, b)| b.is_good())
+        .nth(n.saturating_sub(1))
+        .filter(|_| n > 0)
+        .map_or(0, |(k, _)| k)
+}
+
+fn jumps_in(beats: &[Beat]) -> Vec<usize> {
+    // The typical interval after an even beat and after an odd one: they
+    // differ by twice the beat error.
+    let mut after = [Vec::new(), Vec::new()];
+    for p in beats.windows(2) {
+        if p[1].index == p[0].index + 1 {
+            after[p[0].index.rem_euclid(2) as usize].push(p[1].time - p[0].time);
+        }
+    }
+    if after.iter().any(|v| v.len() < MIN_SIDE_BEATS) {
+        return Vec::new();
+    }
+    let med = |v: &mut Vec<f64>| {
+        v.sort_by(|a, b| a.total_cmp(b));
+        v[v.len() / 2]
+    };
+    let step = [med(&mut after[0]), med(&mut after[1])];
+    // Beats that scatter like noise (an empty stand) have no timing to
+    // jump from: the median interval's spread must be under a quarter of a
+    // jump, where a watch's is a tenth of a millisecond or two.
+    let mut spread: Vec<f64> = (0..2)
+        .flat_map(|s| after[s].iter().map(move |v| (v - step[s]).abs()))
+        .collect();
+    if med(&mut spread) > 0.25 * JUMP_S {
+        return Vec::new();
+    }
+    // Where beat `b` is due, counted on from beat `a`.
+    let due = |a: &Beat, b: &Beat| -> f64 {
+        let n = b.index - a.index;
+        let first = a.index.rem_euclid(2) as usize;
+        let (n_first, n_other) = ((n + 1) / 2, n / 2);
+        a.time + n_first as f64 * step[first] + n_other as f64 * step[1 - first]
+    };
+    let origin = &beats[0];
+    let off: Vec<f64> = beats.iter().map(|b| b.time - due(origin, b)).collect();
+    let side = |p: usize| beats[p].index.rem_euclid(2);
+    // The median offset of the first `JUMP_SPAN` beats of side `s` from
+    // position `p` on (forward) or before it (back), and whether the middle
+    // three sit within half a jump of one another: beats scattered wider
+    // than that (no watch, or a side moving between two of its sounds) say
+    // little, while one stray beat does not stop a jump being seen.
+    let spread = |p: usize, s: i64, forward: bool| -> Option<(f64, bool)> {
+        let mut v: Vec<f64> = if forward {
+            (p..off.len())
+                .filter(|&q| side(q) == s)
+                .take(JUMP_SPAN)
+                .map(|q| off[q])
+                .collect()
+        } else {
+            (0..p)
+                .rev()
+                .filter(|&q| side(q) == s)
+                .take(JUMP_SPAN)
+                .map(|q| off[q])
+                .collect()
+        };
+        if v.len() < JUMP_SPAN {
+            return None;
+        }
+        let m = med(&mut v);
+        Some((m, v[JUMP_SPAN - 2] - v[1] <= 0.5 * JUMP_S))
+    };
+    // Both sides' steps at `p`, when both sides have the beats to tell:
+    // at most one of the four stretches (each side, before and after) may
+    // scatter. Where the watch stumbles, one side can scatter for a while
+    // before a step while the other keeps time; its median still shows
+    // the step, and the other side must step the same. Noise over both
+    // sides (a knock of the stand) scatters two or more, and says nothing.
+    let steps = |p: usize| -> Option<(f64, f64)> {
+        let mut loose = 0;
+        let mut at = |s: i64| -> Option<f64> {
+            let (fore, fore_tight) = spread(p, s, true)?;
+            let (back, back_tight) = if p == 0 {
+                (0.0, true)
+            } else {
+                spread(p, s, false)?
+            };
+            loose += usize::from(!fore_tight) + usize::from(!back_tight);
+            Some(fore - back)
+        };
+        let st = (at(0)?, at(1)?);
+        (loose <= 1).then_some(st)
+    };
+    let jumped = |(a, b): (f64, f64)| {
+        a.abs() > JUMP_S && b.abs() > JUMP_S && (a - b).abs() <= 0.5 * a.abs().max(b.abs())
+    };
+    let size = |p: usize| steps(p).map_or(0.0, |(a, b)| 0.5 * (a + b).abs());
+    let mut out = Vec::new();
+    let mut p = 1;
+    while p < off.len() {
+        if steps(p).is_some_and(jumped) {
+            // The step shows at several positions near it: take the
+            // largest, then look on past it.
+            let best = (p..(p + 2 * JUMP_SPAN).min(off.len()))
+                .filter(|&q| steps(q).is_some_and(jumped))
+                .max_by(|&x, &y| size(x).total_cmp(&size(y)))
+                .unwrap_or(p);
+            // The jump is at the first beat from which the next few all sit
+            // nearer the timing after it than the timing before it.
+            let lo = best.saturating_sub(2 * JUMP_SPAN).max(1);
+            let hi = (best + 2 * JUMP_SPAN).min(off.len() - 1);
+            let level = |q: usize, forward: bool| spread(best, side(q), forward).map(|x| x.0);
+            let after_it = |q: usize| match (level(q, false), level(q, true)) {
+                (Some(back), Some(fore)) => (off[q] - fore).abs() < (off[q] - back).abs(),
+                _ => false,
+            };
+            let best = (lo..=hi)
+                .find(|&q| (q..(q + JUMP_SPAN).min(off.len())).all(after_it))
+                .unwrap_or(best);
+            out.push(best);
+            p = best + 2 * JUMP_SPAN;
+        } else {
+            p += 1;
+        }
+    }
+    out
+}
+
+fn pearson(a: &[f32], b: &[f32]) -> f64 {
+    let n = a.len().min(b.len());
+    if n == 0 {
+        return 0.0;
+    }
+    let ma = a[..n].iter().map(|&v| v as f64).sum::<f64>() / n as f64;
+    let mb = b[..n].iter().map(|&v| v as f64).sum::<f64>() / n as f64;
+    let (mut s, mut sa, mut sb) = (0.0, 0.0, 0.0);
+    for (x, y) in a[..n].iter().zip(&b[..n]) {
+        let (x, y) = (*x as f64 - ma, *y as f64 - mb);
+        s += x * y;
+        sa += x * x;
+        sb += y * y;
+    }
+    if sa <= 0.0 || sb <= 0.0 {
+        0.0
+    } else {
+        s / (sa * sb).sqrt()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The watch's last beat is the end of the latest run of good beats
+    /// long enough to keep: stray beats after it, a short run, a gap and a
+    /// poor beat don't move it (#2081).
+    #[test]
+    fn the_watchs_last_beat_ends_the_latest_long_run_of_good_beats() {
+        let run = |from: f64, to: f64, step: f64| {
+            let n = ((to - from) / step).round() as i64;
+            (0..=n).map(move |k| from + k as f64 * step)
+        };
+        let at = |times: Vec<f64>| -> Vec<Beat> {
+            times
+                .into_iter()
+                .enumerate()
+                .map(|(k, time)| Beat {
+                    index: k as i64,
+                    time,
+                    quality: 1.0,
+                })
+                .collect()
+        };
+        let watch: Vec<f64> = run(0.0, 30.0, 0.125).collect();
+        assert_eq!(last_watch_beat_s(&at(watch.clone())), Some(30.0));
+        // Stray beats in the hiss after it, each a run too short to count.
+        let mut stray = watch.clone();
+        stray.extend([33.0, 37.5, 37.9, 46.97]);
+        assert_eq!(last_watch_beat_s(&at(stray)), Some(30.0));
+        // A poor beat after the run is not a beat of it.
+        let mut poor = at(watch.clone());
+        poor.push(Beat {
+            index: 999,
+            time: 30.125,
+            quality: 0.0,
+        });
+        assert_eq!(last_watch_beat_s(&poor), Some(30.0));
+        // A run just under MIN_PIECE_S after a gap doesn't count; the one
+        // before it does. Exactly MIN_PIECE_S long does.
+        let mut short: Vec<f64> = run(0.0, 20.0, 0.125).collect();
+        short.extend(run(23.0, 32.875, 0.125));
+        assert_eq!(last_watch_beat_s(&at(short)), Some(20.0));
+        let mut long: Vec<f64> = run(0.0, 20.0, 0.125).collect();
+        long.extend(run(23.0, 33.0, 0.125));
+        assert_eq!(last_watch_beat_s(&at(long)), Some(33.0));
+        // A gap of exactly GAP_S keeps the run whole.
+        let mut joined: Vec<f64> = run(0.0, 6.0, 0.125).collect();
+        joined.extend(run(8.0, 12.0, 0.125));
+        assert_eq!(last_watch_beat_s(&at(joined)), Some(12.0));
+        // No run long enough, or no beats.
+        assert_eq!(last_watch_beat_s(&at(run(0.0, 9.0, 0.125).collect())), None);
+        assert_eq!(last_watch_beat_s(&[]), None);
+    }
+
+    /// Where no beat's window fits in the sound, or there are no beats,
+    /// there is no template: None, not a template of NaN, and `detect`
+    /// finds no beats with an empty template (#1210).
+    #[test]
+    fn no_window_that_fits_gives_no_template() {
+        let fs = 8000.0;
+        let short = vec![0.5f32; ((PRE_S + POST_S) * fs) as usize - 1];
+        let at = [PRE_S];
+        assert_eq!(median_template(&short, fs, &at), None);
+        assert_eq!(median_window(&short, fs, &at, PRE_S, PRE_S), None);
+        assert_eq!(trimmed_template(&short, fs, &at), None);
+        assert_eq!(trimmed_template_from(&short, fs, &at, PRE_S), None);
+        let long = vec![0.5f32; 8000];
+        assert_eq!(median_template(&long, fs, &[]), None);
+        let one = median_template(&long, fs, &[0.5]).expect("one window fits");
+        assert_eq!(one.len(), ((PRE_S + POST_S) * fs).round() as usize);
+        assert!(one.iter().all(|v| v.is_finite()));
+        for env in [short, vec![0.0f32; 1]] {
+            let (beats, template) = detect(&env, fs, 28_800);
+            assert!(beats.is_empty() && template.is_empty(), "{}", env.len());
+        }
+    }
+
+    /// An envelope at `fs` with a beat at each of `bph`'s beats from 50 ms
+    /// on, every other one `be_ms` late, each a 5 ms fall from `amp`.
+    fn beats_env(fs: f64, secs: f64, rates: &[(u32, f64, f32)]) -> Vec<f32> {
+        let mut env = vec![0.0f32; (secs * fs) as usize];
+        for &(bph, be_ms, amp) in rates {
+            let beat = 3600.0 / f64::from(bph);
+            for k in 0.. {
+                let late = if k % 2 == 1 { be_ms / 1000.0 } else { 0.0 };
+                let i = ((0.05 + k as f64 * beat + late) * fs) as usize;
+                if i + 40 >= env.len() {
+                    break;
+                }
+                for d in 0..40 {
+                    env[i + d] += amp * (-(d as f32) / 8.0).exp();
+                }
+            }
+        }
+        env
+    }
+
+    /// A beat error splits the beat into two intervals, a tick to a tock
+    /// and back, so the single beat's lag scores low and half the rate's
+    /// scores high. The rate is the fastest the split intervals support
+    /// when every other they support divides it: a 28,800 watch 3 to 9 ms
+    /// out of beat still guesses 28,800, not 14,400 (#1417).
+    #[test]
+    fn a_watch_out_of_beat_keeps_its_rate() {
+        let fs = 8000.0;
+        for bph in [17_280, 28_800, 36_000, 43_200, 72_000] {
+            for be_ms in [3.0, 6.0, 9.0] {
+                let env = beats_env(fs, 12.0, &[(bph, be_ms, 1.0)]);
+                assert_eq!(guess_bph(&env, fs), bph, "{bph} bph, {be_ms} ms");
+            }
+        }
+        for bph in [18_000, 19_800, 21_600, 25_200] {
+            let env = beats_env(fs, 12.0, &[(bph, 9.0, 1.0)]);
+            assert_eq!(guess_bph(&env, fs), bph, "{bph} bph, 9 ms");
+        }
+    }
+
+    /// Two watches heard at once: no one rate's split intervals hold both,
+    /// so the guess is the fastest rate whose own beat lag scores, one of
+    /// the two, and never a rate neither beats at. The lag's slack is a
+    /// fraction of the lag (#1417): a slack wide enough to take in every
+    /// lag would score every rate alike and guess 72,000.
+    #[test]
+    fn two_watches_at_once_guess_one_of_their_rates() {
+        let fs = 8000.0;
+        for (a, b, want) in [
+            (21_600, 28_800, 28_800),
+            (19_800, 28_800, 28_800),
+            (21_600, 36_000, 36_000),
+            (18_000, 25_200, 25_200),
+        ] {
+            let env = beats_env(fs, 12.0, &[(a, 0.0, 1.0), (b, 0.0, 1.0)]);
+            assert_eq!(guess_bph(&env, fs), want, "{a} and {b}");
+        }
+    }
+
+    /// Sound with no beat energy at any rate guesses no rate of its own:
+    /// every rate scores 0 in digital silence, and the fastest (72,000)
+    /// must not win on that (#476).
+    #[test]
+    fn digital_silence_guesses_the_default_rate() {
+        let fs = 48_000.0;
+        assert_eq!(guess_bph(&vec![0.0; (12.0 * fs) as usize], fs), 28_800);
+        assert_eq!(sound_onset(&vec![0.0; (12.0 * fs) as usize], fs), None);
+    }
+
+    /// The loud stretches' level is core's 90th percentile of the 1 s
+    /// stretches' peaks ([`crate::dsp::quantile_f32`], #512): one lone
+    /// click louder than the rest does not set it, so a steady watch heard
+    /// from the start starts there.
+    #[test]
+    fn a_lone_click_does_not_set_the_onset_level() {
+        let fs = 100.0;
+        let mut env = vec![0.2_f32; 1000];
+        env[950] = 1.0;
+        // Peaks: nine of 0.2 and one of 1.0. The 90th percentile is 0.28,
+        // and every stretch reaches a quarter of it.
+        assert_eq!(sound_onset(&env, fs), Some(0));
+        // Quiet before the watch is still passed over.
+        env[..300].fill(0.01);
+        assert_eq!(sound_onset(&env, fs), Some(300));
+    }
+
+    /// Beats of a watch with 0.5 ms beat error and 0.1 ms of scatter, with
+    /// `shift(k, even)` added to beat `k`'s time.
+    fn ticking(n: i64, shift: impl Fn(i64, bool) -> f64) -> Vec<Beat> {
+        let mut rng = crate::synth::Rng::new(7);
+        (0..n)
+            .map(|k| {
+                let even = k % 2 == 0;
+                let be = if even { 0.0 } else { 0.0005 };
+                Beat {
+                    index: k,
+                    time: 0.05 + k as f64 * 0.125 + be + 1e-4 * rng.normal() + shift(k, even),
+                    quality: 1.0,
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_hole_in_the_sound_is_a_jump() {
+        // From beat 200 on both sides land 30 ms later.
+        let b = ticking(400, |k, _| if k >= 200 { 0.030 } else { 0.0 });
+        assert_eq!(jumps(&b, &[]), vec![200]);
+        // And seen from the beats before a chunk's first beat, when the
+        // jump is at that beat or just before it.
+        assert_eq!(jumps(&b[200..], &b[188..200]), vec![0]);
+        assert_eq!(jumps(&b[203..], &b[191..203]), vec![0]);
+    }
+
+    #[test]
+    fn noise_beats_around_a_jump_do_not_hide_it() {
+        // From beat 200 on both sides land 30 ms later, and the 24 beats
+        // before it are noise the tracker followed: badly matched, anywhere.
+        let mut b = ticking(400, |k, _| if k >= 200 { 0.030 } else { 0.0 });
+        for (n, x) in b[176..200].iter_mut().enumerate() {
+            x.quality = 0.05;
+            x.time += 0.04 * rng_normal(n as i64);
+        }
+        assert!(jumps(&b, &[]).is_empty(), "hidden among all the beats");
+        assert_eq!(jumps_among_good(&b, &[]), vec![200]);
+        // Seen from a chunk starting at the jump, with the noise before it.
+        let from = good_tail_start(&b[..200], JUMP_CONTEXT);
+        assert_eq!(from, 200 - 24 - JUMP_CONTEXT);
+        assert_eq!(jumps_among_good(&b[200..], &b[from..200]), vec![0]);
+    }
+
+    #[test]
+    fn a_good_beat_is_better_than_jump_quality() {
+        let at = |quality| Beat {
+            index: 0,
+            time: 0.0,
+            quality,
+        };
+        assert!(!at(JUMP_QUALITY).is_good());
+        assert!(at(JUMP_QUALITY + 0.01).is_good());
+        assert!(!at(0.0).is_good());
+    }
+
+    #[test]
+    fn a_jump_after_long_noise_is_seen_by_file_and_live_alike() {
+        // From beat 1700 on both sides land 30 ms later, and the 300 beats
+        // before it (about 40 s) are noise: longer than one pass of live
+        // listening's good beats.
+        let mut b = ticking(1800, |k, _| if k >= 1700 { 0.030 } else { 0.0 });
+        for (n, x) in b[1400..1700].iter_mut().enumerate() {
+            x.quality = 0.05;
+            x.time += 0.04 * rng_normal(n as i64);
+        }
+        // A whole file's chunk starting at the jump, and live listening's
+        // pass over its latest beats, reach the same good beats.
+        let before = good_tail(&b[..1700], JUMP_CONTEXT);
+        assert_eq!(jumps_among_good(&b[1700..], before), vec![0]);
+        // (Live, on a pass 40 beats after the jump; the 152 beats it used
+        // to reach back hold no good beats from before it.)
+        let tail = good_tail(&b[..1740], 4 * MIN_SIDE_BEATS + JUMP_CONTEXT);
+        assert!(b[1740 - 152..1700].iter().all(|x| !x.is_good()));
+        let at: Vec<f64> = jumps_among_good(tail, &[])
+            .into_iter()
+            .map(|p| tail[p].time)
+            .collect();
+        assert_eq!(at, vec![b[1700].time]);
+        // Noise longer than the reach leaves no good beats in sight.
+        let mut far = ticking(2600, |k, _| if k >= 2500 { 0.030 } else { 0.0 });
+        for (n, x) in far[200..2500].iter_mut().enumerate() {
+            x.quality = 0.05;
+            x.time += 0.04 * rng_normal(n as i64);
+        }
+        let before = good_tail(&far[..2500], JUMP_CONTEXT);
+        assert_eq!(before.len(), JUMP_LOOK_BACK);
+        assert!(before.iter().all(|x| !x.is_good()));
+    }
+
+    #[test]
+    fn a_stray_beat_or_one_side_changing_sound_is_not_a_jump() {
+        let stray = ticking(400, |k, _| if k == 200 { 0.030 } else { 0.0 });
+        assert!(jumps(&stray, &[]).is_empty());
+        // Nor is a stray beat the last before a chunk starts.
+        assert!(jumps(&stray[201..], &stray[189..201]).is_empty());
+        // One side moves 5 ms onto another of its sounds; the other stays.
+        let one_side = ticking(400, |k, even| if k >= 200 && even { -0.005 } else { 0.0 });
+        assert!(jumps(&one_side, &[]).is_empty());
+        // A step under JUMP_S is not one either.
+        let small = ticking(400, |k, _| if k >= 200 { 0.002 } else { 0.0 });
+        assert!(jumps(&small, &[]).is_empty());
+    }
+
+    #[test]
+    fn beats_scattered_like_noise_have_no_jumps() {
+        let noise = ticking(400, |k, _| {
+            0.008 * rng_normal(k) + if k >= 200 { 0.030 } else { 0.0 }
+        });
+        assert!(jumps(&noise, &[]).is_empty());
+    }
+
+    /// A fixed pseudo-random normal-ish value for beat `k`.
+    fn rng_normal(k: i64) -> f64 {
+        let mut r = crate::synth::Rng::new(1000 + k as u64);
+        r.normal()
+    }
+
+    /// The side sounds of `beats`, from their windows in `env`.
+    fn side_sounds(env: &[f32], fs: f64, beats: &[Beat]) -> Option<SideSounds> {
+        let side = |even: bool| -> Vec<&[f32]> {
+            beats
+                .iter()
+                .filter(|b| (b.index.rem_euclid(2) == 0) == even)
+                .filter_map(|b| {
+                    crate::profile::snippet(env, fs, b.time, crate::amplitude::UnlockWindow::SHORT)
+                })
+                .collect()
+        };
+        SideSounds::of(side(true), side(false))
+    }
+
+    #[test]
+    fn side_sounds_tell_the_sides_apart() {
+        // Two sides of different shape: the Tick's peak sits earlier.
+        let fs = 8000.0;
+        let mut env = vec![0.0f32; (20.0 * fs) as usize];
+        let mut beats = Vec::new();
+        for k in 0..150i64 {
+            let t = 0.05 + k as f64 * 0.125;
+            let lead = if k % 2 == 0 { 0.006 } else { 0.002 };
+            for (dt, v) in [(-lead, 0.6f32), (0.0, 1.0)] {
+                let i = ((t + dt) * fs) as usize;
+                env[i] = v;
+                env[i + 1] = 0.5 * v;
+            }
+            beats.push(Beat {
+                index: k,
+                time: t,
+                quality: 1.0,
+            });
+        }
+        let before = side_sounds(&env, fs, &beats[..60]).expect("sounds");
+        let same = side_sounds(&env, fs, &beats[60..]).expect("sounds");
+        assert!(side_margin(&before, &same) > SIDE_MARGIN_MIN);
+        // Numbered one further, the sides swap and the margin turns.
+        let swapped: Vec<Beat> = beats[60..]
+            .iter()
+            .map(|b| Beat {
+                index: b.index + 1,
+                ..*b
+            })
+            .collect();
+        let other = side_sounds(&env, fs, &swapped).expect("sounds");
+        assert!(side_margin(&before, &other) < -SIDE_MARGIN_MIN);
+    }
+
+    #[test]
+    fn a_knock_does_not_move_the_beats() {
+        // A beat every 0.125 s for 4 s, and a knock three times as loud
+        // 30 ms before beat 20 is due. The beat window keeps beat 20.
+        let fs = 8000.0;
+        let beat = 0.125;
+        let mut x = vec![0.0f32; (4.0 * fs) as usize];
+        for k in 0..32 {
+            let i = ((0.05 + k as f64 * beat) * fs) as usize;
+            x[i - 1] = 0.5;
+            x[i] = 1.0;
+            x[i + 1] = 0.5;
+        }
+        let knock = ((0.05 + 20.0 * beat - 0.030) * fs) as usize;
+        x[knock] = 3.0;
+        let (peaks, _) = track_peaks(&x, fs, beat, None, None);
+        assert_eq!(peaks.len(), 32, "beat 20 is found under the knock");
+        for (t, _) in &peaks {
+            let k = ((t - 0.05) / beat).round();
+            assert!(
+                (t - 0.05 - k * beat).abs() < 0.001,
+                "peak at {t} s is off the beats"
+            );
+        }
+    }
+
+    /// `len_s` of noise peaks a twentieth as high as a beat, at 8 kHz, with
+    /// a beat of 1 every 0.125 s for each `(from, beats, phase)`: `beats`
+    /// beats from `from` s, `phase` s into each beat.
+    fn track_of(len_s: f64, stretches: &[(f64, usize, f64)]) -> Vec<f32> {
+        let fs = 8000.0;
+        let mut x: Vec<f32> = (0..(len_s * fs) as usize)
+            .map(|i| 0.05 * ((i as f32 * 0.37).sin() * (i as f32 * 0.011).cos()).abs())
+            .collect();
+        for &(from, beats, phase) in stretches {
+            for k in 0..beats {
+                let i = ((from + phase + k as f64 * 0.125) * fs).round() as usize;
+                x[i] = 1.0;
+                x[i - 1] = 0.6;
+                x[i + 1] = 0.6;
+            }
+        }
+        x
+    }
+
+    /// After sound whose level is known, a silence gives no beats, and
+    /// the watch heard again in step or out of it is followed on, with no
+    /// beat out of place (#609).
+    #[test]
+    fn a_silence_gives_no_beats_and_the_watch_is_found_again() {
+        let beat = 0.125;
+        // 10 s of watch, 20 s of silence, 10 s of watch in step.
+        let x = track_of(40.0, &[(0.0, 80, 0.05), (30.0, 80, 0.05)]);
+        let (peaks, _) = track_peaks(&x, 8000.0, beat, None, Some(1.0));
+        // How far `t` is from the nearest beat at `phase` s into a beat.
+        let off = |t: f64, phase: f64| {
+            let k = ((t - phase) / beat).round();
+            (t - phase - k * beat).abs()
+        };
+        assert!(
+            peaks.iter().all(|&(t, _)| !(10.0..30.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert!(
+            peaks.iter().all(|&(t, _)| off(t, 0.05) < 0.001),
+            "a beat off the watch's"
+        );
+        assert_eq!(peaks.len(), 160);
+        // Heard again out of step by nearly half a beat, it is found within
+        // a few seconds.
+        let x = track_of(40.0, &[(0.0, 80, 0.05), (30.0, 80, 0.105)]);
+        let (peaks, _) = track_peaks(&x, 8000.0, beat, None, Some(1.0));
+        let after: Vec<f64> = peaks.iter().map(|p| p.0).filter(|&t| t >= 30.0).collect();
+        assert!(
+            after.first().is_some_and(|&t| t < 33.0),
+            "found at {:?}",
+            after.first()
+        );
+        assert!(
+            after.iter().all(|&t| off(t, 0.105) < 0.001),
+            "a beat off the watch's"
+        );
+    }
+
+    /// Half an hour of silence, as in three 600 s parts of a long take
+    /// left silent, gives no beats however long the track is lost.
+    #[test]
+    fn a_long_silence_gives_no_beats() {
+        let x = track_of(1900.0, &[(0.0, 400, 0.05), (1850.0, 400, 0.08)]);
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(50.0..1850.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 800);
+    }
+
+    /// A stretch that opens on silence, after sound whose level is carried
+    /// in, gives no beats until the watch is heard.
+    #[test]
+    fn a_stretch_opening_on_silence_waits_for_the_watch() {
+        let x = track_of(20.0, &[(10.0, 80, 0.05)]);
+        let (peaks, level) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(peaks.iter().all(|&(t, _)| t >= 10.0), "{:?}", &peaks[..3]);
+        assert_eq!(peaks.len(), 80);
+        assert!(level.is_some_and(|l| (l - 1.0).abs() < 0.01), "{level:?}");
+        // With no level, as at a take's start, the noise is followed.
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
+        assert!(peaks.iter().any(|&(t, _)| t < 10.0));
+    }
+
+    /// `n` samples of digital silence at 8 kHz with a peak `h` high, and
+    /// 0.6 of that either side, at each `(i, h)`.
+    fn clicks(n: usize, at: impl IntoIterator<Item = (usize, f32)>) -> Vec<f32> {
+        let mut x = vec![0.0f32; n];
+        for (i, h) in at {
+            x[i - 1] = 0.6 * h;
+            x[i] = h;
+            x[i + 1] = 0.6 * h;
+        }
+        x
+    }
+
+    /// Beats `k` of a watch beating every 0.125 s at 8 kHz, 50 ms into each
+    /// beat, `h` high.
+    fn beats_at(k: impl IntoIterator<Item = usize>, h: f32) -> impl Iterator<Item = (usize, f32)> {
+        k.into_iter().map(move |k| (400 + 1000 * k, h))
+    }
+
+    /// 10 s of watch, `gap_s` of exact zeros, and 10 s of the same watch in
+    /// step, at 8 kHz with a beat every 0.125 s, 50 ms into each beat: the
+    /// watch over noise a twentieth as high, as [`track_of`] makes it.
+    fn watch_with_digital_silence(gap_s: f64) -> Vec<f32> {
+        let resumed = 10.0 + gap_s;
+        let mut x = track_of(20.0 + gap_s, &[(0.0, 80, 0.05), (resumed, 80, 0.05)]);
+        x[(10.0 * 8000.0) as usize..(resumed * 8000.0) as usize].fill(0.0);
+        x
+    }
+
+    /// Runs `f` on another thread, failing if it has not finished in a
+    /// minute, so a track that stands still fails rather than hangs.
+    fn within_a_minute<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(f()));
+        rx.recv_timeout(std::time::Duration::from_secs(60))
+            .expect("still running after a minute")
+    }
+
+    /// Pass 1 over a long digital silence keeps its period near the beat
+    /// and moves on, and follows the watch again after it. Its pick in the
+    /// silence is the edge of the gate, a little early every beat; timing
+    /// from those shrank the period until the track stood still (#782).
+    #[test]
+    fn pass_1_moves_on_through_a_long_digital_silence() {
+        let x = watch_with_digital_silence(400.0);
+        let (coarse, _) =
+            within_a_minute(move || track_peaks(&x, 8000.0, 0.125, Some(PASS1_GATE_S), None));
+        let on_beat = |t: f64| ((t - 0.05) / 0.125 - ((t - 0.05) / 0.125).round()).abs() < 0.01;
+        let heard: Vec<f64> = coarse.iter().filter(|c| c.1 > 0.0).map(|c| c.0).collect();
+        assert_eq!(heard.len(), 160);
+        assert!(heard.iter().all(|&t| on_beat(t)), "a pick off the beat");
+        // About one pick a beat: the period stayed the beat's.
+        assert!(
+            (coarse.len() as f64 / (420.0 / 0.125) - 1.0).abs() < 0.01,
+            "{}",
+            coarse.len()
+        );
+    }
+
+    /// The period stays near the beat's even where every pick is heard but
+    /// none is a beat: over a flat stretch every point ties, so pass 1's
+    /// gate picks its edge a little early every beat, as in digital
+    /// silence, but each pick is above zero. Only the period's lower bound
+    /// keeps the track moving there (#782).
+    #[test]
+    fn pass_1_moves_on_through_a_long_flat_stretch() {
+        let mut x = watch_with_digital_silence(400.0);
+        x[(10.0 * 8000.0) as usize..(410.0 * 8000.0) as usize].fill(0.01);
+        let (coarse, _) =
+            within_a_minute(move || track_peaks(&x, 8000.0, 0.125, Some(PASS1_GATE_S), None));
+        let after = coarse.iter().filter(|c| c.0 >= 410.0 && c.1 >= 0.5).count();
+        // At most 1.12 picks a beat over the flat 400 s (3200 beats): the
+        // period was kept at no less than 0.9 of the beat.
+        let flat = coarse
+            .iter()
+            .filter(|c| (10.0..410.0).contains(&c.0))
+            .count();
+        assert!(flat <= 3584, "{flat} picks over the flat stretch");
+        assert!(after >= 75, "{after} beats after the flat stretch");
+    }
+
+    /// The whole detection over a long digital silence finds the watch
+    /// either side of it, on its beats, and nothing in it. With no level
+    /// carried in, the track used to take up the correlation's rounding
+    /// noise just before the watch came back, then follow the noise most
+    /// of half a beat away from the beats (#786).
+    #[test]
+    fn a_long_digital_silence_is_detected_through() {
+        let x = watch_with_digital_silence(400.0);
+        let (beats, _) = within_a_minute(move || detect(&x, 8000.0, 28_800));
+        let good: Vec<f64> = beats
+            .iter()
+            .filter(|b| b.is_good())
+            .map(|b| b.time)
+            .collect();
+        let on_beat = |t: f64| ((t - 0.05) / 0.125 - ((t - 0.05) / 0.125).round()).abs() < 0.01;
+        assert!(good.iter().all(|&t| on_beat(t)), "a beat off the watch's");
+        assert!(
+            good.iter().all(|&t| !(10.0..410.0).contains(&t)),
+            "a good beat in the silence"
+        );
+        let after = good.iter().filter(|&&t| t >= 410.0).count();
+        assert!(after >= 78, "{after} good beats after the silence");
+    }
+
+    /// With no level, a watch heard again far more quietly, and out of
+    /// step, is still taken up after a run missed: only a match near
+    /// nothing is passed over (#786).
+    #[test]
+    fn a_quiet_watch_after_a_silence_is_taken_up_with_no_level() {
+        // 5 s at full height, 5 s of exact zeros, then 5 s a twentieth as
+        // high and 30 ms (a quarter of a beat) later.
+        let loud = beats_at(0..40, 1.0);
+        let quiet = beats_at(80..120, 0.05).map(|(i, h)| (i + 240, h));
+        let x = clicks(15 * 8000, loud.chain(quiet));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
+        let after: Vec<f64> = peaks.iter().map(|p| p.0).filter(|&t| t >= 10.0).collect();
+        let on_beat = |t: f64| ((t - 0.08) / 0.125 - ((t - 0.08) / 0.125).round()).abs() < 0.01;
+        assert!(after.len() >= 30, "{} beats after the silence", after.len());
+        assert!(after.iter().all(|&t| on_beat(t)), "a beat off the watch's");
+    }
+
+    /// A watch that falls digitally silent for most of the sound is still
+    /// found: pass 1's picks in the silence are maxima of nothing, and a
+    /// template built mostly on them was a template of silence, which
+    /// matched no beat (#782).
+    #[test]
+    fn a_template_is_not_built_on_digital_silence() {
+        let mut x = track_of(410.0, &[(0.0, 80, 0.05)]);
+        x[(10.0 * 8000.0) as usize..].fill(0.0);
+        let good = |x: &[f32]| -> Vec<f64> {
+            let (beats, _) = detect(x, 8000.0, 28_800);
+            beats
+                .iter()
+                .filter(|b| b.is_good())
+                .map(|b| b.time)
+                .collect()
+        };
+        // The same beats as from the watch's 10 s alone.
+        let alone = good(&x[..(10.0 * 8000.0) as usize]);
+        assert!(alone.len() >= 78, "{} good beats alone", alone.len());
+        let with = within_a_minute(move || good(&x));
+        assert_eq!(with, alone);
+    }
+
+    /// A beat is looked for only where the whole span around where it is
+    /// due was heard, so a beat the sound ends on, heard only as its rising
+    /// flank, is not found there.
+    #[test]
+    fn a_beat_the_sound_ends_on_is_not_found() {
+        let mut x = clicks(10_400, beats_at(0..10, 1.0));
+        x[10_399] = 0.6;
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, None);
+        assert_eq!(peaks.len(), 10, "{:?}", peaks.last());
+    }
+
+    /// A track lost in a silence looks over one beat around where the next
+    /// is due, not two, so the watch heard again out of step is found on
+    /// its beat rather than on a knock most of a beat after it.
+    #[test]
+    fn a_lost_track_finds_the_watch_not_a_knock_a_beat_away() {
+        let beat = 0.125;
+        // 5 s of watch, 5 s of silence, and the watch again 20 ms out of
+        // step, with a knock three times as loud 90 ms after its first beat.
+        let mut x = track_of(20.0, &[(0.0, 40, 0.05), (10.0, 80, 0.07)]);
+        x[((10.07 + 0.09) * 8000.0) as usize] = 3.0;
+        let (peaks, _) = track_peaks(&x, 8000.0, beat, None, Some(1.0));
+        let off = |t: f64| {
+            let phase = if t < 10.0 { 0.05 } else { 0.07 };
+            let k = ((t - phase) / beat).round();
+            (t - phase - k * beat).abs()
+        };
+        assert!(
+            peaks.iter().all(|&(t, _)| off(t) < 0.001),
+            "a beat off the watch's"
+        );
+        assert_eq!(peaks.len(), 120);
+    }
+
+    /// In a silence, a peak far weaker than the watch's typical beat is
+    /// not a beat however loud the watch: the floor is a share of the
+    /// watch's beat, not a fixed level.
+    #[test]
+    fn faint_clicks_in_a_silence_are_not_beats_however_loud_the_watch() {
+        // A watch four times as loud as a unit beat, silent from 5 s to
+        // 10 s but for a click now and then an eighth as loud as its beats.
+        let silence = (0..12).map(|j| (((5.2 + 0.37 * j as f64) * 8000.0) as usize, 0.5));
+        let watch = beats_at((0..40).chain(80..120), 4.0);
+        let x = clicks(124_000, watch.chain(silence));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(4.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(5.0..10.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 80);
+    }
+
+    /// A faint swell in a silence is not the watch heard again, though the
+    /// lost track finds its highest point a beat after the last on every
+    /// span it looks over: only a peak counts towards a run of faint beats,
+    /// not a span's edge on a slope. Nor where the sound ends on the swell.
+    #[test]
+    fn a_faint_swell_in_a_silence_is_not_the_watch() {
+        // 5 s of watch; a swell to a fifth of its beat from 6 s, highest
+        // at 9 s and gone at 12 s; the watch again from 15 s.
+        let mut x = clicks(160_000, beats_at((0..40).chain(120..159), 1.0));
+        for (i, v) in x.iter_mut().enumerate().take(96_000).skip(48_000) {
+            *v = 0.2 * (1.0 - (i as f32 - 72_000.0).abs() / 24_000.0);
+        }
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(5.0..15.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 79);
+        // The sound ends while the swell rises, on the span the lost track
+        // looks over for beat 70.
+        let (peaks, _) = track_peaks(&x[..70_800], 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 40);
+    }
+
+    /// The noise is measured halfway between beats, where a watch is
+    /// silent, from the first beat on, and followed as it changes: noise in
+    /// a silence that stands above the floor set by the watch's beat is
+    /// still not a beat, and a watch whose beats sound long is not taken
+    /// for noise.
+    #[test]
+    fn the_noise_is_measured_halfway_between_beats() {
+        // `n` samples of noise up to 0.3, a sixth of that before `quiet`,
+        // and beats `k` rising to 1 over 300 samples and falling as slowly,
+        // each between two samples.
+        let track = |n: usize, quiet: usize, k: &mut dyn Iterator<Item = usize>| {
+            let mut x: Vec<f32> = (0..n)
+                .map(|i| {
+                    let v = 0.3 * ((i as f32 * 0.37).sin() * (i as f32 * 0.011).cos()).abs();
+                    if i < quiet {
+                        v / 6.0
+                    } else {
+                        v
+                    }
+                })
+                .collect();
+            for (c, _) in beats_at(k, 1.0) {
+                for d in 0..300 {
+                    let v = 1.0 - d as f32 / 300.0;
+                    (x[c - d], x[c + 1 + d]) = (v, v);
+                }
+            }
+            x
+        };
+        // Quieter for the first 0.25 s: 5 s of watch, 5 s of silence and
+        // 5.5 s of watch.
+        let x = track(128_000, 2000, &mut (0..40).chain(80..124));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(5.0..10.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 84);
+        // Only a second of watch before 5 s of silence.
+        let x = track(90_000, 0, &mut (0..8).chain(48..88));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert!(
+            peaks.iter().all(|&(t, _)| !(1.0..6.0).contains(&t)),
+            "beats in the silence"
+        );
+        assert_eq!(peaks.len(), 48);
+    }
+
+    /// The level carried on is the typical beat of both sides, so sound
+    /// on which one side does not match at all carries none on.
+    #[test]
+    fn a_level_is_carried_on_only_from_both_sides() {
+        // Beats every 0.125 s on a floor of -1, the sides' alternating.
+        let track = |first: f32, second: f32| {
+            let mut x = vec![-1.0f32; 16_000];
+            for k in 0..15 {
+                let (i, h) = (600 + 1000 * k, if k % 2 == 0 { first } else { second });
+                (x[i - 1], x[i], x[i + 1]) = (h - 0.5, h, h - 0.5);
+            }
+            x
+        };
+        for (first, second) in [(0.0, 1.0), (1.0, 0.0)] {
+            let (peaks, level) = track_peaks(&track(first, second), 8000.0, 0.125, None, None);
+            assert_eq!(peaks.len(), 15);
+            assert_eq!(level, None, "sides {first} and {second}");
+        }
+        let (_, level) = track_peaks(&track(1.0, 1.0), 8000.0, 0.125, None, None);
+        assert!(level.is_some_and(|l| (l - 1.0).abs() < 1e-3), "{level:?}");
+    }
+
+    /// Faint peaks near where beats are due are kept between beats less
+    /// than a run missed apart, and dropped as a silence's noise across a
+    /// run missed.
+    #[test]
+    fn faint_peaks_are_kept_only_between_beats_less_than_a_run_missed_apart() {
+        // 60 beats, `quiet` of them from beat 20 heard only as a click a
+        // tenth as loud and 5 ms late.
+        let track = |quiet: usize| {
+            let faint = (20..20 + quiet).map(|k| (440 + 1000 * k, 0.1));
+            let loud = beats_at((0..20).chain(20 + quiet..60), 1.0);
+            clicks(60_500, loud.chain(faint))
+        };
+        let (peaks, _) = track_peaks(&track(MAX_MISSES - 1), 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 60);
+        let (peaks, _) = track_peaks(&track(MAX_MISSES), 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 60 - MAX_MISSES);
+    }
+
+    /// Faint peaks before the watch is first heard are not beats, however
+    /// soon it is heard.
+    #[test]
+    fn faint_peaks_before_the_watch_is_first_heard_are_not_beats() {
+        let faint = [(400, 0.1), (1440, 0.1)];
+        let x = clicks(12_000, faint.into_iter().chain(beats_at(2..11, 1.0)));
+        let (peaks, _) = track_peaks(&x, 8000.0, 0.125, None, Some(1.0));
+        assert_eq!(peaks.len(), 9);
+        assert!((peaks[0].0 - 0.3).abs() < 1e-6, "{:?}", peaks[0]);
+    }
+
+    /// From ten good beats on, the template returned is rebuilt from the
+    /// beats the correlation found, which line up more closely than the
+    /// maxima it was first built on; with fewer it is left as it was.
+    #[test]
+    fn ten_good_beats_rebuild_the_template_from_the_beats() {
+        // `beats` beats every 0.125 s at 8 kHz, each a ramp down over 5 ms
+        // with a notch every 7 samples and a second sound halfway down,
+        // the odd ones 0.5 ms late, on noise a twentieth as high.
+        let track = |beats: usize| {
+            let mut x: Vec<f32> = (0..1000 * beats + 1500)
+                .map(|i| 0.05 * ((i as f32 * 0.37).sin() * (i as f32 * 0.011).cos()).abs())
+                .collect();
+            for k in 0..beats {
+                let c = 600 + 1000 * k + if k % 2 == 1 { 4 } else { 0 };
+                for d in 0..40 {
+                    let notch = if d % 7 == 3 { 0.6 } else { 1.0 };
+                    x[c + d] += (1.0 - d as f32 / 40.0) * notch;
+                }
+                x[c + 20] += 0.7;
+            }
+            x
+        };
+        let rebuilt = |beats: usize| {
+            let x = track(beats);
+            let (found, template, _) = detect_levelled(&x, 8000.0, 28800);
+            let good: Vec<f64> = found
+                .iter()
+                .filter(|b| b.is_good())
+                .map(|b| b.time)
+                .collect();
+            assert_eq!(good.len(), beats);
+            median_template(&x, 8000.0, &good) == Some(template)
+        };
+        assert!(rebuilt(10));
+        assert!(!rebuilt(9));
+    }
+
+    /// A side whose beats match the template at two sounds 6 ms apart, as
+    /// the Tock of a fake-mic Daytona take did, and which the track put on
+    /// the earlier sound on two beats of every five: every beat goes back
+    /// to the sound the rest of its side is on.
+    #[test]
+    fn a_side_with_two_sounds_stays_on_one() {
+        let fs = 8000.0;
+        let beat = 0.125;
+        let n = 200i64;
+        let pre = PRE_S;
+        let due = |k: i64| 0.05 + k as f64 * beat + if k % 2 == 1 { 0.0004 } else { 0.0 };
+        let mut corr = vec![0.0f32; ((n as f64 + 1.0) * beat * fs) as usize];
+        let mut peak = |t: f64, v: f32| {
+            let i = ((t - pre) * fs).round() as usize;
+            corr[i - 1] += 0.6 * v;
+            corr[i] += v;
+            corr[i + 1] += 0.6 * v;
+        };
+        for k in 0..n {
+            peak(due(k), 1.0);
+            if k % 2 == 1 {
+                peak(due(k) - 0.006, 1.05);
+            }
+        }
+        let wrong = |k: i64| k % 2 == 1 && (k / 2) % 5 < 2;
+        let mut beats: Vec<Beat> = (0..n)
+            .map(|k| Beat {
+                index: k,
+                time: due(k) - if wrong(k) { 0.006 } else { 0.0 },
+                quality: 1.0,
+            })
+            .collect();
+        keep_sides_on_one_sound(&corr, fs, 1.0, &mut beats);
+        for b in &beats {
+            assert!(
+                (b.time - due(b.index)).abs() < 1e-4,
+                "beat {} at {} s, due at {} s",
+                b.index,
+                b.time,
+                due(b.index)
+            );
+        }
+        // A watch's own scatter, under a millisecond, is left as it is.
+        let mut beats: Vec<Beat> = (0..n)
+            .map(|k| Beat {
+                index: k,
+                time: due(k) + if k % 7 == 0 { 0.0008 } else { 0.0 },
+                quality: 1.0,
+            })
+            .collect();
+        let before = beats.clone();
+        keep_sides_on_one_sound(&corr, fs, 1.0, &mut beats);
+        assert!(beats.iter().zip(&before).all(|(a, b)| a.time == b.time));
+    }
+
+    /// A take with a hole whose Tick and Tock trade sounds 6 s after it
+    /// (the sides' sounds can change as a watch is handled). The sides are
+    /// told apart by the first good beats after the hole, so the whole
+    /// file and live listening read the same beats and keep the beat
+    /// error's sign the same; before, the file read up to 160 beats a side
+    /// to the chunk's end, mostly after the trade, and swapped the sides
+    /// where listening kept them.
+    #[test]
+    fn a_file_and_live_listening_tell_the_sides_apart_alike() {
+        use crate::live::{LiveAnalyzer, LiveConfig};
+        use crate::stream::{analyze_samples, StreamConfig};
+        use crate::synth::{render_beat, Rng, SynthConfig};
+        const HOLE_S: f64 = 30.0;
+        const TRADE_S: f64 = HOLE_S + 6.0;
+        let louder_unlock = [0.9, 0.25, 1.0];
+        let cfg = |traded: bool| {
+            let mut c = SynthConfig {
+                duration_s: 100.0,
+                rate_s_per_day: 10.0,
+                beat_error_ms: 0.6,
+                odd_gains: Some(louder_unlock),
+                ..Default::default()
+            };
+            if traded {
+                let even = c.sounds.map(|s| s.gain);
+                for (s, g) in c.sounds.iter_mut().zip(louder_unlock) {
+                    s.gain = g;
+                }
+                c.odd_gains = Some(even);
+            }
+            c
+        };
+        let (before, after) = (cfg(false), cfg(true));
+        let fs = before.sample_rate as f64;
+        let nominal = 3600.0 / before.bph as f64;
+        // 0.03 s lost keeps the count's sides; 0.155 s swaps them.
+        for lost_s in [0.03, 0.155] {
+            let mut x = vec![0.0f64; (before.duration_s * fs) as usize];
+            let mut rng = Rng::new(7);
+            let (mut t, mut k, mut holed) = (0.05, 0u64, false);
+            while t < before.duration_s - 0.05 {
+                if t >= HOLE_S && !holed {
+                    t += lost_s;
+                    holed = true;
+                }
+                let c = if t >= TRADE_S { &after } else { &before };
+                render_beat(c, k, t, 270.0, c.beat_error_ms, &mut rng, |i, v| {
+                    if let Some(s) = usize::try_from(i).ok().and_then(|i| x.get_mut(i)) {
+                        *s += v;
+                    }
+                });
+                t += crate::synth::period(nominal, before.rate_s_per_day);
+                k += 1;
+            }
+            let noise = 10f64.powf(-before.snr_db / 20.0);
+            let samples: Vec<f32> = x
+                .iter()
+                .map(|&v| ((v + noise * rng.normal()) * 0.5) as f32)
+                .collect();
+
+            let file = analyze_samples(&samples, before.sample_rate, &StreamConfig::default());
+            let mut live = LiveAnalyzer::new(before.sample_rate, LiveConfig::default());
+            for c in samples.chunks(960) {
+                live.push(c);
+            }
+            for (what, beats) in [("file", &file.beats[..]), ("live", live.beats())] {
+                let side = |from: f64, to: f64| {
+                    let run: Vec<Beat> = beats
+                        .iter()
+                        .filter(|b| b.time >= from && b.time < to)
+                        .copied()
+                        .collect();
+                    crate::timing::beat_error_ms(&run).expect("beat error")
+                };
+                let (was, now) = (side(5.0, HOLE_S - 1.0), side(TRADE_S + 5.0, 95.0));
+                assert!(
+                    was.abs() > 0.4 && (was - now).abs() < 0.1,
+                    "{what}, {lost_s} s lost: beat error {was} then {now}"
+                );
+            }
+        }
+    }
+
+    /// Sound lost for half a beat and more (a dropout in the audio) puts
+    /// the watch's beats half a beat off the count. The tracker then
+    /// follows noise for a few seconds before it finds them again, and the
+    /// count across that stretch picks the sides by chance. A whole file
+    /// finds the jump from the good beats either side, as live listening
+    /// does, and its side check keeps the sides.
+    #[test]
+    fn a_dropout_the_tracker_follows_noise_through_keeps_the_sides() {
+        use crate::live::{LiveAnalyzer, LiveConfig};
+        use crate::stream::{analyze_samples, StreamConfig};
+        use crate::synth::{render_beat, Rng, SynthConfig};
+        const HOLE_S: f64 = 30.0;
+        // With the Tock's unlock louder, and with both sides at one gain.
+        for louder in [true, false] {
+            let c = SynthConfig {
+                duration_s: 70.0,
+                rate_s_per_day: 10.0,
+                beat_error_ms: 0.5,
+                odd_gains: louder.then_some([0.9, 0.25, 1.0]),
+                ..Default::default()
+            };
+            let fs = c.sample_rate as f64;
+            let nominal = 3600.0 / c.bph as f64;
+            for beats_lost in [0.55, 1.5, 3.5] {
+                let mut x = vec![0.0f64; (c.duration_s * fs) as usize];
+                let mut rng = Rng::new(11);
+                let (mut t, mut k, mut holed) = (0.05, 0u64, false);
+                while t < c.duration_s - 0.05 {
+                    if t >= HOLE_S && !holed {
+                        t += beats_lost * nominal;
+                        holed = true;
+                    }
+                    render_beat(&c, k, t, 270.0, c.beat_error_ms, &mut rng, |i, v| {
+                        if let Some(s) = usize::try_from(i).ok().and_then(|i| x.get_mut(i)) {
+                            *s += v;
+                        }
+                    });
+                    t += crate::synth::period(nominal, c.rate_s_per_day);
+                    k += 1;
+                }
+                let noise = 10f64.powf(-c.snr_db / 20.0);
+                let samples: Vec<f32> = x
+                    .iter()
+                    .map(|&v| ((v + noise * rng.normal()) * 0.5) as f32)
+                    .collect();
+                let file = analyze_samples(&samples, c.sample_rate, &StreamConfig::default());
+                // Live listening finds the jump too, with the same search
+                // (where in the noise stretch depends on how the sound
+                // arrives).
+                let mut live = LiveAnalyzer::new(c.sample_rate, LiveConfig::default());
+                for chunk in samples.chunks(960) {
+                    live.push(chunk);
+                }
+                assert!(
+                    live.jumps()
+                        .iter()
+                        .any(|&j| (HOLE_S..HOLE_S + 10.0).contains(&j)),
+                    "louder {louder}, {beats_lost} beats lost: live jumps {:?}, file {:?}",
+                    live.jumps(),
+                    file.jumps
+                );
+                let side = |from: f64, to: f64| {
+                    let run: Vec<Beat> = file
+                        .beats
+                        .iter()
+                        .filter(|b| b.time >= from && b.time < to && b.is_good())
+                        .copied()
+                        .collect();
+                    crate::timing::beat_error_ms(&run).expect("beat error")
+                };
+                assert!(
+                    file.jumps
+                        .iter()
+                        .any(|&j| (HOLE_S..HOLE_S + 10.0).contains(&j)),
+                    "louder {louder}, {beats_lost} beats lost: jumps {:?}",
+                    file.jumps
+                );
+                let (was, now) = (side(5.0, HOLE_S - 1.0), side(HOLE_S + 15.0, 65.0));
+                assert!(
+                    was.abs() > 0.3 && (was - now).abs() < 0.1,
+                    "louder {louder}, {beats_lost} beats lost: beat error {was} then {now} \
+                     (jumps {:?})",
+                    file.jumps
+                );
+            }
+        }
+    }
+
+    /// The last beat kept, found again 10 ms later by the next window, is
+    /// not where the count runs on from: the next beat is, a whole beat
+    /// on, so the count is not off and no jump is called (#733).
+    #[test]
+    fn the_last_beat_found_again_is_not_counted_twice() {
+        let beat = 0.125;
+        let last = Beat {
+            index: 100,
+            time: 10.0,
+            quality: 1.0,
+        };
+        let local: Vec<Beat> = [9.875, 10.010, 10.125, 10.250]
+            .iter()
+            .enumerate()
+            .map(|(i, &time)| Beat {
+                index: i as i64,
+                time,
+                quality: 1.0,
+            })
+            .collect();
+        let anchor = anchor_of(&local, 0.0, 9.95, 11.0, Some(&last), beat).unwrap();
+        assert_eq!(anchor, 2);
+        let (numbered, off) = number_on(&local, anchor, local[anchor].time, Some(&last), beat);
+        assert!(off.abs() < 1e-9, "{off}");
+        assert_eq!(numbered[2].index, 101);
+        assert_eq!(numbered[3].index, 102);
+        // With no beat kept yet, the first in the stretch is the anchor.
+        assert_eq!(anchor_of(&local, 0.0, 9.95, 11.0, None, beat), Some(1));
+        // A whole stretch of beats too close to the last: none.
+        assert_eq!(
+            anchor_of(&local[..2], 0.0, 9.95, 11.0, Some(&last), beat),
+            None
+        );
+    }
+
+    /// A side's beats for [`onto_the_drop`]: each beat a drop with a
+    /// middle sound as loud 5 ms before it, given as `(index, drop time,
+    /// on the middle sound)`. Returns the envelope, a template with its
+    /// drop at its origin, the beats and the middle beats' indices.
+    fn drop_scene(drops: &[(i64, f64, bool)]) -> (Vec<f32>, Vec<f32>, Vec<Beat>, f64) {
+        let fs = 20_000.0;
+        let pulse = |x: &mut [f32], t: f64| {
+            for (i, v) in x.iter_mut().enumerate() {
+                let d = (i as f64 / fs - t) / 0.0003;
+                *v += (-0.5 * d * d).exp() as f32;
+            }
+        };
+        let mut env = vec![0f32; (2.6 * fs) as usize];
+        let mut beats = Vec::new();
+        for &(index, t, middle) in drops {
+            pulse(&mut env, t);
+            pulse(&mut env, t - 0.005);
+            let time = if middle { t - 0.005 } else { t };
+            beats.push(Beat {
+                index,
+                time,
+                quality: 1.0,
+            });
+        }
+        let mut template = vec![0f32; ((PRE_S + POST_S) * fs).round() as usize];
+        pulse(&mut template, PRE_S);
+        (env, template, beats, fs)
+    }
+
+    /// The side's beats at 28,800 bph: `n` of them from 0.1 s, a quarter
+    /// second apart, the one numbered `middle` on its middle sound, each
+    /// drop `jitter(k)` seconds off its line.
+    fn side_beats(n: i64, middle: i64, jitter: impl Fn(i64) -> f64) -> Vec<(i64, f64, bool)> {
+        (0..n)
+            .map(|k| (2 * k, 0.1 + 0.25 * k as f64 + jitter(k), k == middle))
+            .collect()
+    }
+
+    fn moved_by(drops: &[(i64, f64, bool)], off: f64, index: i64) -> f64 {
+        let (env, template, mut beats, fs) = drop_scene(drops);
+        let was = beats.iter().find(|b| b.index == index).unwrap().time;
+        onto_the_drop(&env, fs, &template, &mut beats, off);
+        beats.iter().find(|b| b.index == index).unwrap().time - was
+    }
+
+    /// A block of 8 of a side's beats with one on its middle sound puts
+    /// that one on its drop, 5 ms later; a block of 3 (2 of them on the
+    /// line) is left as found, under [`DROP_BLOCK_MIN`] and
+    /// [`DROP_LINED_MIN`] (#1819).
+    #[test]
+    fn a_block_of_too_few_beats_is_left_as_found() {
+        let moved = moved_by(&side_beats(8, 7, |_| 0.0), 0.0, 14);
+        assert!((moved - 0.005).abs() < 1e-4, "{moved}");
+        let moved = moved_by(&side_beats(3, 2, |_| 0.0), 0.0, 4);
+        assert_eq!(moved, 0.0);
+    }
+
+    /// A block whose beats on the line stray from it by 0.4 ms, more than
+    /// [`DROP_LINE_SCATTER_S`], as noise taken for beats does, is left as
+    /// found, its beat on another sound with it (#1819).
+    #[test]
+    fn a_block_whose_beats_scatter_off_their_line_is_left_as_found() {
+        let jitter = |k: i64| [0.0, 0.0, 0.4, 0.4, -0.4, -0.4, 0.0, 0.0][k as usize] * 1e-3;
+        let moved = moved_by(&side_beats(8, 7, jitter), 0.0, 14);
+        assert_eq!(moved, 0.0);
+    }
+
+    /// Blocks are cut on the take's own clock: the sound starting `off`
+    /// seconds into the take moves where they fall. With the sound 0.3 s
+    /// in, the eighth beat (1.85 s) falls alone in the next block and is
+    /// left as found; at the take's start it shares a block of 8 and is
+    /// put on its drop (#1819).
+    #[test]
+    fn blocks_fall_on_the_take_s_own_clock() {
+        let drops = side_beats(8, 7, |_| 0.0);
+        let moved = moved_by(&drops, 0.0, 14);
+        assert!((moved - 0.005).abs() < 1e-4, "{moved}");
+        assert_eq!(moved_by(&drops, 0.3, 14), 0.0);
+    }
+}

@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["timegrapher-core", "adapter"]
+
+[workspace.package]
+version = "1.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/peterhudson/timegrapher"
+rust-version = "1.90"
+
+[workspace.dependencies]
+timegrapher-core = { path = "timegrapher-core" }
+
+[workspace.lints.clippy]
+too_many_lines = "warn"
+cognitive_complexity = "warn"

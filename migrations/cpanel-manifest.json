@@ -23,6 +23,7 @@
     "0018_watch_warranties.sql",
     "0019_personal_collection_drive_link.sql",
     "0020_inventory_sales_and_returns.sql",
-    "0021_inventory_service_history.sql"
+    "0021_inventory_service_history.sql",
+    "0022_inventory_timing_readings.sql"
   ]
 }

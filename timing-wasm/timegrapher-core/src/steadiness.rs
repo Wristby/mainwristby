@@ -1,0 +1,2924 @@
+//! Is a series steady? The rate, the amplitude and the beat error of a
+//! take are each read as a series in time order and tested for
+//! independence: a healthy watch on a quiet bench gives readings that
+//! scatter about one level with no memory of the last one, independent
+//! and identically distributed. A distribution plot cannot show the
+//! alternatives, because it throws the time order away. These views keep
+//! it:
+//!
+//! - **Autocorrelation**: how much a reading resembles the one a lag
+//!   later. Independent readings sit inside a band of ±1.96/√n at every
+//!   lag; the Ljung–Box test sums the first lags into one p-value.
+//! - **Allan deviation**: the scatter of averages over τ, against what
+//!   independent readings would give (the scatter at one reading over
+//!   √(τ / reading)). The two lines stay together for independent
+//!   readings; wander and drift lift the curve at long τ, and a cycle
+//!   of period P puts a bump near 0.37 P.
+//! - **CUSUM**: the running sum of each reading's distance from the
+//!   mean, in units of the long-run σ√n. With no change of level,
+//!   correlated or not, it wanders inside ±1.36 (95%); a shift of the
+//!   mean bends it into a V or a tent. The corner is marked only at a
+//!   level change the headline names, so one rule names it (#697).
+//! - **Change points**: binary segmentation of block medians into
+//!   stretches of constant mean, each change kept only when it is
+//!   strong evidence against one level.
+//!
+//! These sit beside the period search of the long-run analysis (which
+//! scores each period with a false-alarm chance and names the wheel) and
+//! the two-state finder, and one headline is drawn from all of them.
+
+pub use crate::amplitude_slope::CrossCorrelation;
+use crate::amplitude_slope::{
+    cross_correlation, eiv_slope, pairing_readings, slope_text, MIN_RELIABILITY, TOO_NOISY,
+};
+use crate::clean::Cuts;
+use crate::clock::ClockFit;
+use crate::confidence::{self, Slow};
+pub use crate::cusum::{kolmogorov_tail, Cusum, CUSUM_BAND};
+use crate::distribution::{self, Distributions};
+use crate::dsp::median;
+use crate::dsp::quantile;
+use crate::longrun::LongReport;
+use crate::longterm::{self, Grid, LongConfig};
+use crate::periodicity::{polyfit2, Wheel};
+use crate::stream::BeatLog;
+use crate::timing;
+use crate::twostate::{self, TwoState};
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Config {
+    /// Length of each rate reading, seconds.
+    pub rate_reading_s: f64,
+    /// A test result counts below this p-value (or false-alarm chance).
+    pub alpha: f64,
+    /// Correlation at a short lag that is worth calling memory, however
+    /// many readings make it significant.
+    pub min_correlation: f64,
+    /// Longest lag of the autocorrelation, seconds (also capped at a
+    /// third of the take).
+    pub max_lag_s: f64,
+    /// Lags summed by the Ljung–Box test.
+    pub ljung_box_lags: usize,
+    /// A period is what the headline names when it explains this share of the
+    /// detrended variance.
+    pub periodic_min_explained: f64,
+    /// Block length for the change points, seconds, and the shortest
+    /// stretch of constant mean.
+    pub change_block_s: f64,
+    pub change_min_segment_s: f64,
+    /// A trend or a set of steps is what the headline names when it
+    /// explains this share of the variance.
+    pub min_explained: f64,
+    /// A trend's and a level change's (the CUSUM's) p must be below
+    /// these too; 0 where Holm drops one (#659, #917).
+    pub trend_alpha: f64,
+    pub level_alpha: f64,
+    /// Whether an autocorrelation peak may name a cycle the period search
+    /// did not keep: off in the pane, whose cycles meet Holm's (#659).
+    pub acf_alone: bool,
+    /// Readings further than this many short-term σ from the running
+    /// median are left out as outliers.
+    pub outlier_sigma: f64,
+    /// Curves in the output are thinned to about this many points.
+    pub max_points: usize,
+    /// Hours since the watch was last fully wound when the take started,
+    /// for the wind-down comparison; `None` when not given, never taken
+    /// as full wind (#1665): hours are then from the take's start
+    /// ([`hours_since_wind`]).
+    pub wind_h: Option<f64>,
+    /// Length of the stretches the distributions are also counted over,
+    /// seconds; 0 counts the whole take only.
+    pub stretch_s: f64,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            rate_reading_s: 10.0,
+            alpha: 0.01,
+            min_correlation: 0.15,
+            max_lag_s: 600.0,
+            ljung_box_lags: 10,
+            periodic_min_explained: 0.1,
+            change_block_s: 30.0,
+            change_min_segment_s: 300.0,
+            min_explained: 0.2,
+            trend_alpha: 0.01,
+            level_alpha: 0.01,
+            acf_alone: true,
+            outlier_sigma: 6.0,
+            max_points: 600,
+            wind_h: None,
+            stretch_s: 3600.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SeriesKind {
+    Rate,
+    Amplitude,
+    BeatError,
+}
+
+/// A Steadiness unit as it follows a number, as the gap before it and
+/// the unit: degrees, which [`SeriesKind::unit`] names "deg", as the
+/// sentences write them, "272.10°"; any other unit after a space,
+/// "0.20 ms". The one place that rule is written (#1426).
+pub fn unit_after(unit: &str) -> (&'static str, &str) {
+    match unit {
+        "deg" => ("", "°"),
+        u => (" ", u),
+    }
+}
+
+impl SeriesKind {
+    /// The name as a title, a column head or a plot writes it: "Rate",
+    /// "Amplitude", "Beat Error".
+    pub fn title(self) -> &'static str {
+        match self {
+            SeriesKind::Rate => "Rate",
+            SeriesKind::Amplitude => "Amplitude",
+            SeriesKind::BeatError => "Beat Error",
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            SeriesKind::Rate => "rate",
+            SeriesKind::Amplitude => "amplitude",
+            SeriesKind::BeatError => "beat error",
+        }
+    }
+    pub fn unit(self) -> &'static str {
+        match self {
+            SeriesKind::Rate => "s/d",
+            SeriesKind::Amplitude => "deg",
+            SeriesKind::BeatError => "ms",
+        }
+    }
+
+    /// The decimals this series' readings are written to (math guide
+    /// section 11).
+    pub fn digits(self) -> usize {
+        use crate::figure_text::base_digits;
+        match self {
+            SeriesKind::Rate => base_digits::RATE,
+            SeriesKind::Amplitude => base_digits::AMPLITUDE,
+            SeriesKind::BeatError => base_digits::BEAT_ERROR,
+        }
+    }
+    /// A value with this series' unit after it, as [`unit_after`] spaces
+    /// it: "1.2 s/d", "270°".
+    fn with_unit(self, text: String) -> String {
+        let (gap, u) = unit_after(self.unit());
+        format!("{text}{gap}{u}")
+    }
+    /// A reading with its unit, at the series' place: "+1.2 s/d",
+    /// "270°", "0.20 ms" ([`Self::number`]).
+    pub fn fmt(self, v: f64) -> String {
+        self.with_unit(self.number(v))
+    }
+    /// A reading without its unit, at the series' place: the rate signed,
+    /// "+1.2", the others as they are, "270", "0.20"; one that rounds to
+    /// zero takes no sign ([`crate::figure_text`]).
+    pub fn number(self, v: f64) -> String {
+        let d = self.digits();
+        match self {
+            SeriesKind::Rate => crate::figure_text::signed_text(v, d),
+            SeriesKind::Amplitude | SeriesKind::BeatError => crate::figure_text::fixed_text(v, d),
+        }
+    }
+    /// A within-take difference (a cycle's peak to peak), one place finer
+    /// than a reading ([`crate::figure_text::difference_digits`]).
+    fn fmt_size(self, v: f64) -> String {
+        let d = crate::figure_text::difference_digits(self.digits());
+        self.with_unit(format!("{v:.d$}"))
+    }
+    /// A within-take size in `unit` ("s/d", "deg", "ms"), as
+    /// [`Self::fmt_size`] writes the series of that unit: the period
+    /// search's sizes, a rate's in ms of beat timing among them, are the
+    /// same fact as a cycle's peak to peak (Norm, #1470).
+    fn fmt_size_in(unit: &str, v: f64) -> String {
+        let k = match unit {
+            "s/d" => SeriesKind::Rate,
+            "deg" => SeriesKind::Amplitude,
+            "ms" => SeriesKind::BeatError,
+            other => {
+                debug_assert!(false, "a size in an unknown unit: {other}");
+                SeriesKind::BeatError
+            }
+        };
+        k.fmt_size(v)
+    }
+    /// A within-take change per hour, signed, one place finer than a
+    /// reading, as [`Self::fmt_size`].
+    pub fn fmt_per_hour(self, v: f64) -> String {
+        let d = crate::figure_text::difference_digits(self.digits());
+        self.with_unit(crate::figure_text::signed_text(v, d))
+    }
+    /// A spread written after "±", at the series' place and rounded up,
+    /// as every ± is ([`crate::figure_text::pm_text`]).
+    pub fn fmt_pm(self, v: f64) -> String {
+        let d = self.digits();
+        // Never below one unit of the place, a zero spread too (section 11).
+        let unit = 10f64.powi(-(d as i32));
+        let text = crate::figure_text::pm_text(v.max(unit), d).unwrap_or_default();
+        self.with_unit(text)
+    }
+}
+
+/// Which detected structure leads a series' headline and names its
+/// finding. Private: it is in no output and says nothing about whether
+/// the watch is good or bad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Lead {
+    /// Independent readings about one level.
+    Steady,
+    /// A repeating change, found by the period search (with the wheel
+    /// whose turn it matches, if any).
+    Periodic,
+    /// Two levels the watch switches between.
+    TwoStates,
+    /// Two levels that come from the measurement (the unlock mark
+    /// hopping), not from the watch.
+    Measurement,
+    /// One or more lasting steps of the mean.
+    ShiftingMean,
+    /// A steady slide, such as amplitude falling as the mainspring lets
+    /// down.
+    Drifting,
+    /// A step and a slide both pass their tests, but the readings move
+    /// together too much (ρ at least [`family::STEP_SLIDE_RHO`]) to tell
+    /// which (Norm, #1984): neither leads, and both shares are given.
+    StepOrSlide,
+    /// Readings that remember the last ones without steps, a cycle or a
+    /// trend: slow, irregular wander.
+    Wandering,
+    /// Too few readings to search.
+    #[default]
+    TooShort,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Autocorrelation {
+    /// Lags, seconds, and the correlation at each.
+    pub lag_s: Vec<f64>,
+    pub r: Vec<f64>,
+    /// Half-width of the 95% band for independent readings, 1.96/√n.
+    pub band: f64,
+    /// The same band at each of `lag_s`, from the pairs that lag was read
+    /// from, 1.96/√pairs: wider than `band` where gaps leave fewer pairs.
+    pub band_by_lag: Vec<f64>,
+    pub ljung_box_q: f64,
+    pub ljung_box_lags: usize,
+    /// Chance of a Q this large from independent readings.
+    pub p_value: f64,
+    /// Largest |r| over the Ljung–Box lags.
+    pub max_short_lag_r: f64,
+    /// The first lag where the correlation climbs back to a peak after
+    /// falling (the readings repeat), and the correlation there.
+    pub repeat_lag_s: Option<f64>,
+    pub repeat_r: Option<f64>,
+    /// First lag where the correlation falls below 1/e, seconds; None
+    /// when it never does within the lags computed.
+    pub memory_s: Option<f64>,
+}
+
+#[path = "steadiness_allan.rs"]
+mod allan;
+pub use allan::{Allan, ALLAN_HOLLOW_NOTE, ALLAN_JUDGED_DIFFERENCES};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Segment {
+    pub start_s: f64,
+    pub end_s: f64,
+    pub mean: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Changes {
+    pub block_s: f64,
+    /// Noise of one block median, from the differences of neighbours.
+    pub block_sigma: f64,
+    /// The same allowing for the medians' correlation
+    /// ([`confidence::long_run_sd`]): what a split is judged against.
+    pub long_run_sigma: f64,
+    pub segments: Vec<Segment>,
+    /// Share of the variance the segment means explain, and the CUSUM's
+    /// p that the level never moves, the test a level change needs (#917).
+    pub explained: f64,
+    pub p_value: f64,
+    /// Whether the headline names the levels (a level change, or the
+    /// steps of a slide); if not, `note` says why.
+    pub named: bool,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Trend {
+    /// Slope, units per hour, and the share of the variance a straight
+    /// line explains.
+    pub per_hour: f64,
+    pub explained: f64,
+    /// The share a smooth curve (a quadratic) explains, which also covers
+    /// a rise and fall.
+    pub curve_explained: f64,
+    /// The curve at the start and the end, and its turning point when
+    /// that falls inside the take (time, value).
+    pub start: f64,
+    pub end: f64,
+    pub turn: Option<(f64, f64)>,
+    /// The quadratic's F test against the mean on n(1 − ρ)/(1 + ρ)
+    /// readings, ρ as `confidence::long_run_rho` reads it (#651, #659).
+    pub p_value: f64,
+    /// Whether that test clears `trend_alpha` and Holm's correction, and
+    /// whether the headline names the trend; if not, `note` says why.
+    pub significant: bool,
+    pub named: bool,
+    pub note: Option<String>,
+}
+
+/// Where a cycle was found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CycleSource {
+    /// The two-state finder: a low level that comes back on a period.
+    TwoState,
+    /// A repeated peak of the readings' autocorrelation.
+    Autocorrelation,
+    /// The period search of the long-run analysis.
+    PeriodSearch,
+}
+
+/// The cycle behind a `periodic` headline.
+#[derive(Debug, Clone, Serialize)]
+pub struct Cycle {
+    pub period_s: f64,
+    /// Peak to peak of the readings folded at the period, the series'
+    /// units.
+    pub peak_to_peak: f64,
+    /// Share of the detrended variance the cycle's shape explains, above
+    /// what noise alone would give.
+    pub explained: f64,
+    /// Where the period was found; for a cycle moved to half the period
+    /// found (an odd number of readings a turn), where that period was.
+    pub source: CycleSource,
+    /// A wheel whose turn is within 6% of the period.
+    pub wheel: Option<String>,
+    /// A shorter cycle inside this one, when the period is a whole number
+    /// of its turns (`turns`) and it explains at least half as much on its
+    /// own: the pattern changes from turn to turn and repeats every
+    /// `turns` turns.
+    pub inner_period_s: Option<f64>,
+    pub inner_explained: Option<f64>,
+    pub turns: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Period {
+    pub period_s: f64,
+    /// −log10 of the false-alarm chance.
+    pub significance: f64,
+    /// Past the simulated null's range ([`longterm::beyond_simulated`]).
+    pub beyond_simulated: bool,
+    /// Share of the detrended variance the cycle explains.
+    pub explained: f64,
+    /// Peak-to-peak over one cycle, the series' units.
+    pub peak_to_peak: f64,
+    /// Rate only: peak-to-peak of the folded timing, ms.
+    pub timing_peak_to_peak_ms: Option<f64>,
+    /// The size to show people and its unit: the same as `peak_to_peak`,
+    /// except a rate cycle shorter than 30 s, which is stated as its timing
+    /// swing in ms (see `longrun::TIMING_UNIT_BELOW_S`).
+    pub size: f64,
+    pub size_unit: &'static str,
+    pub wheel: Option<String>,
+    /// The search's weaker components, seconds. Each is also tried as a
+    /// cycle, so a slow cycle behind a stronger fast one (an escape wheel's)
+    /// is still found.
+    pub other_periods_s: Vec<f64>,
+    /// The longer found cycle this one's period is a whole fraction of,
+    /// and the same for each of `other_periods_s`.
+    pub harmonic_of: Option<longterm::Harmonic>,
+    pub other_harmonic_of: Vec<Option<longterm::Harmonic>>,
+}
+
+/// Everything about one series.
+#[derive(Debug, Clone, Serialize)]
+pub struct SeriesCheck {
+    pub beat_error_source: Option<crate::session::BeatErrorSource>,
+    pub beat_error_sources: crate::session::BeatErrorSources,
+    pub caveats: Vec<crate::measure::Caveat>,
+    pub series: SeriesKind,
+    pub unit: &'static str,
+    #[serde(skip)]
+    lead: Lead,
+    /// One plain sentence of what was measured.
+    pub headline: String,
+    /// The headline's lead finding in a few words, one line, for a plot's
+    /// title: "repeats every 46 s, 4.0 s/d peak to peak", "no cycle,
+    /// level change or trend". No series name and no full stop; the
+    /// caller puts the series' title before it.
+    pub summary: String,
+    /// `headline` and `summary` as a screen shows them: each figure with
+    /// a true minus, the words as they are
+    /// ([`crate::figure_text::figure_minus`], #1437). The app and the MCP
+    /// view show these; files, pipes and the model keep the ASCII minus.
+    pub screen_headline: String,
+    pub screen_summary: String,
+    /// [`SeriesCheck::stats_line`], the statistics behind the headline on
+    /// one line, as a screen shows it (true minus): the app's Steadiness
+    /// Info and the MCP view show this one text.
+    pub screen_stats: String,
+    /// Length of each reading, seconds; readings used; readings left out
+    /// as outliers.
+    pub step_s: f64,
+    /// Length of the readings cycles are folded in: `step_s`, or the
+    /// shorter windows (2 s) where the amplitude and beat error have them.
+    #[serde(skip)]
+    cycle_step_s: f64,
+    pub readings: usize,
+    pub outliers: usize,
+    pub median: Option<f64>,
+    pub sd: Option<f64>,
+    /// Scatter from one reading to the next, √(½·mean of squared
+    /// differences): the noise without the slow changes.
+    pub short_term_sd: Option<f64>,
+    /// What the mean of the readings scatters as, times √n: the short-term
+    /// σ allowing for their correlation once their largest step is out
+    /// ([`confidence::long_run_sd`]). The CUSUM is scaled by it.
+    pub long_run_sd: Option<f64>,
+    /// The readings' effective count, n(1 − ρ)/(1 + ρ) with ρ the
+    /// corrected lag-one correlation `long_run_sd` allows for
+    /// ([`confidence::effective_readings`]): what a level change and a
+    /// slide are weighed on when they compete for the lead (#1984).
+    #[serde(skip)]
+    effective_readings: f64,
+    /// The ρ that count is worked from, core's estimate.
+    #[serde(skip)]
+    long_run_rho: f64,
+    /// Null, like the other tests, when there are too few readings to
+    /// search (the headline says how many).
+    pub autocorrelation: Option<Autocorrelation>,
+    /// [`SeriesCheck::autocorrelation_repeat`] as [lag, r], the mark the
+    /// Autocorrelation view puts on its curve (#1984); null when none.
+    pub repeat_mark: Option<[f64; 2]>,
+    /// [`SeriesCheck::cycle_size_text`], the cycle's one stated size as a
+    /// screen shows it, for the Cycle view's note (#1984); null without a
+    /// cycle.
+    pub screen_cycle_size: Option<String>,
+    /// [`SeriesCheck::cycle_off_search`]'s period, seconds: the headline's
+    /// cycle the Periods view marks beside the search's top (#1984); null
+    /// when the two agree or there is no cycle.
+    pub cycle_off_search_s: Option<f64>,
+    pub allan: Option<Allan>,
+    pub cusum: Option<Cusum>,
+    pub changes: Option<Changes>,
+    pub trend: Option<Trend>,
+    /// The strongest periodic component, when the period search found one.
+    pub period: Option<Period>,
+    pub two_state: Option<TwoState>,
+    /// The null the series' period search was held to (#1195): its noise
+    /// model, the take's mix (ρ, or the timing's crossover times the
+    /// detrend's window) and whether the table covered it.
+    pub null: Option<longterm::NullFit>,
+    /// The cycle found by the two-state finder, the autocorrelation or the
+    /// period search, if any.
+    pub cycle: Option<Cycle>,
+    /// Amplitude and beat error only: one side's unlock edges or 2 s
+    /// windows fall in two clusters the other side's do not (the two-state
+    /// finder's check).
+    pub unlock_hopping: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Finding {
+    pub code: &'static str,
+    pub series: SeriesKind,
+    pub title: String,
+    pub evidence: String,
+}
+
+/// The rate's median over the readings whose amplitude falls in one bin.
+#[derive(Debug, Clone, Serialize)]
+pub struct AmplitudeBin {
+    /// Middle of the bin, degrees.
+    pub amplitude_deg: f64,
+    pub readings: usize,
+    /// Median rate and its quartiles, s/d.
+    pub rate_s_per_day: f64,
+    pub rate_q25: f64,
+    pub rate_q75: f64,
+    /// When in the take the bin's readings fall: the first and the last,
+    /// hours from the take's start, and hours since full wind, `None`
+    /// when the wind was not given (#1665).
+    pub from_h: f64,
+    pub to_h: f64,
+    pub from_wind_h: Option<f64>,
+    pub to_wind_h: Option<f64>,
+}
+
+/// The isochronism curve: the rate by amplitude over the take, as the
+/// mainspring lets down.
+#[derive(Debug, Clone, Serialize)]
+pub struct IsochronismCurve {
+    /// Reading length, seconds, and bin width, degrees.
+    pub step_s: f64,
+    pub bin_deg: f64,
+    /// Bins with enough readings, lowest amplitude first.
+    pub bins: Vec<AmplitudeBin>,
+    /// Amplitudes the take covers (2nd and 98th percentile), degrees.
+    pub amplitude_from_deg: f64,
+    pub amplitude_to_deg: f64,
+    /// The rate's slope against the amplitude over every reading, s/d per
+    /// degree, corrected for the noise in the amplitude readings (#651),
+    /// its standard error, and the rate change it makes over the bins'
+    /// amplitudes, s/d. `None` when [`Self::reliability`] is under 0.5.
+    pub s_per_day_per_deg: Option<f64>,
+    pub s_per_day_per_deg_se: Option<f64>,
+    pub rate_change_s_per_day: Option<f64>,
+    /// The share of the amplitude readings' spread that is the amplitude
+    /// and not their noise (from each reading's own 2 s windows).
+    pub reliability: Option<f64>,
+    pub headline: String,
+}
+
+/// Rate, amplitude and beat error over one stretch of the take.
+#[derive(Debug, Clone, Serialize)]
+pub struct Stretch {
+    pub beat_error_source: Option<crate::session::BeatErrorSource>,
+    pub beat_error_sources: crate::session::BeatErrorSources,
+    pub caveats: Vec<crate::measure::Caveat>,
+    /// Hours from the take's start at the stretch's start and end, and
+    /// hours since full wind, `None` when the wind was not given (#1665).
+    pub from_h: f64,
+    pub to_h: f64,
+    pub from_wind_h: Option<f64>,
+    pub to_wind_h: Option<f64>,
+    pub readings: usize,
+    /// Medians of the readings.
+    pub rate_s_per_day: Option<f64>,
+    pub amplitude_deg: Option<f64>,
+    pub beat_error_ms: Option<f64>,
+}
+
+/// The first half hour after the take starts against the half hour 24 h
+/// later (or the take's last half hour when it is shorter): what the
+/// commercial 0 h / 24 h test gives for one position.
+#[derive(Debug, Clone, Serialize)]
+pub struct WindDown {
+    pub beat_error_source: Option<crate::session::BeatErrorSource>,
+    pub beat_error_sources: crate::session::BeatErrorSources,
+    pub caveats: Vec<crate::measure::Caveat>,
+    pub start: Stretch,
+    pub end: Stretch,
+    /// Hours between the two stretches' middles, and whether the end
+    /// stretch is the one at 24 h after full wind: never when the wind
+    /// was not given.
+    pub hours_apart: f64,
+    pub at_24h: bool,
+    /// End minus start.
+    pub rate_change_s_per_day: Option<f64>,
+    pub amplitude_change_deg: Option<f64>,
+    pub beat_error_change_ms: Option<f64>,
+    pub headline: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Report {
+    pub beat_error_source: Option<crate::session::BeatErrorSource>,
+    pub beat_error_sources: crate::session::BeatErrorSources,
+    pub duration_s: f64,
+    pub bph: u32,
+    /// Pauses and resumes in the take; times run on with each gap in.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub breaks: Vec<crate::breaks::Break>,
+    /// The long-run analysis's conditions detected ([`LongReport`]'s).
+    pub caveats: Vec<crate::measure::Caveat>,
+    pub config: Config,
+    pub series: Vec<SeriesCheck>,
+    /// The rate against the amplitude, at the rate's reading length.
+    pub rate_amplitude: Option<CrossCorrelation>,
+    /// The rate by amplitude over the take: the isochronism curve.
+    pub isochronism: Option<IsochronismCurve>,
+    /// The rate against the amplitude by 5 min of time (#741), the rate
+    /// from its readings and the amplitude from its 2 s windows.
+    pub walk: Option<crate::walk::IsochronismWalk>,
+    /// The start of the take against 24 h later, or its end.
+    pub wind_down: Option<WindDown>,
+    /// How often each value came up, over the take and each stretch: the
+    /// app's Distributions pane as data.
+    pub distributions: Distributions,
+    /// The plain amplitude spectrum of each series: the rate's from the
+    /// beat timing (ms), the amplitude's and the beat error's from their
+    /// 2 s windows.
+    pub spectra: Vec<crate::spectrum::AmplitudeSpectrum>,
+    pub findings: Vec<Finding>,
+    /// Which of each series' search lines (rate, amplitude, beat error, in
+    /// the long-run report's order) the family keeps ([`hold_to_family`]).
+    #[serde(skip)]
+    pub named_lines: Vec<Vec<bool>>,
+}
+
+// ---------------------------------------------------------------- statistics
+
+fn finite(y: &[f64]) -> Vec<f64> {
+    y.iter().copied().filter(|v| v.is_finite()).collect()
+}
+
+fn mean_sd(y: &[f64]) -> Option<(f64, f64)> {
+    let v = finite(y);
+    if v.len() < 2 {
+        return None;
+    }
+    let m = v.iter().sum::<f64>() / v.len() as f64;
+    let var = v.iter().map(|x| (x - m) * (x - m)).sum::<f64>() / (v.len() - 1) as f64;
+    Some((m, var.sqrt()))
+}
+
+/// √(½·mean of squared differences of neighbours): the Allan deviation at
+/// one reading.
+fn short_term_sd(y: &[f64]) -> Option<f64> {
+    let d: Vec<f64> = y
+        .windows(2)
+        .filter(|w| w[0].is_finite() && w[1].is_finite())
+        .map(|w| (w[1] - w[0]).powi(2))
+        .collect();
+    (d.len() >= 2).then(|| (0.5 * d.iter().sum::<f64>() / d.len() as f64).sqrt())
+}
+
+/// Robust σ of neighbour differences: their [`crate::dsp::robust_sd`]
+/// (1.4826·MAD) over √2.
+fn robust_diff_sigma(y: &[f64]) -> Option<f64> {
+    let d: Vec<f64> = y
+        .windows(2)
+        .filter(|w| w[0].is_finite() && w[1].is_finite())
+        .map(|w| w[1] - w[0])
+        .collect();
+    if d.len() < 4 {
+        return None;
+    }
+    Some(crate::dsp::robust_sd(&d) / std::f64::consts::SQRT_2)
+}
+
+pub(crate) fn ln_gamma(x: f64) -> f64 {
+    // Lanczos approximation (g = 7, n = 9).
+    const C: [f64; 9] = [
+        0.999_999_999_999_809_9,
+        676.520_368_121_885_1,
+        -1_259.139_216_722_402_8,
+        771.323_428_777_653_1,
+        -176.615_029_162_140_6,
+        12.507_343_278_686_905,
+        -0.138_571_095_265_720_12,
+        9.984_369_578_019_572e-6,
+        1.505_632_735_149_311_6e-7,
+    ];
+    if x < 0.5 {
+        let pi = std::f64::consts::PI;
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x);
+    }
+    let x = x - 1.0;
+    let mut a = C[0];
+    let t = x + 7.5;
+    for (i, &c) in C.iter().enumerate().skip(1) {
+        a += c / (x + i as f64);
+    }
+    0.5 * (2.0 * std::f64::consts::PI).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// Regularised upper incomplete gamma Q(a, x) = P(Gamma(a) > x).
+fn gamma_q(a: f64, x: f64) -> f64 {
+    ln_gamma_q(a, x).exp()
+}
+
+/// ln Q(a, x), kept in logs so a far tail does not underflow.
+pub(crate) fn ln_gamma_q(a: f64, x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    let ln_lead = -x + a * x.ln() - ln_gamma(a);
+    let lead = ln_lead.exp();
+    if x < a + 1.0 {
+        // Series for P.
+        let (mut sum, mut term, mut ap) = (1.0 / a, 1.0 / a, a);
+        for _ in 0..1000 {
+            ap += 1.0;
+            term *= x / ap;
+            sum += term;
+            if term.abs() < sum.abs() * 1e-15 {
+                break;
+            }
+        }
+        (1.0 - sum * lead).clamp(0.0, 1.0).ln()
+    } else {
+        // Continued fraction for Q (modified Lentz).
+        let tiny = 1e-300;
+        let mut b = x + 1.0 - a;
+        let mut c = 1.0 / tiny;
+        let mut d = 1.0 / b;
+        let mut h = d;
+        for i in 1..1000 {
+            let an = -(i as f64) * (i as f64 - a);
+            b += 2.0;
+            d = an * d + b;
+            if d.abs() < tiny {
+                d = tiny;
+            }
+            c = b + an / c;
+            if c.abs() < tiny {
+                c = tiny;
+            }
+            d = 1.0 / d;
+            let del = d * c;
+            h *= del;
+            if (del - 1.0).abs() < 1e-15 {
+                break;
+            }
+        }
+        (ln_lead + h.ln()).min(0.0)
+    }
+}
+
+/// P(χ²_k > q).
+pub fn chi2_tail(q: f64, k: usize) -> f64 {
+    gamma_q(k as f64 / 2.0, q / 2.0)
+}
+
+/// Autocorrelation at lags 0..=max_lag of a series with gaps (NaN): each
+/// lag uses the pairs where both readings exist.
+pub fn acf(y: &[f64], max_lag: usize) -> Vec<f64> {
+    acf_pairs(y, max_lag).0
+}
+
+/// [`acf`], and the pairs each lag was read from.
+fn acf_pairs(y: &[f64], max_lag: usize) -> (Vec<f64>, Vec<usize>) {
+    let Some((m, _)) = mean_sd(y) else {
+        return (Vec::new(), Vec::new());
+    };
+    let x: Vec<f64> = y.iter().map(|v| v - m).collect();
+    let mut out = Vec::with_capacity(max_lag + 1);
+    let mut pairs = Vec::with_capacity(max_lag + 1);
+    let mut c0 = 0.0;
+    for k in 0..=max_lag.min(y.len().saturating_sub(1)) {
+        let (mut s, mut n) = (0.0, 0usize);
+        for i in 0..x.len() - k {
+            if x[i].is_finite() && x[i + k].is_finite() {
+                s += x[i] * x[i + k];
+                n += 1;
+            }
+        }
+        let c = if n > 0 { s / n as f64 } else { f64::NAN };
+        if k == 0 {
+            c0 = c;
+        }
+        out.push(if c0 > 0.0 { c / c0 } else { f64::NAN });
+        pairs.push(n);
+    }
+    (out, pairs)
+}
+
+/// Overlapping Allan deviation of a series of averages (frequency-type
+/// data) at octave multiples of one reading. A block counts only when
+/// every one of its readings exists: one at the edge of a gap is left
+/// out, not averaged over what is left.
+pub fn allan(y: &[f64], step: f64) -> Vec<(f64, f64, usize)> {
+    let n = y.len();
+    let mut sum = vec![0.0; n + 1];
+    let mut cnt = vec![0usize; n + 1];
+    for i in 0..n {
+        let ok = y[i].is_finite();
+        sum[i + 1] = sum[i] + if ok { y[i] } else { 0.0 };
+        cnt[i + 1] = cnt[i] + ok as usize;
+    }
+    let block = |a: usize, m: usize| {
+        let c = cnt[a + m] - cnt[a];
+        (c == m).then(|| (sum[a + m] - sum[a]) / c as f64)
+    };
+    let mut out = Vec::new();
+    let mut m = 1;
+    while 2 * m < n {
+        let (mut s, mut k) = (0.0, 0usize);
+        for a in 0..=(n - 2 * m) {
+            if let (Some(p), Some(q)) = (block(a, m), block(a + m, m)) {
+                s += (q - p).powi(2);
+                k += 1;
+            }
+        }
+        // Independent differences, not overlapping ones, set how many
+        // there really are.
+        let independent = k / m;
+        if independent < 3 {
+            break;
+        }
+        out.push((m as f64 * step, (0.5 * s / k as f64).sqrt(), independent));
+        m *= 2;
+    }
+    out
+}
+
+/// Split block medians into stretches of constant mean by binary
+/// segmentation. Returns the start index of each stretch.
+fn segment(y: &[f64], sigma: f64, min_len: usize, penalty: f64) -> Vec<usize> {
+    let mut cuts = vec![0usize, y.len()];
+    let mut work = vec![(0usize, y.len())];
+    while let Some((a, b)) = work.pop() {
+        if b - a < 2 * min_len {
+            continue;
+        }
+        let total: f64 = y[a..b].iter().sum();
+        let n = (b - a) as f64;
+        let mut left = 0.0;
+        let mut best = (0.0, 0usize);
+        for (k, &v) in y.iter().enumerate().take(b - 1).skip(a) {
+            left += v;
+            let n1 = (k + 1 - a) as f64;
+            let i = k + 1;
+            if i - a < min_len || b - i < min_len {
+                continue;
+            }
+            let n2 = n - n1;
+            let d = left / n1 - (total - left) / n2;
+            let gain = n1 * n2 / n * d * d / (sigma * sigma);
+            if gain > best.0 {
+                best = (gain, i);
+            }
+        }
+        if best.0 > penalty {
+            cuts.push(best.1);
+            work.push((a, best.1));
+            work.push((best.1, b));
+        }
+    }
+    cuts.sort();
+    cuts.pop();
+    cuts
+}
+
+fn thin(n: usize, max: usize) -> usize {
+    n.div_ceil(max.max(1)).max(1)
+}
+
+// ------------------------------------------------------------------ series
+
+/// The share of variance explained when `fitted` replaces the values.
+fn explained(y: &[f64], fitted: &[f64]) -> f64 {
+    let Some((m, _)) = mean_sd(y) else { return 0.0 };
+    let (mut ss, mut rs) = (0.0, 0.0);
+    for (&v, &f) in y.iter().zip(fitted) {
+        if v.is_finite() && f.is_finite() {
+            ss += (v - m).powi(2);
+            rs += (v - f).powi(2);
+        }
+    }
+    if ss > 0.0 {
+        (1.0 - rs / ss).max(0.0)
+    } else {
+        0.0
+    }
+}
+
+/// Set lone wild readings (a knock, a dropped beat) to NaN; returns how
+/// many. A reading counts as wild when it sits more than `k` σ from the
+/// slow trend, σ being the larger of the scatter between neighbours and
+/// the spread about the trend. When more than 3% of the readings would
+/// go, they are part of what the watch does (a cycle, a state), not
+/// outliers, and all are kept.
+pub(crate) fn drop_outliers(g: &mut Grid, k: f64) -> usize {
+    let base = longterm::detrend(g, 300.0);
+    let mut dev: Vec<f64> = base
+        .y
+        .iter()
+        .map(|d| d.abs())
+        .filter(|d| d.is_finite())
+        .collect();
+    if dev.len() < 10 {
+        return 0;
+    }
+    let spread = 1.4826 * median(&mut dev);
+    let sigma = robust_diff_sigma(&g.y).unwrap_or(0.0).max(spread);
+    if sigma.is_nan() || sigma <= 0.0 {
+        return 0;
+    }
+    let wild: Vec<usize> = (0..g.y.len())
+        .filter(|&i| g.y[i].is_finite() && base.y[i].abs() > k * sigma)
+        .collect();
+    if wild.len() as f64 > 0.03 * dev.len() as f64 {
+        return 0;
+    }
+    for &i in &wild {
+        g.y[i] = f64::NAN;
+    }
+    wild.len()
+}
+
+fn period_of(r: &longterm::SeriesReport, unit: &'static str) -> Option<Period> {
+    r.components.first().map(|c| Period {
+        period_s: c.period_s,
+        significance: c.significance,
+        beyond_simulated: c.beyond_simulated,
+        explained: c.explained,
+        peak_to_peak: c.peak_to_peak,
+        timing_peak_to_peak_ms: None,
+        size: c.peak_to_peak,
+        size_unit: unit,
+        wheel: c.wheel.clone(),
+        other_periods_s: r.components[1..].iter().map(|c| c.period_s).collect(),
+        harmonic_of: c.harmonic_of,
+        other_harmonic_of: r.components[1..].iter().map(|c| c.harmonic_of).collect(),
+    })
+}
+
+/// Fewest pairs of readings a lag of the autocorrelation is read from for
+/// the Ljung–Box test or a repeat to count it: below this its correlation
+/// strays by over a third under independent readings.
+const MIN_PAIRS: usize = 30;
+
+/// The 95% band of the autocorrelation at a lag of `lag` readings read
+/// from `pairs` pairs, in a grid of `n` readings: 1.96/√ of its pairs
+/// scaled to a full series' (so 1.96/√n with every reading present).
+/// `None` for a lag read from under [`MIN_PAIRS`] pairs, which counts for
+/// nothing.
+fn band_at_lag(pairs: f64, lag: f64, n: f64) -> Option<f64> {
+    (pairs >= MIN_PAIRS as f64 - 0.5).then(|| 1.96 / (pairs * n / (n - lag).max(1.0)).sqrt())
+}
+
+/// [`autocorrelation_less`] of `g` less its slow change, taken out as the
+/// period search takes it out. With `held`, for a series whose p goes to
+/// Holm's correction, each lag is read less what white readings of its
+/// count read once detrended the same way, and the Ljung–Box test is held
+/// to those readings ([`white::white_null`], #1199; outside its table, the
+/// plain χ²): that bias is about
+/// −3/n at lag one after the quadratic of a run under 20 minutes (#828)
+/// and about −0.7/window under a running median. Without (the 2 s windows
+/// a repeat is looked for in, whose p nothing reads), the plain χ².
+fn detrended_autocorrelation(g: &Grid, held: bool, cfg: &Config) -> Autocorrelation {
+    let d = longterm::detrend(g, longterm::DETREND_S);
+    let n = g.y.iter().filter(|v| v.is_finite()).count();
+    let null = held
+        .then(|| white::white_null(n, g.y.len(), g.step, cfg.ljung_box_lags))
+        .flatten();
+    autocorrelation_less(&d.y, g.step, null.as_ref(), cfg)
+}
+
+/// The longest lag the autocorrelation is read to.
+fn max_lag(len: usize, step: f64, cfg: &Config) -> usize {
+    ((cfg.max_lag_s / step) as usize)
+        .min(len / 3)
+        .max(cfg.ljung_box_lags.min(len / 3))
+}
+
+/// Autocorrelation of readings on a uniform grid (gaps NaN), with the
+/// Ljung–Box test, the memory and a repeat; with `null`, each lag less its
+/// bias and the test read against its scaled χ², else the plain χ².
+fn autocorrelation_less(
+    y: &[f64],
+    step: f64,
+    null: Option<&white::WhiteNull>,
+    cfg: &Config,
+) -> Autocorrelation {
+    let n = y.iter().filter(|v| v.is_finite()).count();
+    let (mut r, pairs) = acf_pairs(y, max_lag(y.len(), step, cfg));
+    if let Some(w) = null {
+        r.iter_mut().zip(&w.bias).skip(1).for_each(|(v, b)| *v -= b);
+    }
+    // Gaps leave fewer pairs at a lag than a full series would have, and a
+    // correlation read from few pairs strays far: each lag is weighed by
+    // its pairs, and one read from under MIN_PAIRS counts for nothing. A
+    // lag read as the mean product over its pairs scatters about
+    // n/((n + 2) pairs) in square, so with every reading present this is
+    // the usual Ljung–Box Q; weighing it as the usual sum over all n
+    // read the Q up to n²/(n − k)² too high, a quarter at lag 10 of 90
+    // readings (#828).
+    let ng = y.len() as f64;
+    let supported = |k: usize| pairs.get(k).is_some_and(|&m| m >= MIN_PAIRS);
+    let h_max = cfg.ljung_box_lags.min(r.len().saturating_sub(1)).max(1);
+    let lags = white::q_lags(&r, &pairs, h_max);
+    let h = lags.len();
+    let q = white::ljung_q(&r, &pairs, n, &lags);
+    let max_short = lags.iter().fold(0.0f64, |a, &k| a.max(r[k].abs()));
+    let memory = r
+        .iter()
+        .position(|&v| v < (-1.0f64).exp())
+        .map(|k| k as f64 * step);
+    let nf = n as f64;
+    let band = 1.96 / nf.sqrt();
+    // A repeat: a local peak, strong, after the correlation has fallen
+    // well below it, and that comes back at twice the lag (a cycle
+    // repeats; a chance bump does not), each read from enough pairs.
+    let repeat = (2..r.len().saturating_sub(1)).find(|&k| {
+        let again: Vec<usize> = (2 * k * 9 / 10..=(2 * k * 11 / 10).min(r.len() - 1)).collect();
+        if !supported(k) || !again.iter().all(|&j| supported(j)) {
+            return false;
+        }
+        let lo = r[1..k].iter().copied().fold(f64::INFINITY, f64::min);
+        let again = again
+            .iter()
+            .map(|&j| r[j])
+            .fold(f64::NEG_INFINITY, f64::max);
+        r[k] >= r[k - 1]
+            && r[k] > r[k + 1]
+            && band_at_lag(pairs[k] as f64, k as f64, ng)
+                .is_some_and(|b| r[k] >= 0.3f64.max(4.0 * b))
+            && lo <= r[k] - 0.3
+            && again >= 0.5 * r[k]
+    });
+    let stride = thin(r.len(), cfg.max_points);
+    let lb_p = match (h, null) {
+        (0, _) => 1.0,
+        (_, Some(w)) => w.p(q),
+        (_, None) => chi2_tail(q, h),
+    };
+    Autocorrelation {
+        lag_s: (0..r.len())
+            .step_by(stride)
+            .map(|k| k as f64 * step)
+            .collect(),
+        r: r.iter().step_by(stride).copied().collect(),
+        band,
+        band_by_lag: pairs
+            .iter()
+            .step_by(stride)
+            .map(|&k| {
+                if k > 0 {
+                    1.96 / (k as f64).sqrt()
+                } else {
+                    f64::NAN
+                }
+            })
+            .collect(),
+        ljung_box_q: q,
+        ljung_box_lags: h,
+        p_value: lb_p,
+        max_short_lag_r: max_short,
+        repeat_lag_s: repeat.map(|k| k as f64 * step),
+        repeat_r: repeat.map(|k| r[k]),
+        memory_s: memory,
+    }
+}
+
+/// Test one series. `g` is on a uniform grid of readings with gaps as NaN.
+/// `fine`, when given, holds the same series in shorter windows: the
+/// headline is read from `g`, but cycles are looked for in `fine`, which
+/// keeps cycles too short for `g`'s readings.
+#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
+pub fn check_series(
+    kind: SeriesKind,
+    mut g: Grid,
+    fine: Option<Grid>,
+    period: Option<Period>,
+    two_state: Option<TwoState>,
+    wheels: &[Wheel],
+    cfg: &Config,
+) -> SeriesCheck {
+    let outliers = drop_outliers(&mut g, cfg.outlier_sigma);
+    let fine = fine.map(|mut f| {
+        drop_outliers(&mut f, cfg.outlier_sigma);
+        f
+    });
+    let y = &g.y;
+    let n = y.iter().filter(|v| v.is_finite()).count();
+    let mut out = SeriesCheck {
+        beat_error_source: None,
+        beat_error_sources: Default::default(),
+        caveats: Vec::new(),
+        series: kind,
+        unit: kind.unit(),
+        lead: Lead::TooShort,
+        headline: String::new(),
+        summary: String::new(),
+        screen_headline: String::new(),
+        screen_summary: String::new(),
+        screen_stats: String::new(),
+        step_s: g.step,
+        cycle_step_s: fine.as_ref().map_or(g.step, |f| f.step),
+        readings: n,
+        outliers,
+        median: {
+            let mut v = finite(y);
+            (!v.is_empty()).then(|| median(&mut v))
+        },
+        sd: mean_sd(y).map(|m| m.1),
+        short_term_sd: short_term_sd(y),
+        long_run_sd: None,
+        effective_readings: n as f64,
+        long_run_rho: 0.0,
+        autocorrelation: None,
+        repeat_mark: None,
+        screen_cycle_size: None,
+        cycle_off_search_s: None,
+        allan: None,
+        cusum: None,
+        changes: None,
+        trend: None,
+        period,
+        two_state,
+        null: None,
+        cycle: None,
+        unlock_hopping: false,
+    };
+    if n < 30 || g.span() < 120.0 {
+        out.headline = format!(
+            "{} {:.0} s {} readings over {:.0} s: too few to search for structure (needs 30 readings over 120 s).",
+            n,
+            g.step,
+            kind.name(),
+            g.span()
+        );
+        out.summary = format!("{n} readings, too few to search");
+        out.set_screen_text();
+        return out;
+    }
+    let (mean, sd) = mean_sd(y).unwrap();
+    let sst = out.short_term_sd.unwrap_or(sd);
+
+    let nf = n as f64;
+    // The slow trend taken out first, as the period search does: a rate
+    // drifting as the mainspring runs down would otherwise read as memory.
+    out.autocorrelation = Some(detrended_autocorrelation(&g, true, cfg));
+
+    // Allan deviation with the line independent readings would follow.
+    let ad = allan(y, g.step);
+    if !ad.is_empty() {
+        let a0 = ad[0].1;
+        let white: Vec<f64> = ad.iter().map(|p| a0 / (p.0 / g.step).sqrt()).collect();
+        let pts: Vec<(f64, f64)> = ad
+            .iter()
+            .take(4)
+            .filter(|p| p.1 > 0.0)
+            .map(|p| (p.0.ln(), p.1.ln()))
+            .collect();
+        let slope = (pts.len() >= 3).then(|| {
+            let mx = pts.iter().map(|p| p.0).sum::<f64>() / pts.len() as f64;
+            let my = pts.iter().map(|p| p.1).sum::<f64>() / pts.len() as f64;
+            let sxy: f64 = pts.iter().map(|p| (p.0 - mx) * (p.1 - my)).sum();
+            let sxx: f64 = pts.iter().map(|p| (p.0 - mx).powi(2)).sum();
+            sxy / sxx
+        });
+        out.allan = Some(Allan::of(&ad, white, slope));
+    }
+
+    // CUSUM against the mean, scaled by the readings' long-run σ: the
+    // short-term σ, so slow change cannot hide itself by inflating the
+    // scale, allowing for their correlation once their largest step is
+    // out (#647).
+    let lr = confidence::long_run_sd(y, sst, Slow::ChosenStep);
+    out.long_run_sd = Some(lr);
+    out.long_run_rho = confidence::long_run_rho(y, Slow::ChosenStep);
+    out.effective_readings = confidence::effective_readings(nf, out.long_run_rho);
+    let mut walk = None;
+    if lr > 0.0 {
+        let scale = lr * nf.sqrt();
+        let mut s = 0.0;
+        let mut ts = Vec::with_capacity(n);
+        let mut ss = Vec::with_capacity(n);
+        for (i, &v) in y.iter().enumerate() {
+            if v.is_finite() {
+                s += (v - mean) / scale;
+                ts.push(g.time(i));
+                ss.push(s);
+            }
+        }
+        walk = Some((ts, ss));
+    }
+
+    // Straight-line trend.
+    let (mut sx, mut sy, mut sxx, mut sxy, mut c) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    for (i, &v) in y.iter().enumerate() {
+        if v.is_finite() {
+            let t = g.time(i);
+            sx += t;
+            sy += v;
+            sxx += t * t;
+            sxy += t * v;
+            c += 1.0;
+        }
+    }
+    let slope = (c * sxy - sx * sy) / (c * sxx - sx * sx).max(1e-300);
+    let icpt = (sy - slope * sx) / c;
+    let line: Vec<f64> = (0..y.len()).map(|i| icpt + slope * g.time(i)).collect();
+    let (ft, fy): (Vec<f64>, Vec<f64>) = (0..y.len())
+        .filter(|&i| y[i].is_finite())
+        .map(|i| (g.time(i), y[i]))
+        .unzip();
+    let qc = polyfit2(&ft, &fy);
+    let curve_at = |t: f64| qc[0] + qc[1] * t + qc[2] * t * t;
+    let curve: Vec<f64> = (0..y.len()).map(|i| curve_at(g.time(i))).collect();
+    let (t_a, t_b) = (ft[0], ft[ft.len() - 1]);
+    let vertex = -qc[1] / (2.0 * qc[2]);
+    let trend = Trend {
+        per_hour: slope * 3600.0,
+        explained: explained(y, &line),
+        curve_explained: explained(y, &curve),
+        start: curve_at(t_a),
+        end: curve_at(t_b),
+        turn: (qc[2] != 0.0
+            && vertex > t_a + 0.1 * (t_b - t_a)
+            && vertex < t_b - 0.1 * (t_b - t_a))
+            .then(|| (vertex, curve_at(vertex))),
+        p_value: family::trend_p(y, explained(y, &curve)),
+        significant: false,
+        named: false,
+        note: None,
+    };
+
+    // Change points on block medians.
+    let per = ((cfg.change_block_s / g.step).round() as usize).max(1);
+    let blocks: Vec<(usize, f64)> = (0..y.len().div_ceil(per))
+        .filter_map(|b| {
+            let mut v = finite(&y[b * per..((b + 1) * per).min(y.len())]);
+            (2 * v.len() >= per.min(y.len() - b * per)).then(|| (b, median(&mut v)))
+        })
+        .collect();
+    let bv: Vec<f64> = blocks.iter().map(|b| b.1).collect();
+    if let Some(bs) = robust_diff_sigma(&bv).filter(|s| *s > 0.0) {
+        // Each split is judged against the medians' long-run σ, as the
+        // CUSUM is (#649).
+        let lr = confidence::long_run_sd(&bv, bs, Slow::Step);
+        let min_len = ((cfg.change_min_segment_s / (per as f64 * g.step)).ceil() as usize).max(3);
+        // Strong evidence: well past a BIC penalty for each extra mean.
+        let penalty = (3.0 * (bv.len() as f64).ln()).max(15.0);
+        let cuts = segment(&bv, lr, min_len, penalty);
+        let mut segs = Vec::new();
+        let mut fitted = vec![f64::NAN; y.len()];
+        for (j, &a) in cuts.iter().enumerate() {
+            let b = cuts.get(j + 1).copied().unwrap_or(bv.len());
+            let m = bv[a..b].iter().sum::<f64>() / (b - a) as f64;
+            let i0 = blocks[a].0 * per;
+            let i1 = ((blocks[b - 1].0 + 1) * per).min(y.len());
+            for f in &mut fitted[i0..i1] {
+                *f = m;
+            }
+            segs.push(Segment {
+                start_s: g.t0 + i0 as f64 * g.step,
+                end_s: g.t0 + i1 as f64 * g.step,
+                mean: m,
+            });
+        }
+        out.changes = Some(Changes {
+            block_s: per as f64 * g.step,
+            block_sigma: bs,
+            long_run_sigma: lr,
+            explained: explained(y, &fitted),
+            p_value: walk.as_ref().map_or(1.0, |w| crate::cusum::walk_p(&w.1)),
+            segments: segs,
+            named: false,
+            note: None,
+        });
+    }
+    out.trend = Some(trend);
+
+    out.cycle = cycle(&out, &g, fine.as_ref(), wheels, cfg);
+    out.lead = lead(&out, cfg);
+    family::mark_named(&mut out, cfg);
+    if let Some((ts, ss)) = walk {
+        // The corner is marked only at a level change the headline
+        // names (#697), as its lead or its runner-up (#1984).
+        let cuts: Vec<f64> = family::level_named(&out, cfg)
+            .iter()
+            .flat_map(|c| c.segments.iter().skip(1).map(|g| g.start_s))
+            .collect();
+        out.cusum = Some(Cusum::of(&ts, &ss, thin(ss.len(), cfg.max_points), &cuts));
+    }
+    out.headline = lead_text(&out, mean);
+    out.summary = lead_summary(&out);
+    if let Some(more) = also(&out, cfg) {
+        out.headline = format!("{} {more}", out.headline);
+    }
+    if let Some(fast) = fast_sentence(&out) {
+        out.headline = format!("{} {fast}", out.headline);
+    }
+    if let Some(more) = search_also(&out) {
+        out.headline = format!("{} {more}", out.headline);
+    }
+    out.set_screen_text();
+    out
+}
+
+/// The period search's lines the headline does not name: not the cycle
+/// (or the shorter cycle inside it), and not the fast line, within the resolution (period²
+/// over the take, at least 1%). The search lists only lines that pass
+/// its own significance test.
+fn search_also(s: &SeriesCheck) -> Option<String> {
+    let p = s.period.as_ref()?;
+    let near = |a: f64, b: f64| s.same_search_line(a, b);
+    let named: Vec<f64> = s
+        .cycle
+        .iter()
+        .flat_map(|c| [Some(c.period_s), c.inner_period_s])
+        .flatten()
+        .collect();
+    let fast = s.faster_than_readings().is_some();
+    // Seconds throughout: minutes rounded would make 225 s and 263 s
+    // both "4 min".
+    let period = |q: f64| {
+        if q < 30.0 {
+            format!("{q:.1} s")
+        } else {
+            format!("{q:.0} s")
+        }
+    };
+    let mut lines = Vec::new();
+    if !fast && !named.iter().any(|&n| near(p.period_s, n)) {
+        let size = SeriesKind::fmt_size_in(p.size_unit, p.size);
+        let wheel = p
+            .wheel
+            .as_ref()
+            .map_or(String::new(), |w| format!(", the {w}'s period"));
+        // A sine's size: a plain "peak to peak" is the cycle's (#761).
+        lines.push(format!(
+            "{} ({size} sine peak to peak{wheel})",
+            period(p.period_s)
+        ));
+    }
+    // A line at a whole fraction of a found cycle is that cycle's
+    // harmonic, part of its shape, not a cycle of its own (Norm).
+    lines.extend(
+        p.other_periods_s
+            .iter()
+            .zip(p.other_harmonic_of.iter().chain(std::iter::repeat(&None)))
+            .filter(|&(&q, h)| h.is_none() && !named.iter().any(|&n| near(q, n)))
+            .map(|(&q, _)| period(q)),
+    );
+    let list = match lines.as_slice() {
+        [] => return None,
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    };
+    Some(format!(
+        "The {}'s period search also finds {list}.",
+        s.series.name()
+    ))
+}
+
+/// A second sentence for structure the headline does not name: a cycle
+/// under steps or a slide, or steps or a slide under a cycle.
+fn also(s: &SeriesCheck, cfg: &Config) -> Option<String> {
+    let k = s.series;
+    // Named, not "it": after a one-sided lead "it" would read as the side.
+    let the = format!("The {}", k.name());
+    let mut out = Vec::new();
+    if let Some(c) = s.cycle.as_ref().filter(|_| s.lead != Lead::Periodic) {
+        out.push(format!(
+            "{the} also repeats every {:.0} s{}{}, {} peak to peak.",
+            c.period_s,
+            c.wheel
+                .as_ref()
+                .map_or(String::new(), |w| format!(" (the {w})")),
+            inner_text(c),
+            k.fmt_size(c.peak_to_peak)
+        ));
+    }
+    let moves = !matches!(
+        s.lead,
+        Lead::ShiftingMean | Lead::Drifting | Lead::StepOrSlide
+    );
+    if let Some(ch) = family::level_change(s, cfg).filter(|_| moves) {
+        let lo = ch
+            .segments
+            .iter()
+            .map(|g| g.mean)
+            .fold(f64::INFINITY, f64::min);
+        let hi = ch
+            .segments
+            .iter()
+            .map(|g| g.mean)
+            .fold(f64::NEG_INFINITY, f64::max);
+        out.push(format!(
+            "{the}'s level also moves over the take, between {} and {}.",
+            k.fmt(lo),
+            k.fmt(hi)
+        ));
+    }
+    if let Some(t) = runner_up(s, cfg) {
+        out.push(t);
+    }
+    (!out.is_empty()).then(|| out.join(" "))
+}
+
+/// Fold the detrended readings at `period`: the share of their variance
+/// the mean shape of one cycle explains, less what noise alone would give
+/// (bins − 1 over the readings), and the shape's peak to peak.
+fn fold(d: &Grid, period: f64) -> (f64, f64) {
+    let bins = ((period / d.step).round() as usize).clamp(2, 30);
+    let mut sum = vec![0.0; bins];
+    let mut n = vec![0usize; bins];
+    for (i, &v) in d.y.iter().enumerate() {
+        if v.is_finite() {
+            let x = (d.time(i) - d.t0) / period;
+            let b = (((x - x.floor()) * bins as f64) as usize).min(bins - 1);
+            sum[b] += v;
+            n[b] += 1;
+        }
+    }
+    let total: usize = n.iter().sum();
+    if total < 2 * bins {
+        return (0.0, 0.0);
+    }
+    let mean = sum.iter().sum::<f64>() / total as f64;
+    let var =
+        d.y.iter()
+            .filter(|v| v.is_finite())
+            .map(|v| (v - mean).powi(2))
+            .sum::<f64>();
+    let m: Vec<(f64, usize)> = sum
+        .iter()
+        .zip(&n)
+        .filter(|(_, &c)| c > 0)
+        .map(|(s, &c)| (s / c as f64, c))
+        .collect();
+    let between: f64 = m.iter().map(|(v, c)| *c as f64 * (v - mean).powi(2)).sum();
+    let hi = m.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
+    let lo = m.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
+    let share = if var > 0.0 { between / var } else { 0.0 };
+    (share - (bins - 1) as f64 / total as f64, hi - lo)
+}
+
+/// The name of the first of `wheels` whose turn is within 6% of `period`
+/// (seconds), or None.
+pub fn wheel_for(period: f64, wheels: &[Wheel]) -> Option<String> {
+    wheels
+        .iter()
+        .find(|w| (period / w.period_s - 1.0).abs() < 0.06)
+        .map(|w| w.name.clone())
+}
+
+/// Whether a cycle of `period` stands apart from a fast line's alias.
+/// The alias itself is set aside, and so is a whole number of its turns
+/// unless the cycle explains clearly more than folding at the alias does
+/// (a real slow cycle at that period does). A cycle the period search
+/// also finds in the beat timing, where it is slow enough to need no
+/// readings, is real however it aliases.
+fn clears_alias(period: f64, explained: f64, d: &Grid, search: Option<&Period>) -> bool {
+    slow_search_line(period, d.step, d.span(), search)
+        || alias_of_fast_line(period, d.step, d.span(), search).is_none_or(|a| {
+            (period / a - 1.0).abs() >= 0.05 && explained > 1.25 * fold(d, refine(d, a, 0.03)).0
+        })
+}
+
+/// The cycle at half of `c`'s period, when the readings repeat there.
+///
+/// Folded at a period of an odd number of readings, n, the readings fall
+/// in the same groups as at half of it: reading k is at phase k/n of the
+/// one and 2k/n of the other, and with n odd both visit the same n
+/// phases, in another order (a 45 s cycle in 10 s readings can be found
+/// at 90 s, nine readings a turn). Which of the two the readings follow
+/// shows in the shape's harmonics: a shape that repeats at half the
+/// period has its variance in the even ones. The cycle moves to half its
+/// period when sines at the half and the quarter explain 85% or more of
+/// what all n phases explain (sines at every harmonic up to n/2; at seven
+/// readings, where the quarter is under two readings and cannot be told
+/// from the third, the half alone), and the
+/// moved cycle then explains 10% or more on its own and clears a fast
+/// line's alias as any cycle must. A line the period search lists at an
+/// odd harmonic, or a listed fast line's alias there, is a line of its
+/// own sharing those phases (a 30 s line, or the 30 s alias of a 3.75 s
+/// escape wheel, a third of 90 s) and is left out of the n phases first.
+/// A cycle the search lists at its own period stays.
+///
+/// The moved cycle's period is half the period found, which the fold
+/// pinned to under half a reading; its share and size are those of the
+/// fitted sines (one at seven readings a turn, else two), since a fold
+/// at 4.5 readings a turn puts readings of different phases in one bin
+/// and reads low. Net of a fast line's alias
+/// at a turn and a half or more of it, as for any cycle.
+fn half_cycle(
+    c: &Cycle,
+    d: &Grid,
+    search: Option<&Period>,
+    wheels: &[Wheel],
+    cfg: &Config,
+) -> Option<Cycle> {
+    let p = c.period_s;
+    let n = p / d.step;
+    // Only a period known to under half a reading has one whole number of
+    // readings to be odd.
+    let tol = (p * p / d.span()).max(0.01 * p) / d.step;
+    let odd = tol < 0.5 && (n - n.round()).abs() <= tol && n.round() as i64 % 2 == 1;
+    let listed = |q| slow_search_line(q, d.step, d.span(), search);
+    if !odd || n.round() < 7.0 || listed(p) {
+        return None;
+    }
+    let own = |q: f64| {
+        listed(q)
+            || alias_of_fast_line(q, d.step, d.span(), search)
+                .is_some_and(|a| (q / a - 1.0).abs() < 0.05)
+    };
+    let h = n.round() as usize / 2;
+    let phases: Vec<f64> = (1..=h)
+        .filter(|&k| k % 2 == 0 || k == 1 || !own(p / k as f64))
+        .map(|k| p / k as f64)
+        .collect();
+    let t = p / 2.0;
+    // At seven readings a turn the quarter (1.75 readings) cannot be told
+    // from the third in the readings, so the half is fitted alone.
+    let half_sines: &[f64] = if t / 2.0 < 2.0 * d.step {
+        &[t]
+    } else {
+        &[t, t / 2.0]
+    };
+    let (all, _) = sine_fit(d, &phases, p);
+    let (half, mut ptp) = sine_fit(d, half_sines, t);
+    if all <= 0.0 || half < 0.85 * all || !clears_alias(t, half, d, search) {
+        return None;
+    }
+    let mut explained = half;
+    if let Some(a) = alias_of_fast_line(t, d.step, d.span(), search) {
+        if t / a >= 1.25 {
+            let (rest, kept) = without_fold(d, refine(d, a, 0.03));
+            let (e, size) = sine_fit(&rest, half_sines, t);
+            explained = e * kept;
+            ptp = size;
+        }
+    }
+    (explained >= cfg.periodic_min_explained).then(|| Cycle {
+        period_s: t,
+        peak_to_peak: ptp,
+        explained,
+        source: c.source,
+        wheel: wheel_for(t, wheels),
+        inner_period_s: None,
+        inner_explained: None,
+        turns: None,
+    })
+}
+
+/// A cycle's share and size at `period`: its fold's, when a turn holds a
+/// whole number of readings (within a tenth of one) or more than the
+/// fold's 30 bins; otherwise the fitted sines at the period and each of
+/// its harmonics the readings resolve (two readings or more a turn, up to
+/// the 8th). A fold of whole bins at a turn of 4.5 readings (a 45 s cycle
+/// in 10 s readings) puts readings of different phases in one bin and
+/// reads 0.8 to 0.9 of a sine's size.
+fn sized(d: &Grid, period: f64) -> (f64, f64) {
+    let n = period / d.step;
+    if n > 30.0 || (n - n.round()).abs() <= 0.1 {
+        return fold(d, period);
+    }
+    let harmonics: Vec<f64> = (1..=8)
+        .map(|k| period / k as f64)
+        .filter(|&q| q >= 2.0 * d.step)
+        .collect();
+    sine_fit(d, &harmonics, period)
+}
+
+/// Least squares fit of a mean and a sine at each of `periods`: the share
+/// of the readings' variance it explains, less what noise alone would give
+/// (two per sine over the readings), and its peak to peak over one `turn`.
+fn sine_fit(d: &Grid, periods: &[f64], turn: f64) -> (f64, f64) {
+    let m = 1 + 2 * periods.len();
+    let Some(b) = longterm::sines_fit(d, periods) else {
+        return (0.0, 0.0);
+    };
+    let fit = |t: f64| longterm::sines_at(periods, &b, t);
+    let pts: Vec<(f64, f64)> =
+        d.y.iter()
+            .enumerate()
+            .filter(|(_, v)| v.is_finite())
+            .map(|(i, &v)| (d.time(i) - d.t0, v))
+            .collect();
+    let n = pts.len();
+    let mean = pts.iter().map(|p| p.1).sum::<f64>() / n as f64;
+    let total: f64 = pts.iter().map(|p| (p.1 - mean).powi(2)).sum();
+    let between: f64 = pts.iter().map(|p| (fit(p.0) - mean).powi(2)).sum();
+    if total <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let curve: Vec<f64> = (0..200).map(|i| fit(turn * i as f64 / 200.0)).collect();
+    let hi = curve.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let lo = curve.iter().copied().fold(f64::INFINITY, f64::min);
+    (between / total - (m - 1) as f64 / n as f64, hi - lo)
+}
+
+/// The cycle folded at `period`.
+fn cycle_at(d: &Grid, period: f64, source: CycleSource, wheels: &[Wheel]) -> Cycle {
+    let (explained, peak_to_peak) = sized(d, period);
+    Cycle {
+        period_s: period,
+        peak_to_peak,
+        explained,
+        source,
+        wheel: wheel_for(period, wheels),
+        inner_period_s: None,
+        inner_explained: None,
+        turns: None,
+    }
+}
+
+/// The readings less their fold at `period`, and the share of their
+/// variance left.
+fn without_fold(d: &Grid, period: f64) -> (Grid, f64) {
+    let bins = ((period / d.step).round() as usize).clamp(2, 30);
+    let bin = |i: usize| {
+        let x = (d.time(i) - d.t0) / period;
+        (((x - x.floor()) * bins as f64) as usize).min(bins - 1)
+    };
+    let mut sum = vec![0.0; bins];
+    let mut n = vec![0usize; bins];
+    for (i, &v) in d.y.iter().enumerate() {
+        if v.is_finite() {
+            sum[bin(i)] += v;
+            n[bin(i)] += 1;
+        }
+    }
+    let mut rest = d.clone();
+    for (i, v) in rest.y.iter_mut().enumerate() {
+        if v.is_finite() && n[bin(i)] > 0 {
+            *v -= sum[bin(i)] / n[bin(i)] as f64;
+        }
+    }
+    let var = |y: &[f64]| {
+        let f: Vec<f64> = y.iter().copied().filter(|v| v.is_finite()).collect();
+        let m = f.iter().sum::<f64>() / f.len().max(1) as f64;
+        f.iter().map(|v| (v - m).powi(2)).sum::<f64>()
+    };
+    let total = var(&d.y);
+    let kept = if total > 0.0 {
+        var(&rest.y) / total
+    } else {
+        0.0
+    };
+    (rest, kept)
+}
+
+/// Whether the period search has a line of three readings or longer
+/// within its resolution (period² over the span, at least 1%) of
+/// `period`: the search's own rule for matching a wheel.
+fn slow_search_line(period: f64, step: f64, span: f64, search: Option<&Period>) -> bool {
+    search.is_some_and(|p| {
+        std::iter::once(p.period_s)
+            .chain(p.other_periods_s.iter().copied())
+            .any(|q| q >= 3.0 * step && (period - q).abs() <= (q * q / span).max(0.01 * q))
+    })
+}
+
+/// The alias period, when a cycle of `period` in readings `step` apart
+/// is a whole number of turns of the alias of a period-search line too
+/// fast for the readings, or a half number that is also a whole number
+/// of the line's own turns, within the resolution (period² over
+/// `span`, at least 1%, and at least 5% of the alias). Readings averaged
+/// over `step` sample a line of frequency ν at 1/`step`, so it shows at
+/// |ν − m/`step`| for the nearest whole m: a 15-tooth escape wheel at
+/// 28,800 bph (3.75 s) reads as a 30 s cycle in 10 s readings, and folds
+/// as well at 60 s, 120 s or 330 s, and partly at 75 s. The readings
+/// alone cannot tell such a cycle from a slow one, so the caller sets it
+/// aside unless folding at its period explains clearly more than at the
+/// alias: the same watch's fourth wheel turns in 60 s, two turns of that
+/// alias, and is real.
+fn alias_of_fast_line(period: f64, step: f64, span: f64, search: Option<&Period>) -> Option<f64> {
+    let p = search?;
+    let fs = 1.0 / step;
+    std::iter::once(p.period_s)
+        .chain(p.other_periods_s.iter().copied())
+        .filter(|&q| q < 3.0 * step)
+        .find_map(|q| {
+            let nu = 1.0 / q;
+            let alias = (nu - (nu / fs).round() * fs).abs();
+            if alias <= 0.0 {
+                return None;
+            }
+            let a = 1.0 / alias;
+            let m = (2.0 * period / a).round() / 2.0;
+            let tol = (period * period / span).max(0.01 * period).max(0.05 * a);
+            // A half turn holds the alias only where it is also a whole
+            // number of the line's own turns (75 s is 20 of 3.75 s).
+            let holds = m.fract() == 0.0 || (m * a - (m * a / q).round() * q).abs() <= tol;
+            (m >= 1.0 && holds && (period - m * a).abs() <= tol).then_some(a)
+        })
+}
+
+/// ", N turns of a P s cycle" when the cycle holds a shorter one.
+fn inner_text(c: &Cycle) -> String {
+    match (c.inner_period_s, c.turns) {
+        (Some(p), Some(n)) => {
+            let words = [
+                "", "one", "two", "three", "four", "five", "six", "seven", "eight",
+            ];
+            let n = words
+                .get(n as usize)
+                .map_or(n.to_string(), |w| w.to_string());
+            format!(", {n} turns of a {p:.0} s cycle whose shape changes from turn to turn")
+        }
+        _ => String::new(),
+    }
+}
+
+/// The period near `p` (within ± `rel` of it) whose fold explains the
+/// most. A fold over a long take is sharp: a period off by P²/T drifts a
+/// whole turn over a take of T seconds, so after a coarse scan the search
+/// narrows until its step is a twentieth of that.
+fn refine(d: &Grid, p: f64, rel: f64) -> f64 {
+    let fine = (p * p / (20.0 * d.span().max(p))).max(1e-6 * p);
+    let (mut lo, mut hi) = (p * (1.0 - rel), p * (1.0 + rel));
+    let mut best = p;
+    loop {
+        let step = (hi - lo) / 40.0;
+        best = (0..=40)
+            .map(|i| lo + step * i as f64)
+            .map(|q| (q, fold(d, q).0))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map_or(best, |b| b.0);
+        if step <= fine {
+            return best;
+        }
+        lo = best - step;
+        hi = best + step;
+    }
+}
+
+fn lead(s: &SeriesCheck, cfg: &Config) -> Lead {
+    if let Some(t) = &s.two_state {
+        if t.switching_levels() {
+            return Lead::TwoStates;
+        }
+        if t.one_side_or_unlock() {
+            return Lead::Measurement;
+        }
+    }
+    if s.cycle.is_some() {
+        return Lead::Periodic;
+    }
+    let trend = s
+        .trend
+        .as_ref()
+        .map_or(0.0, |t| t.explained.max(t.curve_explained));
+    if let Some(ch) = family::level_moves(s, cfg) {
+        // A slide cut into steps is still a slide, and a step is not a
+        // slide (#721, #1984): the line, the curve and the steps are
+        // weighed by their adjusted explained shares on the readings'
+        // effective count, each paying for its parameters, and a tie goes
+        // to the level change the levels test names (Norm, #1984).
+        // Too correlated to tell the two apart, when both pass their
+        // tests: neither leads (Norm, #1984).
+        if family::slide_passes(s, cfg) && s.long_run_rho >= family::STEP_SLIDE_RHO {
+            return Lead::StepOrSlide;
+        }
+        return if family::slide_outweighs_steps(s, ch) && family::trend_holds(s, cfg) {
+            Lead::Drifting
+        } else {
+            Lead::ShiftingMean
+        };
+    }
+    if trend >= cfg.min_explained && family::trend_holds(s, cfg) {
+        return Lead::Drifting;
+    }
+    let ac = s.autocorrelation.as_ref();
+    let memory =
+        ac.is_some_and(|a| a.p_value < cfg.alpha && a.max_short_lag_r >= cfg.min_correlation);
+    let excess = s.allan.as_ref().is_some_and(|a| a.max_excess >= 2.0);
+    if memory || excess {
+        Lead::Wandering
+    } else {
+        Lead::Steady
+    }
+}
+
+/// The fast line as a sentence of its own, last in the headline, for the
+/// leads whose text does not carry it in place of "no cycle"; beside a
+/// slower cycle it is one the series "also" repeats.
+fn fast_sentence(s: &SeriesCheck) -> Option<String> {
+    match s.lead {
+        Lead::TooShort | Lead::Steady | Lead::Wandering => None,
+        _ => fast_line(s).map(|line| {
+            let mut c = line.chars();
+            let line: String = c
+                .next()
+                .map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
+            format!("{line}.")
+        }),
+    }
+}
+
+/// The lead of [`lead_text`] in a few words: what a plot's title line
+/// says after the series' name.
+fn lead_summary(s: &SeriesCheck) -> String {
+    let k = s.series;
+    let every = every_text;
+    // A line the full headline names elsewhere is a cycle: "no cycle"
+    // only when there is none.
+    let no_cycle = fast_line(s).is_none() && search_also(s).is_none();
+    match s.lead {
+        Lead::TooShort => format!("{} readings, too few to search", s.readings),
+        Lead::Steady if no_cycle => "no cycle, level change or trend".into(),
+        Lead::Steady => "no level change or trend".into(),
+        Lead::Periodic => match (&s.cycle, &s.two_state) {
+            (Some(p), _) => format!(
+                "repeats every {}{}{}, {} peak to peak",
+                every(p.period_s),
+                p.wheel
+                    .as_ref()
+                    .map_or(String::new(), |w| format!(" (the {w})")),
+                match (p.inner_period_s, p.turns) {
+                    (Some(q), Some(n)) => format!(", {n} turns of {q:.0} s"),
+                    _ => String::new(),
+                },
+                k.fmt_size(p.peak_to_peak)
+            ),
+            (None, Some(t)) => format!(
+                "drops to a low level and back{}",
+                t.period_s
+                    .map_or(String::new(), |p| format!(", about every {}", every(p)))
+            ),
+            _ => "repeats on a cycle".into(),
+        },
+        Lead::TwoStates | Lead::Measurement => {
+            let t = s.two_state.as_ref().unwrap();
+            let base = format!(
+                "switches between {} and {}, about every {}",
+                k.fmt(t.low),
+                k.fmt(t.high),
+                every(t.switch_every_s)
+            );
+            if s.lead == Lead::Measurement {
+                // As the headline says why: the side that carries the
+                // change, or the unlock without the drop.
+                let side = match lone_side(t) {
+                    Some(side) => side,
+                    None if t.unlock_jump => return format!("{base}, in the unlock only"),
+                    None if t.tick_change.unwrap_or(0.0).abs()
+                        > t.tock_change.unwrap_or(0.0).abs() =>
+                    {
+                        "Tick"
+                    }
+                    None => "Tock",
+                };
+                format!("{base}, on the {side} side only")
+            } else {
+                base
+            }
+        }
+        Lead::ShiftingMean => shifts_text(s),
+        Lead::StepOrSlide => "shifts level or slides".to_string(),
+        Lead::Drifting => {
+            let t = s.trend.as_ref().unwrap();
+            if let Some((_, v)) = t.turn.filter(|_| t.curve_explained > t.explained + 0.05) {
+                return format!(
+                    "changes slowly, {} to {} to {}",
+                    k.fmt(t.start),
+                    k.fmt(v),
+                    k.fmt(t.end)
+                );
+            }
+            format!("slides from {} to {}", k.fmt(t.start), k.fmt(t.end))
+        }
+        Lead::Wandering if no_cycle => {
+            "successive readings correlated; no cycle, level change or trend".into()
+        }
+        Lead::Wandering => "successive readings correlated; no level change or trend".into(),
+    }
+}
+
+impl SeriesCheck {
+    /// Writes the screen copies of the headline and summary, and the
+    /// Autocorrelation view's mark; called whenever either has its last
+    /// words, after the cycle is chosen.
+    fn set_screen_text(&mut self) {
+        self.repeat_mark = self.autocorrelation_repeat().map(|(l, r)| [l, r]);
+        self.screen_cycle_size = self.cycle_size_text();
+        self.cycle_off_search_s = self.cycle_off_search().map(|c| c.period_s);
+        self.screen_headline = crate::figure_text::figure_minus(&self.headline);
+        self.screen_summary = crate::figure_text::figure_minus(&self.summary);
+        self.screen_stats = crate::figure_text::figure_minus(&self.stats_line());
+    }
+
+    /// Whether `period_s` is the headline cycle's own period, as a fold
+    /// at it is (#1984).
+    pub fn is_cycle_period(&self, period_s: f64) -> bool {
+        self.cycle
+            .as_ref()
+            .is_some_and(|cy| (cy.period_s - period_s).abs() <= 1e-6 * period_s)
+    }
+
+    /// Whether periods `a` and `b` are one line of the period search:
+    /// within its resolution, period² over the take, and at least
+    /// [`SEARCH_REFINE_SHARE`], within which the cycle finder refines a
+    /// search line. The one rule for "the same line" (Norm, #1984).
+    pub fn same_search_line(&self, a: f64, b: f64) -> bool {
+        let span = self.readings as f64 * self.step_s;
+        (a - b).abs() <= (b * b / span).max(SEARCH_REFINE_SHARE * b)
+    }
+
+    /// The period search's sine peak to peak, as the headline's "also
+    /// finds" writes it, when `period_s` is the search's sized line and not
+    /// the headline's cycle: what a fold there states, one size per line
+    /// (Norm, #1984). None elsewhere.
+    pub fn search_line_size_text(&self, period_s: f64) -> Option<String> {
+        let p = self.period.as_ref()?;
+        if self.is_cycle_period(period_s) || !self.same_search_line(period_s, p.period_s) {
+            return None;
+        }
+        Some(crate::figure_text::figure_minus(&SeriesKind::fmt_size_in(
+            p.size_unit,
+            p.size,
+        )))
+    }
+
+    /// The cycle's one stated size (math-standards, "Size of a cycle",
+    /// #761), as the headline writes it, "11.0°", with a true minus: the
+    /// Cycle view states this, not its fold's own swing (Norm, #1984).
+    /// None without a cycle.
+    pub fn cycle_size_text(&self) -> Option<String> {
+        let c = self.cycle.as_ref()?;
+        Some(crate::figure_text::figure_minus(
+            &self.series.fmt_size(c.peak_to_peak),
+        ))
+    }
+
+    /// The repeat the Autocorrelation view marks, (lag, r): the readings'
+    /// first repeat, or else the lag of the headline's cycle when the
+    /// autocorrelation found it, so a cycle "found by the autocorrelation"
+    /// is marked there (#1984); None when neither.
+    pub fn autocorrelation_repeat(&self) -> Option<(f64, f64)> {
+        let a = self.autocorrelation.as_ref()?;
+        if let (Some(l), Some(r)) = (a.repeat_lag_s, a.repeat_r) {
+            return Some((l, r));
+        }
+        let c = self
+            .cycle
+            .as_ref()
+            .filter(|c| c.source == CycleSource::Autocorrelation)?;
+        let (l, r) = a
+            .lag_s
+            .iter()
+            .zip(&a.r)
+            .filter(|(_, r)| r.is_finite())
+            .min_by(|x, y| {
+                (x.0 - c.period_s)
+                    .abs()
+                    .total_cmp(&(y.0 - c.period_s).abs())
+            })?;
+        Some((*l, *r))
+    }
+
+    /// The period search's line when it turns in under three of the
+    /// readings cycles are folded in (the 2 s windows for the amplitude and
+    /// beat error), so they cannot show it, whether or not they show a
+    /// slower cycle.
+    pub fn faster_than_readings(&self) -> Option<&Period> {
+        self.period
+            .as_ref()
+            .filter(|p| p.period_s < 3.0 * self.cycle_step_s)
+    }
+}
+
+/// The period search's line when it is too fast for the readings to show
+/// as a cycle (under three readings a turn): without it, a headline that
+/// says "no cycle" would contradict the period search on the same series.
+/// For the rate the search reads the beat timing: a line under 30 s is
+/// sized as the timing swing in ms, a slower one as the rate swing in s/d
+/// (`longrun::TIMING_UNIT_BELOW_S`), and named after what it measures.
+fn fast_line(s: &SeriesCheck) -> Option<String> {
+    let p = s.faster_than_readings()?;
+    let what = match (s.series, p.size_unit) {
+        (SeriesKind::Rate, "ms") => "the beat timing".to_string(),
+        (k, _) => format!("the {}", k.name()),
+    };
+    let wheel = p
+        .wheel
+        .as_ref()
+        .map_or(String::new(), |w| format!(", the {w}'s period"));
+    let size = SeriesKind::fmt_size_in(p.size_unit, p.size);
+    let also = if s.cycle.is_some() { " also" } else { "" };
+    Some(format!(
+        "{what}{also} repeats every {:.1} s{wheel}, {size} sine peak to peak; {} readings are too coarse to show it",
+        p.period_s,
+        every_text(s.cycle_step_s)
+    ))
+}
+
+fn findings(s: &SeriesCheck) -> Option<Finding> {
+    let k = s.series;
+    let name = k.name();
+    let (code, title) = match s.lead {
+        Lead::Steady | Lead::TooShort => return None,
+        Lead::Periodic => ("periodic", format!("The {name} repeats on a cycle")),
+        Lead::TwoStates => (
+            "two_states",
+            format!("The {name} switches between two levels"),
+        ),
+        Lead::Measurement => (
+            "measurement_split",
+            format!("The {name} switches between two levels; the change shows on one side only, or in the unlock but not the drop"),
+        ),
+        Lead::ShiftingMean => (
+            "shifting_mean",
+            format!("The {name} changes level during the take"),
+        ),
+        Lead::Drifting => ("drifting", format!("The {name} slides through the take")),
+        Lead::StepOrSlide => (
+            "step_or_slide",
+            format!("The {name} shifts level or slides; its readings move together too much to tell which"),
+        ),
+        Lead::Wandering => (
+            "wandering",
+            format!("Successive {name} readings are correlated"),
+        ),
+    };
+    let mut ev = Vec::new();
+    if let Some(a) = &s.autocorrelation {
+        ev.push(format!(
+            "Ljung–Box p {} over {} lags, largest short-lag correlation {:.2}",
+            p_text(a.p_value),
+            a.ljung_box_lags,
+            a.max_short_lag_r
+        ));
+    }
+    if let Some(c) = &s.cycle {
+        ev.push(format!(
+            "cycle of {:.1} s found by the {}",
+            c.period_s,
+            match c.source {
+                CycleSource::TwoState => "two-state finder",
+                CycleSource::Autocorrelation => "autocorrelation",
+                CycleSource::PeriodSearch => "period search",
+            }
+        ));
+    }
+    if let Some(p) = &s.period {
+        ev.push(format!(
+            "period {:.1} s explains {:.0}% of the detrended variance, false alarm {}",
+            p.period_s,
+            p.explained * 100.0,
+            longterm::false_alarm_text(p.significance, p.beyond_simulated, |s| p_text(
+                10f64.powf(-s)
+            ))
+        ));
+    }
+    if let Some(c) = &s.changes {
+        if c.segments.len() > 1 {
+            let at: Vec<String> = c.segments[1..]
+                .iter()
+                .map(|g| format!("{:.0} s", g.start_s))
+                .collect();
+            ev.push(format!(
+                "{} level change{} at {} explain {:.0}%",
+                at.len(),
+                crate::measure::plural(at.len()),
+                at.join(", "),
+                c.explained * 100.0
+            ));
+        }
+    }
+    if let Some(t) = &s.trend {
+        ev.push(format!(
+            "a straight line explains {:.0}%, a curve {:.0}%",
+            t.explained * 100.0,
+            t.curve_explained * 100.0
+        ));
+    }
+    if let Some(a) = &s.allan {
+        ev.push(format!(
+            "Allan deviation up to {:.1}× what independent readings give",
+            a.max_excess
+        ));
+    }
+    Some(Finding {
+        code,
+        series: k,
+        title,
+        evidence: format!("{} Evidence: {}.", s.headline, ev.join("; ")),
+    })
+}
+
+/// The side whose unlock edges or 2 s windows fall in two clusters the
+/// other side's do not, if one does.
+fn lone_side(t: &TwoState) -> Option<&'static str> {
+    if t.tick_edge_split_alone == Some(true) || t.tick_split_alone == Some(true) {
+        Some("Tick")
+    } else if t.tock_edge_split_alone == Some(true) || t.tock_split_alone == Some(true) {
+        Some("Tock")
+    } else {
+        None
+    }
+}
+
+/// "Tick windows fall in two clusters; Tock windows do not".
+fn clusters(side: &str) -> String {
+    let other = if side == "Tick" { "Tock" } else { "Tick" };
+    format!("{side} windows fall in two clusters; {other} windows do not")
+}
+
+pub fn p_text(p: f64) -> String {
+    if p < 1e-300 {
+        "<1e-300".into()
+    } else if p < 0.001 {
+        format!("{p:.0e}")
+    } else {
+        format!("{p:.3}")
+    }
+}
+
+/// The null `r`'s period search was held to, onto its series; and when
+/// it named a period the table does not reach, the caveat and its
+/// sentence (#1195).
+fn hold_to_null(s: &mut SeriesCheck, r: &longterm::SeriesReport) {
+    s.null = Some(r.search.null);
+    for c in [longterm::period_uncalibrated(r), longterm::timing_misfit(r)] {
+        if let Some(c) = s.period.as_ref().and(c) {
+            crate::measure::add(&mut s.caveats, c);
+            s.headline = format!("{} {}", s.headline, c.long(None).unwrap_or_default());
+        }
+    }
+}
+
+/// Check the rate, the amplitude and the beat error of a long-run
+/// analysis. `log` and `clock` are what `long` was run on, and `long`
+/// its report (whose period search is reused).
+#[expect(
+    clippy::too_many_lines,
+    reason = "over the limit before it was set; split it (architecture guide, section 12)"
+)]
+pub fn check(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    long: &LongReport,
+    long_cfg: &LongConfig,
+    cfg: &Config,
+) -> Report {
+    let cfg = &readings::pane_config(cfg);
+    let holes = Cuts::new(clock, &long.breaks, &[]);
+    let map = |t: f64| holes.true_time(t);
+    let r = cfg.rate_reading_s;
+    let x = readings::series_readings(log, clock, &long.breaks, r);
+    let rate_amplitude = cross_correlation(&x.rate_grid, &x.amp_paired, &x.amp_noise, cfg);
+    let (isochronism, walk) = readings::isochronism_of(&x, cfg);
+    let readings::SeriesReadings {
+        wins,
+        rate_grid,
+        amp_grid,
+        be_grid,
+        selected_be,
+        amp_readings,
+        be_readings,
+        ..
+    } = x;
+    let rate_samples: Vec<twostate::Sample> = wins
+        .iter()
+        .map(|w| twostate::Sample {
+            start_s: w.start_s,
+            end_s: w.end_s,
+            value: w.fit.rate_s_per_day,
+            ..Default::default()
+        })
+        .collect();
+    let aw = &log.amplitude_windows;
+    let wind_down = wind_down_sourced(&rate_grid, &amp_readings, log, clock, &long.breaks, cfg);
+    let distributions = {
+        use distribution::{Input, AMPLITUDE, BEAT_ERROR, RATE};
+        let grids = [&rate_grid, &amp_grid];
+        let start = grids
+            .iter()
+            .filter(|g| !g.y.is_empty())
+            .map(|g| g.t0)
+            .fold(f64::INFINITY, f64::min);
+        let end = grids
+            .iter()
+            .filter(|g| !g.y.is_empty())
+            .map(|g| g.t0 + g.span())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let input = |kind, label, grid| Input { kind, label, grid };
+        let inputs = [
+            input(RATE, "readings", &rate_grid),
+            input(AMPLITUDE, "readings", &amp_readings),
+            input(AMPLITUDE, "2 s", &amp_grid),
+            input(BEAT_ERROR, "readings", &be_readings),
+            input(BEAT_ERROR, "2 s", &be_grid),
+        ];
+        if start.is_finite() {
+            distribution::distributions(&inputs, start, end, cfg.stretch_s)
+        } else {
+            distribution::distributions(&[], 0.0, 0.0, 0.0)
+        }
+    };
+    let amp_samples: Vec<twostate::Sample> = holes
+        .amplitude_windows(aw)
+        .into_iter()
+        .filter_map(|w| {
+            Some(twostate::Sample {
+                start_s: map(w.start_s),
+                end_s: map(w.end_s),
+                value: w.mean()?,
+                tick: w.even_deg,
+                tock: w.odd_deg,
+                beat_error_unlock_ms: w.beat_error_unlock_ms,
+                beat_error_drop_ms: w.beat_error_ms,
+                tick_unlock_ms: w.even_unlock_ms,
+                tock_unlock_ms: w.odd_unlock_ms,
+            })
+        })
+        .collect();
+
+    let p = twostate::Params::default();
+    let rate_period = long.rate_components.first().map(|c| {
+        let (size, size_unit) = c.size();
+        Period {
+            period_s: c.component.period_s,
+            significance: c.component.significance,
+            beyond_simulated: c.component.beyond_simulated,
+            explained: c.component.explained,
+            peak_to_peak: c.rate_swing_s_per_day,
+            timing_peak_to_peak_ms: Some(c.timing_swing_ms),
+            size,
+            size_unit,
+            wheel: c.component.wheel.clone(),
+            other_periods_s: long.rate_components[1..]
+                .iter()
+                .map(|c| c.component.period_s)
+                .collect(),
+            harmonic_of: c.component.harmonic_of,
+            other_harmonic_of: long.rate_components[1..]
+                .iter()
+                .map(|c| c.component.harmonic_of)
+                .collect(),
+        }
+    });
+    let amp_period = period_of(&long.amplitude, SeriesKind::Amplitude.unit());
+    // The beat error's search and the amplitude's two-state find, side by side (#1839).
+    let (be_long, amp_two) = crate::cores::both(
+        || beat_error_long(&be_grid, clock, &long.breaks, long_cfg),
+        || twostate::find(&amp_samples, &p),
+    );
+    let be_period = period_of(&be_long, SeriesKind::BeatError.unit());
+    // The plain spectra of the series the period searches read, with
+    // their slow change taken off as the searches take it off.
+    let spectra = [
+        (&long.timing.detrended, "rate", "ms", 1000.0),
+        (&long.amplitude.detrended, "amplitude", "deg", 1.0),
+        (&be_long.detrended, "beat_error", "ms", 1.0),
+    ]
+    .into_iter()
+    .filter_map(|(g, name, unit, scale)| {
+        crate::spectrum::amplitude_spectrum(g, name, unit, scale, cfg.max_points)
+            .map(|s| s.with_reading_swing(cfg.rate_reading_s))
+    })
+    .collect();
+
+    let sig = |c: &[longterm::Component]| c.iter().map(|c| c.significance).collect();
+    let rate_sig = long
+        .rate_components
+        .iter()
+        .map(|c| c.component.significance);
+    let (mut series, named_lines) = family::check_all(
+        vec![
+            (
+                SeriesKind::Rate,
+                rate_grid,
+                None,
+                rate_period,
+                rate_sig.collect(),
+                Some(twostate::find(&rate_samples, &p)),
+            ),
+            (
+                SeriesKind::Amplitude,
+                amp_readings,
+                Some(amp_grid),
+                amp_period,
+                sig(&long.amplitude.components),
+                Some(amp_two),
+            ),
+            (
+                SeriesKind::BeatError,
+                be_readings,
+                Some(be_grid),
+                be_period,
+                sig(&be_long.components),
+                None,
+            ),
+        ],
+        &long_cfg.wheels,
+        cfg,
+    );
+    beat_error::set_provenance(&mut series, &selected_be);
+    for (s, r) in series.iter_mut().skip(1).zip([&long.amplitude, &be_long]) {
+        if let Some(c) = s.period.as_ref().and(longterm::period_may_be_noise(r)) {
+            crate::measure::add(&mut s.caveats, c);
+            s.headline = format!("{} {}", s.headline, c.long(None).unwrap_or_default());
+        }
+    }
+    for (s, r) in series
+        .iter_mut()
+        .zip([&long.timing, &long.amplitude, &be_long])
+    {
+        hold_to_null(s, r);
+    }
+    // An amplitude split one side carries alone is the unlock mark
+    // hopping (the two-state finder's direct check): whatever the
+    // amplitude and the beat error from the unlock seem to do may be the
+    // measurement.
+    let lone = series[1].two_state.as_ref().and_then(lone_side);
+    if let Some(side) = lone {
+        for s in series.iter_mut().skip(1) {
+            if !matches!(s.lead, Lead::Steady | Lead::TooShort | Lead::Measurement) {
+                s.unlock_hopping = true;
+                s.headline = format!("{} {}.", s.headline, {
+                    let c = clusters(side);
+                    let mut ch = c.chars();
+                    ch.next().map_or(String::new(), |f| {
+                        f.to_uppercase().chain(ch).collect::<String>()
+                    })
+                });
+            }
+        }
+    }
+    series.iter_mut().for_each(SeriesCheck::set_screen_text);
+    let findings: Vec<Finding> = series.iter().filter_map(findings).collect();
+    // A take over several positions: said with each figure that reads the
+    // rate against the amplitude, wherever its headline is shown (#651).
+    let positions = long.caveats.iter().find_map(|c| match c {
+        crate::measure::Caveat::Positions { .. } => c.long(None),
+        _ => None,
+    });
+    let (mut rate_amplitude, mut isochronism) = (rate_amplitude, isochronism);
+    if let Some(p) = positions {
+        let heads = [
+            rate_amplitude.as_mut().map(|c| &mut c.headline),
+            isochronism.as_mut().map(|c| &mut c.headline),
+        ];
+        for h in heads.into_iter().flatten() {
+            *h = format!("{h} {p}");
+        }
+    }
+    Report {
+        beat_error_source: selected_be.beat_error_source,
+        beat_error_sources: selected_be.beat_error_sources,
+        duration_s: long.duration_s,
+        bph: log.bph,
+        breaks: long.breaks.clone(),
+        caveats: {
+            let mut caveats = long.caveats.clone();
+            for caveat in selected_be.caveats() {
+                crate::measure::add(&mut caveats, caveat);
+            }
+            caveats
+        },
+        config: cfg.clone(),
+        series,
+        rate_amplitude,
+        isochronism,
+        walk,
+        wind_down,
+        distributions,
+        spectra,
+        findings,
+        named_lines,
+    }
+}
+
+/// The rate readings of [`rate_windows`] on a grid of `r` seconds,
+/// NaN where none was kept. `wins` must be in time order.
+pub(crate) fn rate_grid(wins: &[timing::WindowFit], r: f64) -> Grid {
+    match wins.first() {
+        Some(w0) => {
+            let t0 = w0.start_s;
+            let last = wins.last().unwrap();
+            let n = ((last.start_s - t0) / r).round() as usize + 1;
+            let mut y = vec![f64::NAN; n];
+            for w in wins {
+                y[((w.start_s - t0) / r).round() as usize] = w.fit.rate_s_per_day;
+            }
+            Grid { t0, step: r, y }
+        }
+        None => Grid {
+            t0: 0.0,
+            step: r,
+            y: Vec::new(),
+        },
+    }
+}
+
+/// One value per amplitude window on true time, one grid point every
+/// window length, so each gap is left empty; a window that reaches into
+/// a break's gap is left out.
+fn windows_grid(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>,
+) -> Grid {
+    let holes = Cuts::new(clock, breaks, &[]);
+    let aw = &log.amplitude_windows;
+    // The take's one tiling on true time (#636): cells of one window's
+    // length laid from its first sample, each window in the cell its
+    // middle lies in, as `Cuts::window_in` takes a window into a stretch.
+    // Each gap is left empty. Windows are made a window apart on the
+    // audio's own time, so on a clock that drifts they slip against the
+    // cells: where two share one, the one whose middle is nearer the
+    // cell's is kept (the earlier on a tie), never the two averaged, and
+    // a cell none falls in is left empty.
+    let astep = crate::session::window_part_s(aw);
+    let kept = holes.amplitude_windows(aw);
+    let (Some(first), Some(last)) = (kept.first(), kept.last()) else {
+        return Grid {
+            t0: 0.0,
+            step: astep,
+            y: Vec::new(),
+        };
+    };
+    let k0 = holes.cell_of(first, astep);
+    let n = (holes.cell_of(last, astep) - k0).max(0) as usize + 1;
+    let mut y = vec![f64::NAN; n];
+    let mut off = vec![f64::INFINITY; n];
+    for w in kept {
+        let k = holes.cell_of(w, astep);
+        let Ok(i) = usize::try_from(k - k0) else {
+            continue;
+        };
+        if i < n {
+            let d = (holes.window_middle(w) - (k as f64 + 0.5) * astep).abs();
+            if d < off[i] {
+                off[i] = d;
+                y[i] = f(w).unwrap_or(f64::NAN);
+            }
+        }
+    }
+    Grid {
+        t0: k0 as f64 * astep,
+        step: astep,
+        y,
+    }
+}
+
+/// The amplitude and beat error windows on true time, one grid point
+/// every window length, so each gap is left empty. A window that reaches
+/// into a break's gap is left out, as the rate readings are. The beat
+/// errors are sizes, given as positive, when the sign turns over across a
+/// break ([`crate::longrun::beat_error_turns`]).
+pub(crate) fn window_grids(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+) -> [Grid; 2] {
+    let grid_of = |f: &dyn Fn(&crate::amplitude::AmplitudeWindow) -> Option<f64>| {
+        windows_grid(log, clock, breaks, f)
+    };
+    let amp_grid = grid_of(&|w| w.mean());
+    let (be_grid, _) = beat_error::grid(log, clock, breaks, None);
+    [amp_grid, be_grid]
+}
+
+/// The beat error's period search over its windows' grid `be`, each
+/// piece between `breaks` detrended on its own ([`longterm::analyse_pieces`]),
+/// on a clock from 0.
+pub(crate) fn beat_error_long(
+    be: &Grid,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    lc: &LongConfig,
+) -> longterm::SeriesReport {
+    let starts = piece_starts(be, clock, breaks);
+    let g = Grid {
+        t0: 0.0,
+        ..be.clone()
+    };
+    longterm::analyse_pieces(&g, &starts, lc)
+}
+
+/// `g` (readings about a level, on the take's clock) less its slow change,
+/// each piece between the take's cuts on its own, as the period searches
+/// take it off (#1608): nothing is fitted across a break.
+pub(crate) fn level_by_piece(
+    g: &Grid,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    lc: &LongConfig,
+) -> Grid {
+    let starts = piece_starts(g, clock, breaks);
+    longterm::detrend_pieces(g, lc.detrend_s, longterm::Slow::Level, &starts)
+}
+
+/// Where each piece of `g` starts, between the take's cuts: found once
+/// here for [`beat_error_long`]'s searches and [`level_by_piece`]'s views.
+fn piece_starts(g: &Grid, clock: Option<&ClockFit>, breaks: &[crate::breaks::Break]) -> Vec<usize> {
+    longterm::piece_starts(g, &Cuts::new(clock, breaks, &[]).piece_cuts())
+}
+
+/// Tick's and Tock's amplitudes, each on the amplitude windows' grid as
+/// [`window_grids`] puts them.
+pub(crate) fn side_grids(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+) -> [Grid; 2] {
+    [
+        windows_grid(log, clock, breaks, &|w| w.even_deg),
+        windows_grid(log, clock, breaks, &|w| w.odd_deg),
+    ]
+}
+
+/// The rate readings, and the amplitude and the beat error averaged into
+/// the same readings, as [`check`] tests them and counts them as
+/// "readings": `r` seconds each on true time, one grid, with `clock` and
+/// `breaks` as `check` is given them. With them, the beat error's source
+/// as `check` chose it over the 2 s windows, with its caveats. The app's
+/// Distributions pane counts these (#1144).
+pub fn reading_grids(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    r: f64,
+) -> ([Grid; 3], crate::session::BeatErrorSelection) {
+    let rate = rate_grid(&rate_windows(log, clock, breaks, r), r);
+    let amp = windows_grid(log, clock, breaks, &|w| w.mean());
+    let (be, selected) = beat_error::grid(log, clock, breaks, None);
+    let [amp, be] = into_readings(&rate, &amp, &be, r);
+    ([rate, amp, be], selected)
+}
+
+/// The amplitude and the beat error windows averaged into the rate's
+/// readings of `r` seconds, so one reading means the same time for all
+/// three; with no rate reading, laid from the amplitude windows' start
+/// over their span.
+fn into_readings(rate: &Grid, amp: &Grid, be: &Grid, r: f64) -> [Grid; 2] {
+    // With no rate readings, the readings still lie on the take's one
+    // tiling (#636): from a whole number of readings after its start.
+    let (t0, n) = if rate.y.is_empty() {
+        let t0 = (amp.t0 / r).floor() * r;
+        (t0, ((amp.t0 + amp.span() - t0) / r).ceil() as usize)
+    } else {
+        (rate.t0, rate.y.len())
+    };
+    [rebin(amp, t0, r, n), rebin(be, t0, r, n)]
+}
+
+/// The rate readings [`check`] tests, `r` seconds each, on true time.
+/// None reaches into a break's gap, and none is taken from part of its
+/// span: each of its 2 s stretches (the amplitude windows' length) must
+/// hold beats, so a reading at the edge of a gap or a masked stretch is
+/// left out, not averaged over what is left. Laid by [`Cuts::windows`]
+/// from the take's start to its end on the take's one tiling, as a
+/// take's readings are: the first is the first whole one (#636).
+pub(crate) fn rate_windows(
+    log: &BeatLog,
+    clock: Option<&ClockFit>,
+    breaks: &[crate::breaks::Break],
+    r: f64,
+) -> Vec<timing::WindowFit> {
+    let holes = Cuts::new(clock, breaks, &[]);
+    let beats = holes.beats(&log.beats);
+    let astep = log
+        .amplitude_windows
+        .first()
+        .map_or(2.0, |w| w.end_s - w.start_s);
+    holes.windows(
+        &beats,
+        log.bph,
+        0.0,
+        holes.true_time(log.duration_s),
+        r,
+        r,
+        astep,
+    )
+}
+
+/// The median of the windows of `fine` in each of `n` readings of `step`
+/// seconds from `t0`. A reading needs every one of its windows: one at the edge
+/// of a gap or a masked stretch, or with a window missing, is left out
+/// rather than taken from part of its span.
+fn rebin(fine: &Grid, t0: f64, step: f64, n: usize) -> Grid {
+    let mut bins: Vec<Vec<f64>> = vec![Vec::new(); n];
+    for (i, &v) in fine.y.iter().enumerate() {
+        let b = ((fine.time(i) - t0) / step).floor();
+        if v.is_finite() && b >= 0.0 && (b as usize) < n {
+            bins[b as usize].push(v);
+        }
+    }
+    // The windows whose middles fall in each reading: all of them must be
+    // there. At a reading length that isn't a whole number of windows,
+    // readings hold one window more or fewer in turn.
+    let need = |b: usize| {
+        let lo = (t0 + b as f64 * step - fine.t0) / fine.step;
+        let hi = lo + step / fine.step;
+        ((hi - 0.5).ceil() - (lo - 0.5).ceil()).max(1.0) as usize
+    };
+    // Their median, as every other reading of a stretch's windows takes
+    // it (`session::window_figures`, #656).
+    Grid {
+        t0,
+        step,
+        y: bins
+            .iter_mut()
+            .enumerate()
+            .map(|(b, v)| {
+                if v.len() >= need(b) {
+                    crate::dsp::median(v)
+                } else {
+                    f64::NAN
+                }
+            })
+            .collect(),
+    }
+}
+
+pub(crate) fn finite_or_nan(v: f64) -> f64 {
+    if v.is_finite() {
+        v
+    } else {
+        f64::NAN
+    }
+}
+
+/// Amplitude bin width for the isochronism curve, degrees, the readings a
+/// bin needs, and the bins the curve needs.
+pub const ISO_BIN_DEG: f64 = 2.0;
+pub const ISO_MIN_READINGS: usize = 10;
+pub const ISO_MIN_BINS: usize = 3;
+
+/// The 2° bins of `(amplitude, rate, hours from the take's start)` from
+/// `lo` to `hi` that hold at least [`ISO_MIN_READINGS`] readings, each
+/// with its hours since full wind when `wind_h` was given.
+fn amplitude_bins(
+    pairs: &[(f64, f64, f64)],
+    lo: f64,
+    hi: f64,
+    wind_h: Option<f64>,
+) -> Vec<AmplitudeBin> {
+    let mut bins: Vec<AmplitudeBin> = Vec::new();
+    let first = (lo / ISO_BIN_DEG).floor() as i64;
+    let last = (hi / ISO_BIN_DEG).floor() as i64;
+    for b in first..=last {
+        let (a0, a1) = (b as f64 * ISO_BIN_DEG, (b + 1) as f64 * ISO_BIN_DEG);
+        let inbin: Vec<&(f64, f64, f64)> = pairs.iter().filter(|p| p.0 >= a0 && p.0 < a1).collect();
+        if inbin.len() < ISO_MIN_READINGS {
+            continue;
+        }
+        let mut r: Vec<f64> = inbin.iter().map(|p| p.1).collect();
+        r.sort_by(f64::total_cmp);
+        let hours = inbin.iter().map(|p| p.2);
+        let (from_h, to_h) = (
+            hours.clone().fold(f64::INFINITY, f64::min),
+            hours.fold(f64::NEG_INFINITY, f64::max),
+        );
+        bins.push(AmplitudeBin {
+            amplitude_deg: (a0 + a1) / 2.0,
+            readings: inbin.len(),
+            rate_s_per_day: quantile(&r, 0.5),
+            rate_q25: quantile(&r, 0.25),
+            rate_q75: quantile(&r, 0.75),
+            from_h,
+            to_h,
+            from_wind_h: hours_since_wind(wind_h, from_h),
+            to_wind_h: hours_since_wind(wind_h, to_h),
+        });
+    }
+    bins
+}
+
+/// The rate binned by amplitude, reading against the same reading. Needs
+/// at least [`ISO_MIN_BINS`] bins with enough readings.
+fn isochronism_curve(
+    rate: &Grid,
+    amp: &Grid,
+    noise: &[f64],
+    cfg: &Config,
+) -> Option<IsochronismCurve> {
+    let (mut x, mut y) = (amp.clone(), rate.clone());
+    drop_outliers(&mut x, cfg.outlier_sigma);
+    drop_outliers(&mut y, cfg.outlier_sigma);
+    let kept: Vec<usize> = (0..y.y.len().min(x.y.len()))
+        .filter(|&i| x.y[i].is_finite() && y.y[i].is_finite())
+        .collect();
+    let pairs: Vec<(f64, f64, f64)> = kept
+        .iter()
+        .map(|&i| (x.y[i], y.y[i], y.time(i) / 3600.0))
+        .collect();
+    // The slope from every reading, none smoothed, so a short swing of
+    // amplitude counts, read off the amplitude's noise (#651).
+    let eiv = eiv_slope(
+        &(0..y.y.len().min(x.y.len()))
+            .map(|i| (x.y[i], y.y[i], noise.get(i).copied().unwrap_or(f64::NAN)))
+            .collect::<Vec<_>>(),
+    );
+    let shown = eiv.filter(|e| e.reliability >= MIN_RELIABILITY);
+    if pairs.len() < ISO_MIN_BINS * ISO_MIN_READINGS {
+        return None;
+    }
+    let mut amps: Vec<f64> = pairs.iter().map(|p| p.0).collect();
+    amps.sort_by(f64::total_cmp);
+    let (lo, hi) = (quantile(&amps, 0.02), quantile(&amps, 0.98));
+    let bins = amplitude_bins(&pairs, lo, hi, cfg.wind_h);
+    if bins.len() < ISO_MIN_BINS {
+        return None;
+    }
+    // No curve is fitted through the bins: a quadratic has no source as
+    // an isochronism method and its turn came from the fit's form, not
+    // the watch (Norm; Peter, 13 Nov).
+    let by: Vec<f64> = bins.iter().map(|b| b.rate_s_per_day).collect();
+    let (b0, b1) = (bins[0].amplitude_deg, bins[bins.len() - 1].amplitude_deg);
+    // Said as going together, not as cause: the amplitude and the rate
+    // can both change with what else changes over the take.
+    let goes = match (shown, eiv) {
+        (Some(e), _) => format!("the rate goes with the amplitude by {}", slope_text(&e)),
+        (None, Some(_)) => format!("{TOO_NOISY}, so no slope is read"),
+        (None, None) => "the amplitude's noise is not known, so no slope is read".into(),
+    };
+    // The end bins as a sentence of their own: two medians, not the
+    // slope's own evidence.
+    let headline = format!(
+        "Between {:.0}° and {:.0}° {goes}. The rate reads {} s/d at {:.0}° and {} s/d at {:.0}°.",
+        b0,
+        b1,
+        crate::library::signed_text(by[0], 1),
+        b0,
+        crate::library::signed_text(by[by.len() - 1], 1),
+        b1,
+    );
+    Some(IsochronismCurve {
+        step_s: rate.step,
+        bin_deg: ISO_BIN_DEG,
+        bins,
+        amplitude_from_deg: lo,
+        amplitude_to_deg: hi,
+        s_per_day_per_deg: shown.map(|e| e.slope),
+        s_per_day_per_deg_se: shown.map(|e| e.se),
+        reliability: eiv.map(|e| e.reliability),
+        rate_change_s_per_day: shown.map(|e| e.slope * (b1 - b0)),
+        headline,
+    })
+}
+
+#[path = "steadiness_wind.rs"]
+mod wind;
+pub use wind::{hours_since_wind, hours_words};
+
+#[path = "steadiness_beat_error.rs"]
+mod beat_error;
+#[cfg(test)]
+use beat_error::wind_down;
+use beat_error::wind_down_sourced;
+
+#[cfg(test)]
+#[path = "steadiness_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "steadiness_rule_tests.rs"]
+mod rule_tests;
+
+#[path = "steadiness_words.rs"]
+mod words;
+use words::{every_text, lead_text, runner_up, shifts_text};
+
+#[path = "steadiness_family.rs"]
+mod family;
+
+#[path = "steadiness_cycle.rs"]
+mod cycle_search;
+
+#[path = "steadiness_white.rs"]
+mod white;
+
+#[path = "steadiness_stats.rs"]
+mod stats;
+
+#[path = "steadiness_readings.rs"]
+mod readings;
+use cycle_search::cycle;
+#[cfg(test)]
+use cycle_search::{refined_candidates, same_peaks_once, strongest_cycle};
+pub use family::{family_long, hold_to_family, RUNNER_UP_SHARE, STEP_SLIDE_RHO};
+
+/// How far either side of a period search's line, as a share of its
+/// period, the cycle finder refines the cycle it folds there (#1984).
+pub const SEARCH_REFINE_SHARE: f64 = 0.01;
+pub use readings::isochronism_alone;
+
+#[cfg(test)]
+mod window_grid_tests {
+    use super::*;
+    use crate::amplitude::AmplitudeWindow;
+    use crate::breaks::Break;
+
+    fn log_of(windows: usize) -> BeatLog {
+        BeatLog {
+            lock_template_kept: false,
+            sample_rate: 48000,
+            duration_s: windows as f64 * 2.0,
+            bph: 18000,
+            lift_deg: 52.0,
+            beats: vec![],
+            amplitude_windows: (0..windows)
+                .map(|k| {
+                    let start_s = k as f64 * 2.0;
+                    AmplitudeWindow {
+                        start_s,
+                        end_s: start_s + 2.0,
+                        even_deg: Some(k as f64),
+                        odd_deg: Some(k as f64),
+                        beat_error_ms: None,
+                        beat_error_unlock_ms: Some(0.3),
+                        even_unlock_ms: None,
+                        odd_unlock_ms: None,
+                        even_drop_ms: None,
+                        odd_drop_ms: None,
+                        extra: None,
+                        sound_1: [f32::NAN; 2],
+                    }
+                })
+                .collect(),
+            clipped_beats: vec![],
+            clipped_samples: 0,
+            jumps: vec![],
+            sided: vec![],
+            by_count: vec![],
+            snippets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_window_across_a_break_is_left_out() {
+        // A pause at 301 s of audio, inside the window from 300 to 302 s:
+        // that window holds sound from both sides, so it gives no reading.
+        let log = log_of(300);
+        let breaks = [Break {
+            audio_s: 301.0,
+            gap_s: 30.0,
+        }];
+        let [amp, _] = window_grids(&log, None, &breaks);
+        let at = |t: f64| amp.y[((t - amp.t0) / amp.step).round() as usize];
+        assert_eq!(at(298.0), 149.0);
+        assert!(at(300.0).is_nan());
+        assert_eq!(at(302.0 + 30.0), 151.0);
+        // 15 empty points for the gap, and the window across it.
+        assert_eq!(amp.y.iter().filter(|v| v.is_nan()).count(), 16);
+        assert_eq!(amp.y.iter().filter(|v| v.is_finite()).count(), 299);
+    }
+
+    /// Two windows in one 2 s cell, as a slow sound card makes once its
+    /// slip passes a second: the one whose true middle is nearer the
+    /// cell's middle is kept, the earlier on a tie, never the two
+    /// averaged (#636).
+    #[test]
+    fn a_shared_cell_keeps_the_window_nearest_its_middle() {
+        let mut log = log_of(0);
+        // Middles 10.2 and 11.5 in cell [10, 12), 12.5 and 13.9 in
+        // [12, 14), 14.5 and 15.5 in [14, 16).
+        for (k, mid) in [10.2, 11.5, 12.5, 13.9, 14.5, 15.5].into_iter().enumerate() {
+            let mut w = log_of(1).amplitude_windows[0].clone();
+            (w.start_s, w.end_s) = (mid - 1.0, mid + 1.0);
+            (w.even_deg, w.odd_deg) = (Some(k as f64), Some(k as f64));
+            log.amplitude_windows.push(w);
+        }
+        let [amp, _] = window_grids(&log, None, &[]);
+        assert_eq!((amp.t0, amp.step), (10.0, 2.0));
+        // The later and nearer, the earlier and nearer, then a tie.
+        assert_eq!(amp.y, [1.0, 2.0, 4.0]);
+    }
+
+    /// With no rate reading, the amplitude's readings still start on a
+    /// whole reading of the take's tiling, not at its first window (#636).
+    #[test]
+    fn readings_without_a_rate_start_on_a_whole_reading() {
+        let amp = Grid {
+            t0: 14.0,
+            step: 2.0,
+            y: (0..8).map(f64::from).collect(),
+        };
+        let none = Grid {
+            t0: 0.0,
+            step: 10.0,
+            y: Vec::new(),
+        };
+        let [a, _] = into_readings(&none, &amp, &amp, 10.0);
+        assert_eq!((a.t0, a.y.len()), (10.0, 2));
+        // [10, 20) holds only the windows from 14 s, so it is left out;
+        // [20, 30) holds all five.
+        assert!(a.y[0].is_nan(), "{:?}", a.y);
+        assert_eq!(a.y[1], 5.0);
+    }
+
+    #[test]
+    fn windows_keep_step_with_a_stretched_clock() {
+        // 16 h of 2 s windows on a sound card 50 ppm fast and no breaks.
+        // The cells are the take's one tiling on true time (#636), fixed
+        // at 2 s, so the windows, 2.0001 s long on true time, slip 2.88 s
+        // against them: once the slip passes a second, each window falls
+        // one cell later, and the one cell between is left empty. Every
+        // window keeps its value, in the cell its true middle lies in.
+        let n = 28800;
+        let log = log_of(n);
+        let k = 1.0 + 50e-6;
+        let pairs: Vec<(f64, f64)> = (0..=576)
+            .map(|i| {
+                let t = i as f64 * 100.0;
+                (t, 1.79e9 + t * k)
+            })
+            .collect();
+        let clock = ClockFit::new(&pairs).unwrap();
+        let map = crate::longrun::true_time(Some(&clock), &[]);
+        let [amp, _] = window_grids(&log, Some(&clock), &[]);
+        assert_eq!((amp.t0, amp.step), (0.0, 2.0));
+        assert_eq!(amp.y.len(), n + 1);
+        assert_eq!(amp.y.iter().filter(|v| v.is_nan()).count(), 1);
+        for w in &log.amplitude_windows {
+            let mid = 0.5 * (map(w.start_s) + map(w.end_s));
+            let i = (mid / amp.step).floor() as usize;
+            assert_eq!(amp.y[i], w.even_deg.unwrap(), "{mid}");
+        }
+    }
+}

@@ -1,0 +1,837 @@
+//! The shape of one beat: its three sounds and what surrounds them.
+//!
+//! Each beat has three sounds, 1 unlock, 2 impulse and 3 drop, and beats
+//! alternate between the two pallet stones. This module measures the
+//! spacing, levels and separation of these sounds, and the sound around
+//! them, on each stone (see `docs/reference/fault-signatures.md` for what each
+//! measure is).
+//!
+//! As for amplitude, single beats are too noisy to read, so the shape is
+//! measured on median envelope templates of each side, both over short
+//! windows and over the whole recording. Only the 1-to-3 interval is also
+//! read beat by beat, for its jitter.
+//!
+//! Sounds are found as rises rather than as peaks: a quiet unlock often
+//! climbs to a shoulder and stays there until the impulse, so it has no
+//! peak of its own. A rise counts when it climbs a set fraction of the
+//! drop's height, and by a set ratio, within 0.6 ms; its time is where it
+//! crosses halfway up. Sound 3 is the drop peak used by the amplitude
+//! measurement, sound 1 the rise at the unlock edge, and sound 2 the biggest
+//! rise between them. Each sound's level is the highest point in the 1 ms
+//! after its rise. A sound that cannot be separated is `None`.
+
+use crate::amplitude::edges;
+use crate::beats::{median_window, Beat};
+use crate::dsp::{median, median_f32, moving_average, parabolic, robust_sd};
+use serde::Serialize;
+
+#[derive(Debug, Clone)]
+pub struct ShapeConfig {
+    /// Window for the windowed templates, seconds.
+    pub window_s: f64,
+    /// Template span before and after the beat's reference point, seconds.
+    pub pre_s: f64,
+    pub post_s: f64,
+    /// Unlock threshold as a fraction of the drop's height (as for amplitude).
+    pub onset_fraction: f32,
+    /// Smallest rise that counts as a sound, as a fraction of the drop's
+    /// height above the floor, and as a ratio to the level it rises from.
+    pub min_prominence: f32,
+    pub min_rise: f32,
+    /// Stretch after the drop peak whose mean level is the tail, seconds.
+    pub tail_s: (f64, f64),
+    /// Extra events are searched for this far before the unlock and after
+    /// the drop peak, leaving `extra_gap_s` clear of each. They must rise
+    /// further than a sound within the beat, since the drop's decaying tail
+    /// is lumpy.
+    pub extra_span_s: f64,
+    pub extra_gap_s: f64,
+    pub extra_prominence: f32,
+    /// Beats below this detection quality are left out.
+    pub min_quality: f32,
+}
+
+impl Default for ShapeConfig {
+    fn default() -> Self {
+        ShapeConfig {
+            window_s: 2.0,
+            pre_s: 0.025,
+            post_s: 0.025,
+            onset_fraction: 0.02,
+            min_prominence: 0.04,
+            min_rise: 1.5,
+            tail_s: (0.003, 0.015),
+            extra_span_s: 0.010,
+            extra_gap_s: 0.0015,
+            extra_prominence: 0.08,
+            min_quality: crate::beats::JUMP_QUALITY,
+        }
+    }
+}
+
+/// A sound outside the 1-to-3 span.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ExtraEvent {
+    /// Time from the unlock edge, ms (negative before it).
+    pub t_ms: f64,
+    /// Peak level above the floor relative to the drop's.
+    pub level: f64,
+}
+
+/// Shape measurements on one template. Times are from the unlock edge, ms;
+/// levels are envelope heights above the template's floor (in power).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Shape {
+    /// Unlock edge to drop edge, as the amplitude measurement reads it.
+    pub unlock_to_drop_ms: f64,
+    /// The unlock edge from the beat's reference point (template time).
+    pub unlock_at_ms: f64,
+    /// Where sounds 1, 2 and 3 cross halfway up their own rise.
+    pub t1_ms: Option<f64>,
+    pub t2_ms: Option<f64>,
+    pub t3_ms: f64,
+    /// Where each sound peaks.
+    pub peak1_ms: Option<f64>,
+    pub peak2_ms: Option<f64>,
+    pub peak3_ms: f64,
+    /// Intervals between the halfway crossings.
+    pub i12_ms: Option<f64>,
+    pub i23_ms: Option<f64>,
+    pub i13_ms: Option<f64>,
+    pub level1: Option<f64>,
+    pub level2: Option<f64>,
+    pub level3: f64,
+    pub ratio13: Option<f64>,
+    pub ratio23: Option<f64>,
+    /// Lowest point between two sounds' peaks relative to the quieter
+    /// peak: near 0 for well separated sounds, 1 when there is no dip.
+    pub valley12: Option<f64>,
+    pub valley23: Option<f64>,
+    /// Mean level between two sounds' peaks relative to their mean.
+    pub fill12: Option<f64>,
+    pub fill23: Option<f64>,
+    /// Mean level over `tail_s` after the drop peak relative to the drop.
+    pub tail_ratio: f64,
+    /// Noise between beats relative to the silence just before the unlock
+    /// (needs the envelope, so `None` from [`measure`] alone).
+    pub noise_ratio: Option<f64>,
+    /// Rises from the unlock to the drop, counting the drop: 3 for a
+    /// textbook beat, more when a sound is doubled.
+    pub rises: usize,
+    pub extra_pre: Vec<ExtraEvent>,
+    pub extra_post: Vec<ExtraEvent>,
+}
+
+/// One rise of the envelope: where a sound starts.
+#[derive(Debug, Clone, Copy)]
+struct Rise {
+    /// Halfway from `base` to `top`, fractional samples.
+    at: f64,
+    /// Where the rise starts from, and its level.
+    from: usize,
+    base: f32,
+    top: f32,
+}
+
+/// Fractional position where `t` first exceeds `level` in `from..=to`.
+fn crossing(t: &[f32], from: usize, to: usize, level: f32) -> Option<f64> {
+    let i = (from.max(1)..=to.min(t.len() - 1)).find(|&i| t[i] > level)?;
+    let (y0, y1) = (t[i - 1], t[i]);
+    Some((i - 1) as f64 + ((level - y0) / (y1 - y0)) as f64)
+}
+
+/// Rises centred in `a..b` that climb at least `min_step` and at least
+/// `min_ratio` times their base within 0.6 ms.
+///
+/// Candidates are the local maxima of the log envelope's slope, so a quiet
+/// sound counts as much as a loud one; each is then measured from the
+/// lowest point in the 0.6 ms before it to the highest in the 0.6 ms after.
+/// Several candidates on one rise collapse to the biggest.
+fn rises(t: &[f32], fs: f64, a: usize, b: usize, min_step: f32, min_ratio: f32) -> Vec<Rise> {
+    let n = t.len();
+    let h = ((0.0001 * fs) as usize).max(1);
+    let w = ((0.0006 * fs) as usize).max(2);
+    let l: Vec<f32> = t.iter().map(|&v| v.max(f32::MIN_POSITIVE).ln()).collect();
+    let slope = |i: usize| l[(i + h).min(n - 1)] - l[i.saturating_sub(h)];
+    let mut out: Vec<Rise> = Vec::new();
+    for i in a.max(1)..b.min(n.saturating_sub(1)) {
+        let s = slope(i);
+        if !(s > 0.0 && s > slope(i - 1) && s >= slope(i + 1)) {
+            continue;
+        }
+        let lo = i.saturating_sub(w);
+        let (bi, base) = (lo..=i)
+            .map(|k| (k, t[k]))
+            .fold((i, t[i]), |m, p| if p.1 < m.1 { p } else { m });
+        let Some((ti, top)) = crate::dsp::argmax(t, i, i + w + 1) else {
+            continue;
+        };
+        if top - base < min_step || top < min_ratio * base {
+            continue;
+        }
+        let Some(at) = crossing(t, bi + 1, ti, base + 0.5 * (top - base)) else {
+            continue;
+        };
+        let r = Rise {
+            at,
+            from: bi,
+            base,
+            top,
+        };
+        match out.last_mut() {
+            Some(last) if r.at - last.at < 0.5 * w as f64 => {
+                if r.top - r.base > last.top - last.base {
+                    *last = r;
+                }
+            }
+            _ => out.push(r),
+        }
+    }
+    out
+}
+
+/// Landmarks of a measured template, in template samples.
+#[derive(Debug, Clone, Copy)]
+struct Marks {
+    /// Unlock edge, and the halfway crossings of sounds 1 and 3.
+    unlock: f64,
+    at1: Option<f64>,
+    at3: f64,
+}
+
+/// Measure a template whose beat reference point sits `origin` samples in.
+pub fn measure(template: &[f32], fs: f64, origin: usize, cfg: &ShapeConfig) -> Option<Shape> {
+    measure_at(template, fs, origin, cfg).map(|m| m.0)
+}
+
+fn measure_at(
+    template: &[f32],
+    fs: f64,
+    origin: usize,
+    cfg: &ShapeConfig,
+) -> Option<(Shape, Marks)> {
+    if template.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let e = edges(template, fs, origin, cfg.onset_fraction)?;
+    // The same light smoothing the edges are read on.
+    let t = moving_average(template, ((0.0002 * fs) as usize).max(1));
+    let (floor, height) = (e.floor, e.peak_level - e.floor);
+    let samples = |s: f64| (s * fs) as usize;
+    let ms = |i: f64| (i - e.unlock) / fs * 1000.0;
+    // Levels above the floor. Noise adds to a sound in power rather than in
+    // level, so the floor is taken off in power; otherwise quiet sounds
+    // would read low against the drop.
+    let above = |v: f32| ((v * v - floor * floor).max(0.0) as f64).sqrt();
+    let a: Vec<f64> = t.iter().map(|&v| above(v)).collect();
+    let lvl = |v: f32| above(v) / above(e.peak_level);
+    let min_step = cfg.min_prominence * height;
+
+    // Sound 3: the drop, from the lowest point in the 2 ms before its peak.
+    let p3 = e.peak;
+    let lo = p3.saturating_sub(samples(0.002));
+    let (b3, base3) = (lo..=p3)
+        .map(|k| (k, t[k]))
+        .fold((p3, t[p3]), |m, p| if p.1 < m.1 { p } else { m });
+    let at3 = crossing(&t, b3 + 1, p3, base3 + 0.5 * (e.peak_level - base3))?;
+
+    let gap = samples(0.0003) as f64;
+    let (inner, s1, s2) = sound_rises(&t, fs, e.unlock, at3, min_step, cfg);
+
+    // Each sound's peak lies between its own rise and the start of the next.
+    let reach = samples(0.001);
+    let peak_in = |from: f64, to: usize| {
+        crate::dsp::argmax(&t, from as usize, to.min(from as usize + reach) + 1)
+    };
+    let pk1 = s1.and_then(|r| peak_in(r.at, s2.map_or(b3, |r| r.from)));
+    let pk2 = s2.and_then(|r| peak_in(r.at, b3));
+    let pk3 = (p3, e.peak_level);
+    let at = |i: usize| parabolic(&t, i);
+    let v12 = pk1.zip(pk2).map(|(p, q)| valley(&a, p, q));
+    let v23 = pk2.map(|p| valley(&a, p, pk3));
+
+    // Tail: mean level over a stretch after the drop peak.
+    let ta = p3 + samples(cfg.tail_s.0);
+    let tb = (p3 + samples(cfg.tail_s.1)).min(t.len());
+    let tail_ratio = if ta < tb {
+        a[ta..tb].iter().sum::<f64>() / (tb - ta) as f64 / a[p3]
+    } else {
+        f64::NAN
+    };
+
+    // Extra events: rises a little way outside the 1-to-3 span.
+    let step = cfg.extra_prominence * height;
+    let event = |r: &Rise| ExtraEvent {
+        t_ms: ms(r.at),
+        level: lvl(r.top),
+    };
+    let extra = |a: f64, b: f64| extra_events(&t, fs, (a, b), step, cfg.min_rise, &event);
+    let quiet = samples(0.003) as f64;
+    let span = samples(cfg.extra_span_s) as f64;
+    let egap = samples(cfg.extra_gap_s) as f64;
+    let extra_pre = extra((e.unlock - span).max(quiet), e.unlock - egap);
+    let extra_post = extra(p3 as f64 + egap, (p3 as f64 + span).min(t.len() as f64));
+
+    let t1 = s1.map(|r| r.at);
+    let t2 = s2.map(|r| r.at);
+    let d = |a: f64, b: f64| (b - a) / fs * 1000.0;
+    let shape = Shape {
+        unlock_to_drop_ms: d(e.unlock, e.drop),
+        unlock_at_ms: d(origin as f64, e.unlock),
+        t1_ms: t1.map(ms),
+        t2_ms: t2.map(ms),
+        t3_ms: ms(at3),
+        peak1_ms: pk1.map(|p| ms(at(p.0))),
+        peak2_ms: pk2.map(|p| ms(at(p.0))),
+        peak3_ms: ms(at(p3)),
+        i12_ms: t1.zip(t2).map(|(a, b)| d(a, b)),
+        i23_ms: t2.map(|b| d(b, at3)),
+        i13_ms: t1.map(|a| d(a, at3)),
+        level1: pk1.map(|p| a[p.0]),
+        level2: pk2.map(|p| a[p.0]),
+        level3: a[p3],
+        ratio13: pk1.map(|p| lvl(p.1)),
+        ratio23: pk2.map(|p| lvl(p.1)),
+        valley12: v12.map(|v| v.0),
+        valley23: v23.map(|v| v.0),
+        fill12: v12.map(|v| v.1),
+        fill23: v23.map(|v| v.1),
+        tail_ratio,
+        noise_ratio: None,
+        rises: inner.iter().filter(|r| r.at >= e.unlock - gap).count() + 1,
+        extra_pre,
+        extra_post,
+    };
+    let marks = Marks {
+        unlock: e.unlock,
+        at1: t1,
+        at3,
+    };
+    Some((shape, marks))
+}
+
+/// Every rise from just before the unlock edge at `unlock` to just before
+/// the drop's crossing at `at3`, in the smoothed envelope `t`, and which of
+/// them are sounds 1 and 2.
+fn sound_rises(
+    t: &[f32],
+    fs: f64,
+    unlock: f64,
+    at3: f64,
+    min_step: f32,
+    cfg: &ShapeConfig,
+) -> (Vec<Rise>, Option<Rise>, Option<Rise>) {
+    let samples = |s: f64| (s * fs) as usize;
+    let gap = samples(0.0003) as f64;
+    // Every rise from just before the unlock edge to just before the drop.
+    let first = (unlock - samples(0.0005) as f64).max(0.0) as usize;
+    let inner: Vec<Rise> = rises(t, fs, first, at3 as usize, min_step, cfg.min_rise)
+        .into_iter()
+        .filter(|r| r.at < at3 - gap)
+        .collect();
+    // Sound 1 must start at the unlock edge; sound 2 is the biggest rise after it.
+    let s1 = inner
+        .first()
+        .copied()
+        .filter(|r| r.at <= unlock + samples(0.001) as f64);
+    let after1 = s1.map_or(unlock, |r| r.at + gap);
+    // A rise just after sound 1 is measured from the lowest point after
+    // sound 1, not from before the unlock, or the unlock's own climb would
+    // count towards it and a shoulder on sound 1 would outweigh the impulse.
+    let rise_after1 = |r: &Rise| {
+        let from = r.from.max(after1 as usize);
+        let to = (r.at as usize).max(from);
+        r.top - t[from..=to].iter().copied().fold(f32::INFINITY, f32::min)
+    };
+    let s2 = inner
+        .iter()
+        .copied()
+        .filter(|r| r.at > after1)
+        .max_by(|a, b| rise_after1(a).total_cmp(&rise_after1(b)));
+    (inner, s1, s2)
+}
+
+/// The valley between two peaks `p` and `q` of the levels `a`: its lowest
+/// level and its mean level, each over the peaks' own.
+fn valley(a: &[f64], p: (usize, f32), q: (usize, f32)) -> (f64, f64) {
+    let seg = &a[p.0..=q.0];
+    let low = seg.iter().copied().fold(f64::INFINITY, f64::min);
+    let mean = seg.iter().sum::<f64>() / seg.len() as f64;
+    let (lp, lq) = (a[p.0], a[q.0]);
+    (low / lp.min(lq), mean / ((lp + lq) / 2.0))
+}
+
+/// The rises of at least `step` between samples `a` and `b` of the
+/// smoothed envelope `t`, each as `event` gives it; none where `b` is not
+/// past `a`.
+fn extra_events(
+    t: &[f32],
+    fs: f64,
+    (a, b): (f64, f64),
+    step: f32,
+    min_rise: f32,
+    event: &dyn Fn(&Rise) -> ExtraEvent,
+) -> Vec<ExtraEvent> {
+    if b <= a {
+        return Vec::new();
+    }
+    rises(t, fs, a as usize, b as usize, step, min_rise)
+        .iter()
+        .map(event)
+        .collect()
+}
+
+/// Median over beats of each beat's median envelope level from `a` to `b`
+/// seconds after its reference point.
+fn stretch_level(env: &[f32], fs: f64, times: &[f64], a: f64, b: f64) -> Option<f64> {
+    let mut levels: Vec<f64> = times
+        .iter()
+        .filter_map(|&t| {
+            let i = ((t + a) * fs).round();
+            let j = ((t + b) * fs).round();
+            if i < 0.0 || j as usize > env.len() || j <= i {
+                return None;
+            }
+            let mut seg = env[i as usize..j as usize].to_vec();
+            Some(median_f32(&mut seg) as f64)
+        })
+        .collect();
+    (!levels.is_empty()).then(|| median(&mut levels))
+}
+
+/// Shape of one side's beats, with the noise between beats, plus the
+/// template and its landmarks.
+fn side_shape(
+    env: &[f32],
+    fs: f64,
+    times: &[f64],
+    beat_s: f64,
+    cfg: &ShapeConfig,
+) -> Option<(Shape, Marks, Vec<f32>)> {
+    if times.len() < 3 {
+        return None;
+    }
+    let tmpl = median_window(env, fs, times, cfg.pre_s, cfg.post_s)?;
+    let origin = (cfg.pre_s * fs).round() as usize;
+    let (mut s, marks) = measure_at(&tmpl, fs, origin, cfg)?;
+    // Silence just before the unlock against the middle of the gap after the drop.
+    let u = marks.unlock / fs - cfg.pre_s;
+    let pre = stretch_level(env, fs, times, u - 0.004, u - 0.001)?;
+    let mid = stretch_level(env, fs, times, 0.35 * beat_s, 0.65 * beat_s)?;
+    s.noise_ratio = (pre > 0.0).then_some(mid / pre);
+    Some((s, marks, tmpl))
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ShapeWindow {
+    pub start_s: f64,
+    pub end_s: f64,
+    pub even: Option<Shape>,
+    pub odd: Option<Shape>,
+}
+
+/// Beat-by-beat spread of the 1-to-3 interval on one side.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct Spread {
+    pub beats: usize,
+    /// Median 1-to-3 interval over single beats, ms.
+    pub i13_ms: f64,
+    /// Robust standard deviation of single beats about their window's
+    /// median, microseconds.
+    pub i13_sd_us: f64,
+}
+
+/// One side over the whole recording.
+#[derive(Debug, Clone, Serialize)]
+pub struct SideReport {
+    /// Median of each measure over the windows where it was found.
+    pub windows: Shape,
+    /// Windows measured, and those in which sound 1, sound 2 and an extra
+    /// event before or after the beat were found.
+    pub windows_measured: usize,
+    pub windows_with_1: usize,
+    pub windows_with_2: usize,
+    pub windows_with_extra_pre: usize,
+    pub windows_with_extra_post: usize,
+    /// The whole-recording template. Amplitude changes during the
+    /// recording smear the sounds before the drop, so the windowed
+    /// medians are the better reading of timing.
+    pub whole: Option<Shape>,
+    pub spread: Option<Spread>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ShapeReport {
+    pub even: SideReport,
+    pub odd: SideReport,
+    pub windows: Vec<ShapeWindow>,
+    /// Whole-recording templates, sample by sample from `-pre_s`; empty
+    /// where no beat of that side fits a whole window (#1210).
+    #[serde(skip)]
+    pub template_even: Vec<f32>,
+    #[serde(skip)]
+    pub template_odd: Vec<f32>,
+    pub template_start_ms: f64,
+}
+
+fn is_even(b: &Beat) -> bool {
+    b.index.rem_euclid(2) == 0
+}
+
+/// How far a single beat's rise near template sample `at` sits from the
+/// template's, in samples. The template's rise (0.4 ms either side of
+/// `at`, mean removed) is slid over the beat up to `lag` samples each way;
+/// `start` is the envelope sample where this beat's template would begin.
+fn beat_offset(
+    env: &[f32],
+    fs: f64,
+    start: isize,
+    tmpl: &[f32],
+    at: f64,
+    lag: usize,
+) -> Option<f64> {
+    let w = (0.0004 * fs) as usize;
+    let c = at.round() as usize;
+    let seg = tmpl.get(c.checked_sub(w)?..c + w + 1)?;
+    let mean = seg.iter().sum::<f32>() / seg.len() as f32;
+    let first = start + (c - w) as isize - lag as isize;
+    let last = start + (c + w) as isize + lag as isize;
+    if first < 0 || last as usize >= env.len() {
+        return None;
+    }
+    let score: Vec<f32> = (0..=2 * lag)
+        .map(|k| {
+            let o = (first + k as isize) as usize;
+            seg.iter().zip(&env[o..]).map(|(a, b)| (a - mean) * b).sum()
+        })
+        .collect();
+    let (i, _) = crate::dsp::argmax(&score, 0, score.len())?;
+    Some(parabolic(&score, i) - lag as f64)
+}
+
+/// The shape of the beats found on `env`, and the beat period it was
+/// measured with: beats found at `bph`, their timing fitted, and the
+/// fitted period (or 3600/bph with no fit) used for the shape (#807). It
+/// takes the envelope as given, so a caller's own envelope settings and
+/// bph win.
+pub fn of_envelope(env: &[f32], fs: f64, bph: u32) -> (ShapeReport, f64) {
+    let (found, _) = crate::beats::detect(env, fs, bph);
+    let beat_s = crate::timing::beat_period_s(crate::timing::fit(&found, bph).as_ref(), bph);
+    (
+        analyze(env, fs, &found, beat_s, &ShapeConfig::default()),
+        beat_s,
+    )
+}
+
+/// Shape of both sides in windows and over the whole recording.
+pub fn analyze(
+    env: &[f32],
+    fs: f64,
+    beats: &[Beat],
+    beat_s: f64,
+    cfg: &ShapeConfig,
+) -> ShapeReport {
+    let good: Vec<&Beat> = beats
+        .iter()
+        .filter(|b| b.quality > cfg.min_quality)
+        .collect();
+    let origin = (cfg.pre_s * fs).round() as usize;
+    let side_times = |win: &[&Beat], even: bool| -> Vec<f64> {
+        win.iter()
+            .filter(|b| is_even(b) == even)
+            .map(|b| b.time)
+            .collect()
+    };
+
+    let mut windows = Vec::new();
+    // Single-beat 1-to-3 deviations from each window's template, per side.
+    let mut beat_i13: [Vec<f64>; 2] = [Vec::new(), Vec::new()];
+    let mut beat_dev: [Vec<f64>; 2] = [Vec::new(), Vec::new()];
+    if let (Some(first), Some(last)) = (good.first(), good.last()) {
+        let mut start = first.time;
+        let mut lo = 0usize;
+        while start + cfg.window_s <= last.time + 1e-9 {
+            while lo < good.len() && good[lo].time < start {
+                lo += 1;
+            }
+            let mut hi = lo;
+            while hi < good.len() && good[hi].time < start + cfg.window_s {
+                hi += 1;
+            }
+            let win = &good[lo..hi];
+            let mut pair = [None, None];
+            for (k, even) in [true, false].into_iter().enumerate() {
+                let times = side_times(win, even);
+                let s = side_shape(env, fs, &times, beat_s, cfg);
+                if let Some((_, m, tmpl)) = &s {
+                    if let Some(a1) = m.at1 {
+                        let i13 = single_beat_i13(env, fs, &times, origin, tmpl, a1, m.at3);
+                        if i13.len() >= 3 {
+                            let m = median(&mut i13.clone());
+                            beat_dev[k].extend(i13.iter().map(|v| (v - m) * 1000.0));
+                            beat_i13[k].extend(i13);
+                        }
+                    }
+                }
+                pair[k] = s.map(|s| s.0);
+            }
+            let [even, odd] = pair;
+            windows.push(ShapeWindow {
+                start_s: start,
+                end_s: start + cfg.window_s,
+                even,
+                odd,
+            });
+            start += cfg.window_s;
+        }
+    }
+
+    let whole = |even: bool| -> (Vec<f32>, Option<Shape>) {
+        let times = side_times(&good, even);
+        let tmpl = median_window(env, fs, &times, cfg.pre_s, cfg.post_s).unwrap_or_default();
+        (tmpl, side_shape(env, fs, &times, beat_s, cfg).map(|s| s.0))
+    };
+    let (template_even, whole_even) = whole(true);
+    let (template_odd, whole_odd) = whole(false);
+
+    ShapeReport {
+        even: side_report(&windows, 0, whole_even, &beat_i13[0], &beat_dev[0]),
+        odd: side_report(&windows, 1, whole_odd, &beat_i13[1], &beat_dev[1]),
+        windows,
+        template_even,
+        template_odd,
+        template_start_ms: -cfg.pre_s * 1000.0,
+    }
+}
+
+/// Single beats' 1-to-3 intervals in ms: each one's rises 1 and 3, at
+/// `a1` and `at3` in the template `tmpl`, found in the beat itself.
+fn single_beat_i13(
+    env: &[f32],
+    fs: f64,
+    times: &[f64],
+    origin: usize,
+    tmpl: &[f32],
+    a1: f64,
+    at3: f64,
+) -> Vec<f64> {
+    let lag = (0.0004 * fs) as usize;
+    times
+        .iter()
+        .filter_map(|&t| {
+            let start = (t * fs).round() as isize - origin as isize;
+            let o1 = beat_offset(env, fs, start, tmpl, a1, lag)?;
+            let o3 = beat_offset(env, fs, start, tmpl, at3, lag)?;
+            Some((at3 + o3 - a1 - o1) / fs * 1000.0)
+        })
+        .collect()
+}
+
+/// One side's report (`k` 0 for even beats, 1 for odd) from the windows'
+/// shapes, its whole-take shape, and its single beats' 1-to-3 intervals
+/// `i13` and their deviations `dev` from their windows' medians.
+fn side_report(
+    windows: &[ShapeWindow],
+    k: usize,
+    whole: Option<Shape>,
+    i13: &[f64],
+    dev: &[f64],
+) -> SideReport {
+    let shapes: Vec<&Shape> = windows
+        .iter()
+        .filter_map(|w| {
+            if k == 0 {
+                w.even.as_ref()
+            } else {
+                w.odd.as_ref()
+            }
+        })
+        .collect();
+    let spread = (i13.len() >= 10).then(|| Spread {
+        beats: i13.len(),
+        i13_ms: median(&mut i13.to_vec()),
+        i13_sd_us: robust_sd(dev),
+    });
+    SideReport {
+        windows: median_shape(&shapes),
+        windows_measured: shapes.len(),
+        windows_with_1: shapes.iter().filter(|s| s.t1_ms.is_some()).count(),
+        windows_with_2: shapes.iter().filter(|s| s.t2_ms.is_some()).count(),
+        windows_with_extra_pre: shapes.iter().filter(|s| !s.extra_pre.is_empty()).count(),
+        windows_with_extra_post: shapes.iter().filter(|s| !s.extra_post.is_empty()).count(),
+        whole,
+        spread,
+    }
+}
+
+/// Median of each measure over the shapes where it was found. Extra events
+/// are not summarised here (see the window counts).
+fn median_shape(shapes: &[&Shape]) -> Shape {
+    let opt = |f: &dyn Fn(&Shape) -> Option<f64>| -> Option<f64> {
+        let mut v: Vec<f64> = shapes
+            .iter()
+            .filter_map(|s| f(s))
+            .filter(|x| x.is_finite())
+            .collect();
+        (!v.is_empty()).then(|| median(&mut v))
+    };
+    let all = |f: &dyn Fn(&Shape) -> f64| opt(&|s| Some(f(s))).unwrap_or(f64::NAN);
+    Shape {
+        unlock_to_drop_ms: all(&|s| s.unlock_to_drop_ms),
+        unlock_at_ms: all(&|s| s.unlock_at_ms),
+        t1_ms: opt(&|s| s.t1_ms),
+        t2_ms: opt(&|s| s.t2_ms),
+        t3_ms: all(&|s| s.t3_ms),
+        peak1_ms: opt(&|s| s.peak1_ms),
+        peak2_ms: opt(&|s| s.peak2_ms),
+        peak3_ms: all(&|s| s.peak3_ms),
+        i12_ms: opt(&|s| s.i12_ms),
+        i23_ms: opt(&|s| s.i23_ms),
+        i13_ms: opt(&|s| s.i13_ms),
+        level1: opt(&|s| s.level1),
+        level2: opt(&|s| s.level2),
+        level3: all(&|s| s.level3),
+        ratio13: opt(&|s| s.ratio13),
+        ratio23: opt(&|s| s.ratio23),
+        valley12: opt(&|s| s.valley12),
+        valley23: opt(&|s| s.valley23),
+        fill12: opt(&|s| s.fill12),
+        fill23: opt(&|s| s.fill23),
+        tail_ratio: all(&|s| s.tail_ratio),
+        noise_ratio: opt(&|s| s.noise_ratio),
+        rises: all(&|s| s.rises as f64).round() as usize,
+        extra_pre: Vec::new(),
+        extra_post: Vec::new(),
+    }
+}
+
+/// The shape measures `analyze` reports for one side, from the windowed
+/// medians of [`SideReport`]. Each is `None` when no window was measured.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SideMeasures {
+    /// Windows measured on this side.
+    pub windows_measured: usize,
+    /// Share of those windows in which sound 1 (the unlock) was found.
+    pub share_with_sound_1: Option<f64>,
+    /// Share of those windows in which sound 2 (the impulse) was found
+    /// apart from sound 1.
+    pub share_with_sound_2: Option<f64>,
+    /// Sound 1 to sound 2, and sound 1 to sound 3, ms.
+    pub i12_ms: Option<f64>,
+    pub i13_ms: Option<f64>,
+    /// Level of sound 1 over the level of sound 3.
+    pub ratio13: Option<f64>,
+    /// Mean level 3 to 15 ms after the drop over the drop's level.
+    pub tail_ratio: Option<f64>,
+}
+
+impl SideMeasures {
+    pub fn of(r: &SideReport) -> SideMeasures {
+        let m = r.windows_measured;
+        let some = |v: f64| (m > 0).then_some(v);
+        let share = |n: usize| some(n as f64 / m.max(1) as f64);
+        SideMeasures {
+            windows_measured: m,
+            share_with_sound_1: share(r.windows_with_1),
+            share_with_sound_2: share(r.windows_with_2),
+            i12_ms: r.windows.i12_ms.filter(|_| m > 0),
+            i13_ms: r.windows.i13_ms.filter(|_| m > 0),
+            ratio13: r.windows.ratio13.filter(|_| m > 0),
+            tail_ratio: some(r.windows.tail_ratio).filter(|v| v.is_finite()),
+        }
+    }
+}
+
+/// The shape of the Tick (even beats) and the Tock (odd beats), and the
+/// beat error from the unlock early and late in the recording: measures
+/// only, with no reading of what they mean.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Measures {
+    pub even: SideMeasures,
+    pub odd: SideMeasures,
+    /// Median of the signed beat error from the unlock over the first and
+    /// the last quarter of the 2 s amplitude windows that have one, ms.
+    pub beat_error_first_quarter_ms: Option<f64>,
+    pub beat_error_last_quarter_ms: Option<f64>,
+    /// Windows in each of those quarters.
+    pub beat_error_quarter_windows: usize,
+}
+
+impl Measures {
+    pub fn of(r: &ShapeReport, windows: &[crate::amplitude::AmplitudeWindow]) -> Measures {
+        let be: Vec<f64> = windows
+            .iter()
+            .filter_map(|w| w.beat_error_unlock_ms)
+            .filter(|v| v.is_finite())
+            .collect();
+        let q = be.len() / 4;
+        let quarter = |v: &[f64]| (q > 0).then(|| median(&mut v.to_vec()));
+        Measures {
+            even: SideMeasures::of(&r.even),
+            odd: SideMeasures::of(&r.odd),
+            beat_error_first_quarter_ms: quarter(&be[..q]),
+            beat_error_last_quarter_ms: quarter(&be[be.len() - q..]),
+            beat_error_quarter_windows: q,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A template drawn through (ms from the drop peak, level) points.
+    fn template(fs: f64, points: &[(f64, f32)]) -> (Vec<f32>, usize) {
+        let n = (0.050 * fs) as usize;
+        let origin = n / 2;
+        let t = (0..n)
+            .map(|i| {
+                let ms = (i as f64 - origin as f64) / fs * 1000.0;
+                let k = points.iter().position(|p| p.0 > ms).unwrap_or(points.len());
+                if k == 0 {
+                    points[0].1
+                } else if k == points.len() {
+                    points[k - 1].1
+                } else {
+                    let (a, b) = (points[k - 1], points[k]);
+                    a.1 + (b.1 - a.1) * ((ms - a.0) / (b.0 - a.0)) as f32
+                }
+            })
+            .collect();
+        (t, origin)
+    }
+
+    #[test]
+    fn a_shoulder_on_the_unlock_is_not_the_impulse() {
+        // The Daytona 4130's Tick at 9:15 of its dial-up take, 4 s: the
+        // unlock climbs to a shoulder 1 ms later, and the impulse rises
+        // out of that shoulder's tail about 2.4 ms after the unlock.
+        let fs = 48_000.0;
+        let (t, origin) = template(
+            fs,
+            &[
+                (-7.45, 0.0066),
+                (-7.3, 0.0124),
+                (-7.1, 0.0108),
+                (-6.25, 0.0234),
+                (-5.9, 0.0160),
+                (-5.6, 0.0183),
+                (-5.3, 0.0148),
+                (-4.5, 0.0297),
+                (-4.1, 0.0240),
+                (-3.8, 0.0295),
+                (-3.2, 0.0122),
+                (-1.0, 0.0120),
+                (-0.4, 0.0400),
+                (0.0, 0.0600),
+                (8.0, 0.0066),
+            ],
+        );
+        let s = measure(&t, fs, origin, &ShapeConfig::default()).expect("shape");
+        let t2 = s.t2_ms.expect("sound 2");
+        assert!(
+            (2.0..3.0).contains(&t2),
+            "sound 2 {t2:.2} ms after the unlock"
+        );
+    }
+}

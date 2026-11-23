@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, date, varchar, jsonb, index, uniqueIndex, real } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -256,6 +256,41 @@ export const inventorySales = pgTable("inventory_sales", {
   index("inventory_sales_sold_date_idx").on(table.soldDate),
 ]);
 
+// Derived readings only; raw microphone audio stays in the browser and is
+// never stored or sent to the API.
+export const inventoryTimingSettingsTable = pgTable("inventory_timing_settings", {
+  inventoryId: integer("inventory_id").primaryKey().references(() => inventory.id, { onDelete: "cascade" }),
+  liftAngleDegrees: real("lift_angle_degrees").notNull().default(52),
+  beatRateVph: integer("beat_rate_vph"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const inventoryTimingReadings = pgTable("inventory_timing_readings", {
+  id: serial("id").primaryKey(),
+  inventoryId: integer("inventory_id").notNull().references(() => inventory.id, { onDelete: "cascade" }),
+  measuredAt: timestamp("measured_at", { withTimezone: true }).defaultNow().notNull(),
+  captureDurationSeconds: real("capture_duration_seconds").notNull(),
+  sampleRateHz: integer("sample_rate_hz").notNull(),
+  readingWindowSeconds: real("reading_window_seconds").notNull(),
+  requestedBeatRateVph: integer("requested_beat_rate_vph"),
+  beatRateVph: integer("beat_rate_vph"),
+  liftAngleDegrees: real("lift_angle_degrees").notNull(),
+  rateSecondsPerDay: real("rate_seconds_per_day"),
+  amplitudeDegrees: real("amplitude_degrees"),
+  beatErrorMs: real("beat_error_ms"),
+  beatErrorSource: text("beat_error_source"),
+  jitterMicroseconds: real("jitter_microseconds"),
+  beatsUsed: integer("beats_used").notNull(),
+  spanSeconds: real("span_seconds").notNull(),
+  watchHeard: boolean("watch_heard").notNull(),
+  findingBeat: boolean("finding_beat").notNull(),
+  snr: real("snr"),
+  clippedFraction: real("clipped_fraction"),
+  engineVersion: text("engine_version").notNull().default("1.1.0"),
+}, (table) => [
+  index("inventory_timing_readings_watch_measured_idx").on(table.inventoryId, table.measuredAt),
+]);
+
 export const inventoryReturns = pgTable("inventory_returns", {
   id: serial("id").primaryKey(),
   saleId: integer("sale_id").notNull().references(() => inventorySales.id),
@@ -376,6 +411,9 @@ export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type InventoryPriceHistory = typeof inventoryPriceHistory.$inferSelect;
 export type InventorySale = typeof inventorySales.$inferSelect;
 export type InventoryReturn = typeof inventoryReturns.$inferSelect;
+export type InventoryTimingReading = typeof inventoryTimingReadings.$inferSelect;
+export type InsertInventoryTimingReading = typeof inventoryTimingReadings.$inferInsert;
+export type InventoryTimingSetting = typeof inventoryTimingSettingsTable.$inferSelect;
 
 // === EXPENSES ===
 export const expenses = pgTable("expenses", {

@@ -3,6 +3,7 @@ import { api, buildUrl, type CreateInventoryRequest, type UpdateInventoryRequest
 import { normalizeWatchSerial } from "@shared/serial-match";
 import { apiJson, apiRequest, readApiJson } from "@/lib/queryClient";
 import { refreshData } from "@/lib/refresh-data";
+import type { CreateInventoryTimingReading, InventoryTimingSettings } from "@shared/timing";
 
 export function useInventorySerialMatches(
   serialNumber?: string | null,
@@ -63,6 +64,51 @@ export function useInventoryPriceHistory(id: number) {
       return apiJson("GET", url, undefined, api.inventory.priceHistory.responses[200], { signal });
     },
     enabled: !!id,
+  });
+}
+
+export function useInventoryTimingReadings(id: number) {
+  return useQuery({
+    queryKey: [api.inventory.timingReadings.list.path, id],
+    queryFn: ({ signal }) => apiJson(
+      "GET",
+      buildUrl(api.inventory.timingReadings.list.path, { id }),
+      undefined,
+      api.inventory.timingReadings.list.responses[200],
+      { signal },
+    ),
+    enabled: !!id,
+  });
+}
+
+export function useCreateInventoryTimingReading(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (reading: CreateInventoryTimingReading) => apiJson(
+      api.inventory.timingReadings.create.method,
+      buildUrl(api.inventory.timingReadings.create.path, { id }),
+      reading,
+      api.inventory.timingReadings.create.responses[201],
+    ),
+    onSuccess: () => queryClient.invalidateQueries({
+      queryKey: [api.inventory.timingReadings.list.path, id],
+    }),
+  });
+}
+
+export function useUpdateInventoryTimingSettings(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: InventoryTimingSettings) => apiJson(
+      api.inventory.timingSettings.method,
+      buildUrl(api.inventory.timingSettings.path, { id }),
+      settings,
+      api.inventory.timingSettings.responses[200],
+    ),
+    onSuccess: (item) => {
+      queryClient.setQueryData([api.inventory.get.path, id], item);
+      return refreshData(queryClient, "inventory");
+    },
   });
 }
 

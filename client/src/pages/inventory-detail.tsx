@@ -32,7 +32,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Loader2, ArrowLeft, Trash2, Pencil, Archive, Calendar as CalendarIcon, Box, FileText, Check, Wrench, Plus, Sparkles, Copy, ChevronDown, Watch, ClipboardList, Coins, ShieldCheck } from "lucide-react";
+import { Loader2, ArrowLeft, Trash2, Pencil, Archive, Calendar as CalendarIcon, Box, FileText, Check, Wrench, Plus, Sparkles, Copy, ChevronDown, Watch, ClipboardList, Coins, ShieldCheck, Timer } from "lucide-react";
 import { differenceInDays, format, startOfDay, parseISO } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -62,6 +62,7 @@ import { BuyerContactCard } from "@/components/watch-details/buyer-contact-card"
 import { WatchWarrantySummary } from "@/components/watch-details/warranty-summary";
 import { SalesHistoryCard } from "@/components/watch-details/sales-history-card";
 import { ServiceHistoryCard } from "@/components/watch-details/service-history-card";
+import { TimingTab } from "@/components/watch-details/timing-tab";
 import { OverviewSummary } from "@/components/watch-details/overview-summary";
 import { SectionTabs, type WatchDetailsSection } from "@/components/watch-details/section-tabs";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
@@ -111,6 +112,7 @@ const WATCH_DETAILS_SECTIONS = [
   { id: "sale", label: "Warranty", icon: ShieldCheck },
   { id: "notes", label: "Notes & tools", icon: FileText },
   { id: "ai", label: "AI", icon: Sparkles },
+  { id: "timing", label: "Timing", icon: Timer },
 ] as const satisfies readonly WatchDetailsSection[];
 
 export default function InventoryDetail() {
@@ -1654,6 +1656,7 @@ export default function InventoryDetail() {
           </Card>}
 
           {activeSection === "notes" && <QuickEstimate initialBuyPriceCents={item.purchasePrice} />}
+          {activeSection === "timing" && <TimingTab item={item} />}
         </div>
       </div>
       {/* Historicals Section */}

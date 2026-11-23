@@ -1,0 +1,681 @@
+//! The period search's null (#1195): what the search reads from noise
+//! alone, simulated through the same steps (detrend, spectrum, whitening,
+//! oversampling, harmonic sums) and held in `data/period-null.json`, so
+//! that its stated false-alarm chance holds.
+//!
+//! Two noise models, one for each kind of series the search reads:
+//!
+//! - **Readings** (amplitude, beat error): AR(1), indexed by the lag-one ρ
+//!   the spectrum is whitened with.
+//! - **Timing** (the rate's search runs on the beats' timing): white rate
+//!   noise integrates to a random walk, and the beats' own jitter adds
+//!   white noise, so random walk plus white. The AR(1) whitening doesn't fit
+//!   that shape, and below the running median's corner the walk leaves a
+//!   hump that read false cycles at 2 to 10 times the stated rate. The mix
+//!   is indexed by the crossover frequency (where the walk's power meets
+//!   the white floor) times the detrend's window: [`timing_mix`]. Real
+//!   balance wheels also wander as flicker of the rate (1/f, a timing
+//!   power ∝ f⁻³ that is steeper than the walk's f⁻²; #1219), so timing
+//!   is walk plus flicker plus white, with a second axis: where the
+//!   flicker meets the walk, over where the red meets the white
+//!   ([`TimingFit::flicker`]).
+//!
+//! For each take length, grid step and mix, the table holds
+//! - the whitened null spectrum's mean against f·w (f·span under the
+//!   quadratic detrend), which the search divides out, and
+//! - the distribution of the maximum score over the searched band, as a
+//!   generalised extreme value ([`Tail`]), so a maximum `s` from noise has
+//!   a known chance. One effective number of trials did not hold: the
+//!   score's tail falls about 0.75 to 0.95 decades for each, so a count
+//!   right at p 0.5 was 3 to 6 times short at p 0.01; and on takes under
+//!   an hour the tail is heavier still than a Gumbel's, so the shape ξ is
+//!   fitted for each take length.
+//!
+//! The table comes from fixed seeds (`write_period_null_table`, an
+//! ignored test). A take outside its range of length, step or mix is
+//! searched as before, by the trials count alone, and the search says it
+//! is uncalibrated ([`Search::calibrated`](super::Search)).
+
+use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+/// Which simulated noise a series is searched against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NullModel {
+    /// AR(1) readings: amplitude, beat error.
+    Readings,
+    /// Random walk plus white: the beats' timing.
+    Timing,
+}
+
+/// Where a search's null came from: the model, the take's mix, and
+/// whether the table covered it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct NullFit {
+    pub model: NullModel,
+    /// ρ for readings; the crossover times the detrend's window (the
+    /// take's span under the quadratic) for timing.
+    pub mix: f64,
+    /// Timing only: the flicker's share ([`TimingFit::flicker`]); 0 for
+    /// readings and for timing with no flicker.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub flicker: f64,
+    /// Whether the table covered this take's length, step and mix; when
+    /// false the search used the plain trials count and its false-alarm
+    /// chance is not calibrated.
+    pub calibrated: bool,
+    /// Timing only: how far the take's band powers sit from the walk plus
+    /// white fitted to them ([`TimingFit::misfit`]), and the null's 99th
+    /// percentile of it for this take ([`Cell::misfit_p99`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub misfit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub misfit_limit: Option<f64>,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+/// The table's f·w axis: 0.01 times 2^(k/4), k from 0 to 68.
+pub const X_POINTS: usize = 69;
+
+pub fn x_at(k: usize) -> f64 {
+    0.01 * 2f64.powf(k as f64 / 4.0)
+}
+
+/// One simulated cell.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Cell {
+    pub model: NullModel,
+    pub span_s: f64,
+    pub step_s: f64,
+    pub mix: f64,
+    /// Timing: the flicker's share ([`TimingFit::flicker`]); 0 (none) in
+    /// a table made before #1219.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub flicker: f64,
+    /// The maximum score's extreme-value fit: location, scale, shape, and
+    /// the log10 of the trials count the search made for it.
+    pub mu: f64,
+    pub sigma: f64,
+    pub xi: f64,
+    pub log_trials: f64,
+    /// The whitened null's mean at each `x_at(k)`; null where the cell
+    /// has no searched bins.
+    pub mean: Vec<Option<f64>>,
+    /// The levelled power's gamma shape at each `x_at(k)`, mean² over
+    /// variance across the null's draws: 1 where a bin is a chi-square
+    /// with two degrees of freedom, under 1 where it varies more (the
+    /// lowest bins of a walk). Empty in a table made before #1218.
+    #[serde(default)]
+    pub shape: Vec<Option<f64>>,
+    /// Timing only: the 99th percentile over the null's draws of how far
+    /// a take's band powers sit from its fitted walk plus white
+    /// ([`timing_fit`]'s misfit). A take past it is not that model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub misfit_p99: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Table {
+    /// What the simulation ran, for the record.
+    pub note: String,
+    /// The timing passes the table had (`null_tests::TIMING_PASSES`);
+    /// empty in a table made before #1219, and a test refuses a shipped
+    /// table that lacks any.
+    #[serde(default)]
+    pub passes: Vec<String>,
+    pub draws_mean: usize,
+    pub draws_max: usize,
+    pub cells: Vec<Cell>,
+}
+
+const DATA: &str = include_str!("../../data/period-null.json");
+
+pub fn table() -> &'static Table {
+    static T: OnceLock<Table> = OnceLock::new();
+    T.get_or_init(|| serde_json::from_str(DATA).expect("period-null.json"))
+}
+
+/// What a search divides its whitened spectrum by, and its maximum
+/// score's tail.
+#[derive(Debug, Clone)]
+pub struct Levelling {
+    pub mean: Vec<Option<f64>>,
+    /// As [`Cell::shape`].
+    pub shape: Vec<Option<f64>>,
+    /// As [`Cell::misfit_p99`].
+    pub misfit_p99: Option<f64>,
+    pub mu: f64,
+    pub sigma: f64,
+    pub xi: f64,
+    pub log_trials: f64,
+}
+
+/// The distribution of a search's maximum score from noise alone: a
+/// generalised extreme value, P(max ≤ s) = exp(−t^(−1/ξ)), t = 1 + ξ(s −
+/// μ)/σ (a Gumbel at ξ = 0). Its tail, t^(−1/ξ), is the chance a score is
+/// read as.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Tail {
+    pub mu: f64,
+    pub sigma: f64,
+    pub xi: f64,
+}
+
+impl Tail {
+    /// The plain trials count's tail, `trials` · 10^−s: the search's rate
+    /// where the table doesn't reach.
+    pub fn trials(trials: f64) -> Tail {
+        Tail {
+            mu: trials.log10(),
+            sigma: 1.0 / std::f64::consts::LN_10,
+            xi: 0.0,
+        }
+    }
+
+    /// −log10 of the chance noise's maximum reaches `score`.
+    pub fn significance(&self, score: f64) -> f64 {
+        let z = (score - self.mu) / self.sigma;
+        if self.xi.abs() < 1e-9 {
+            return z / std::f64::consts::LN_10;
+        }
+        let t = 1.0 + self.xi * z;
+        if t <= 0.0 {
+            return 0.0;
+        }
+        t.log10() / self.xi
+    }
+
+    /// The score noise's maximum reaches with the chance `p`.
+    pub fn score_at(&self, p: f64) -> f64 {
+        if self.xi.abs() < 1e-9 {
+            return self.mu - self.sigma * p.ln();
+        }
+        self.mu + self.sigma * (p.powf(-self.xi) - 1.0) / self.xi
+    }
+}
+
+impl Levelling {
+    /// The maximum's tail over `trials`: the fit's, moved from the trials
+    /// count it was made with as the maximum of that many more draws.
+    pub fn tail(&self, trials: f64) -> Tail {
+        let k = trials / 10f64.powf(self.log_trials);
+        if self.xi.abs() < 1e-9 {
+            return Tail {
+                mu: self.mu + self.sigma * k.ln(),
+                sigma: self.sigma,
+                xi: 0.0,
+            };
+        }
+        let kx = k.powf(self.xi);
+        Tail {
+            mu: self.mu + self.sigma * (kx - 1.0) / self.xi,
+            sigma: self.sigma * kx,
+            xi: self.xi,
+        }
+    }
+
+    /// The null's mean at `x`, from the two table points either side (on
+    /// log x); None outside the points the cell measured.
+    pub fn at(&self, x: f64) -> Option<f64> {
+        let k = (x / 0.01).log2() * 4.0;
+        // NaN (x not above 0) falls outside too.
+        if !(0.0..=(X_POINTS - 1) as f64).contains(&k) {
+            return None;
+        }
+        let k0 = k.floor() as usize;
+        let k1 = (k0 + 1).min(X_POINTS - 1);
+        let (a, b) = (self.mean[k0]?, self.mean[k1]?);
+        Some(a + (b - a) * (k - k0 as f64))
+    }
+
+    /// The levelled power's gamma shape at `x`, as [`Self::at`]; 1 (a
+    /// chi-square, as every bin was read before #1218) where the cell has
+    /// none.
+    pub fn shape_at(&self, x: f64) -> f64 {
+        let k = (x / 0.01).log2() * 4.0;
+        if self.shape.is_empty() || !(0.0..=(X_POINTS - 1) as f64).contains(&k) {
+            return 1.0;
+        }
+        let k0 = k.floor() as usize;
+        let k1 = (k0 + 1).min(X_POINTS - 1);
+        match (self.shape[k0], self.shape[k1]) {
+            (Some(a), Some(b)) => a + (b - a) * (k - k0 as f64),
+            _ => 1.0,
+        }
+    }
+
+    /// A levelled power `v` at `x` as the exponential (chi-square, two
+    /// degrees of freedom) value with the same null tail: −ln P(Gamma(k,
+    /// 1/k) > v). At k = 1 it is `v`.
+    pub fn as_exponential(&self, x: f64, v: f64) -> f64 {
+        let k = self.shape_at(x);
+        if (k - 1.0).abs() < 1e-9 {
+            return v;
+        }
+        -crate::steadiness::ln_gamma_q(k, k * v)
+    }
+}
+
+/// Timing's mix for a walk with no white floor in the searched band:
+/// the table's pure-walk cells.
+pub const WALK_MIX: f64 = 1e12;
+
+/// Timing's flicker share where the walk never shows above the floor:
+/// the flicker meets it first, or there is no walk.
+pub const FLICKER_ONLY: f64 = 1.0;
+
+/// The least flicker share the table interpolates on in log share; under
+/// it, down to none, in the share itself (#1219, Norm's ruling).
+const FLICKER_LOG_FROM: f64 = 0.01;
+
+/// The flicker axis the table interpolates on (#1219): ln(share) from
+/// [`FLICKER_LOG_FROM`] to [`FLICKER_ONLY`], so the shares the table
+/// draws (0.01, 0.1 and 1) sit evenly; under it the axis is linear in the
+/// share, one unit from none to [`FLICKER_LOG_FROM`], so a share between
+/// none and 0.01 is read linearly between those two cells.
+fn flicker_axis(flicker: f64) -> f64 {
+    let v = flicker.clamp(0.0, FLICKER_ONLY);
+    if v >= FLICKER_LOG_FROM {
+        v.ln()
+    } else {
+        FLICKER_LOG_FROM.ln() - 1.0 + v / FLICKER_LOG_FROM
+    }
+}
+
+/// The mix axis the table interpolates on: ρ as it is, timing's
+/// crossover as f_c·w / (1 + f_c·w), so white noise (0) and a walk with no
+/// floor (1) are both points on it.
+fn axis(model: NullModel, mix: f64) -> f64 {
+    match model {
+        NullModel::Readings => mix,
+        NullModel::Timing if mix >= WALK_MIX => 1.0,
+        NullModel::Timing => mix / (1.0 + mix),
+    }
+}
+
+fn blend(a: &Levelling, b: &Levelling, t: f64) -> Levelling {
+    let mix = |p: &[Option<f64>], q: &[Option<f64>]| -> Vec<Option<f64>> {
+        p.iter()
+            .zip(q)
+            .map(|(&x, &y)| Some(x? + (y? - x?) * t))
+            .collect()
+    };
+    Levelling {
+        mean: mix(&a.mean, &b.mean),
+        shape: mix(&a.shape, &b.shape),
+        misfit_p99: a.misfit_p99.zip(b.misfit_p99).map(|(x, y)| x + (y - x) * t),
+        mu: a.mu + (b.mu - a.mu) * t,
+        sigma: a.sigma + (b.sigma - a.sigma) * t,
+        xi: a.xi + (b.xi - a.xi) * t,
+        log_trials: a.log_trials + (b.log_trials - a.log_trials) * t,
+    }
+}
+
+/// The two entries of sorted `keys` either side of `v` and how far
+/// between; None outside them.
+fn bracket(keys: &[f64], v: f64) -> Option<(usize, usize, f64)> {
+    let i = keys.iter().position(|&k| k >= v - 1e-9)?;
+    if (keys[i] - v).abs() <= 1e-9 {
+        return Some((i, i, 0.0));
+    }
+    let j = i.checked_sub(1)?;
+    Some((j, i, (v - keys[j]) / (keys[i] - keys[j])))
+}
+
+fn at_span(cells: &[&Cell], model: NullModel, mix: f64) -> Option<Levelling> {
+    let mut row: Vec<&&Cell> = cells.iter().collect();
+    row.sort_by(|a, b| a.mix.total_cmp(&b.mix));
+    let keys: Vec<f64> = row.iter().map(|c| axis(model, c.mix)).collect();
+    let (i, j, t) = bracket(&keys, axis(model, mix))?;
+    let l = |c: &Cell| Levelling {
+        mean: c.mean.clone(),
+        shape: c.shape.clone(),
+        misfit_p99: c.misfit_p99,
+        mu: c.mu,
+        sigma: c.sigma,
+        xi: c.xi,
+        log_trials: c.log_trials,
+    };
+    Some(blend(&l(row[i]), &l(row[j]), t))
+}
+
+/// One span's levelling at `mix` and `flicker`: on each flicker either
+/// side, interpolated on the mix axis ([`at_span`]), then between them on
+/// the flicker axis.
+fn at_flicker(cells: &[&Cell], model: NullModel, mix: f64, flicker: f64) -> Option<Levelling> {
+    let mut levels: Vec<f64> = cells.iter().map(|c| flicker_axis(c.flicker)).collect();
+    levels.sort_by(f64::total_cmp);
+    levels.dedup();
+    let (i, j, t) = bracket(&levels, flicker_axis(flicker))?;
+    let on = |k: f64| -> Vec<&Cell> {
+        cells
+            .iter()
+            .copied()
+            .filter(|c| (flicker_axis(c.flicker) - k).abs() < 1e-12)
+            .collect()
+    };
+    let a = at_span(&on(levels[i]), model, mix)?;
+    let b = at_span(&on(levels[j]), model, mix)?;
+    Some(blend(&a, &b, t))
+}
+
+/// The table's levelling for a take of `span_s` on a `step_s` grid at
+/// `mix` and `flicker` (0 for readings), interpolated between the cells
+/// around it (log span, mix axis, flicker axis); None outside the table,
+/// or across a change of step or of detrend.
+pub fn levelling(
+    model: NullModel,
+    span_s: f64,
+    step_s: f64,
+    mix: f64,
+    flicker: f64,
+) -> Option<Levelling> {
+    levelling_in(&table().cells, model, span_s, step_s, mix, flicker)
+}
+
+pub fn levelling_in(
+    cells: &[Cell],
+    model: NullModel,
+    span_s: f64,
+    step_s: f64,
+    mix: f64,
+    flicker: f64,
+) -> Option<Levelling> {
+    if mix.is_nan() || flicker.is_nan() {
+        return None;
+    }
+    let median = span_s >= super::MEDIAN_FROM_S;
+    let ours: Vec<&Cell> = cells
+        .iter()
+        .filter(|c| {
+            c.model == model
+                // Readings come at the sound card's clock, a few ppm off
+                // the nominal step.
+                && (c.step_s - step_s).abs() < 1e-3 * c.step_s
+                && (c.span_s >= super::MEDIAN_FROM_S) == median
+        })
+        .collect();
+    let mut spans: Vec<f64> = ours.iter().map(|c| c.span_s).collect();
+    spans.sort_by(f64::total_cmp);
+    spans.dedup();
+    let logs: Vec<f64> = spans.iter().map(|s| s.ln()).collect();
+    let (i, j, t) = bracket(&logs, span_s.ln())?;
+    let row = |s: f64| -> Vec<&Cell> {
+        ours.iter()
+            .copied()
+            .filter(|c| (c.span_s - s).abs() < 1e-9)
+            .collect()
+    };
+    let a = at_flicker(&row(spans[i]), model, mix, flicker)?;
+    let b = at_flicker(&row(spans[j]), model, mix, flicker)?;
+    Some(blend(&a, &b, t))
+}
+
+/// Timing's mix from its power spectrum `power` (bin j at j·df, on a
+/// `step_s` grid): the crossover f_c where a random walk's power a/(4
+/// sin²(πfΔ)) meets the white floor b, times `scale` (the detrend's
+/// window, or the span under the quadratic). Fitted to the median power
+/// in quarter-octave bands from `from` up, so that a real line, which
+/// lifts a few bins, does not move it; least squares relative to the
+/// model, twice. 0 for white noise; [`WALK_MIX`] when no floor shows
+/// (the walk reaches past the Nyquist frequency, or the floor fits at or
+/// under nothing).
+pub fn timing_mix(power: &[f64], df: f64, step_s: f64, from: usize, scale: f64) -> f64 {
+    timing_fit(power, df, step_s, from, scale).mix
+}
+
+/// [`timing_mix`] and how well the model fits.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TimingFit {
+    /// The crossover where the red terms (flicker and walk) meet the
+    /// white floor, times the window: 0 for white, [`WALK_MIX`] where no
+    /// floor shows.
+    pub mix: f64,
+    /// The flicker's share (#1219): the frequency where the flicker meets
+    /// the walk over the one where the red meets the white floor (or the
+    /// Nyquist frequency, where no floor shows). 0 with no flicker;
+    /// [`FLICKER_ONLY`] (1) where the walk never shows above the floor.
+    pub flicker: f64,
+    /// The rms over the bands of |log10(band power / the fitted model)|:
+    /// about 0.1 on a walk plus white; more where the timing is another
+    /// noise (flicker). NaN with fewer than three bands.
+    pub misfit: f64,
+}
+
+/// [`timing_mix`], with the misfit of the walk plus white it fitted:
+/// with no walk, of the white floor alone; with no floor, of the walk
+/// alone.
+pub fn timing_fit(power: &[f64], df: f64, step_s: f64, from: usize, scale: f64) -> TimingFit {
+    timing_fit_culled(power, df, step_s, from, scale, &Cull::default())
+}
+
+/// The lines taken out of a take before its misfit is read, each a
+/// frequency in Hz, and how near a bin must be to one to be culled, in
+/// bins ([`timing_fit_culled`]).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Cull<'a> {
+    pub removed: &'a [f64],
+    pub thinned: &'a [f64],
+    pub half: f64,
+}
+
+/// [`timing_fit`] with the lines of cycles taken out culled, each a
+/// frequency in Hz. Taking a line out disturbs the bins at and beside it,
+/// which left in read as misfit. A band holding a bin within `half` bins
+/// of a line in `removed` (the harmonics the search kept) is left out
+/// whole, as the fresh-seed checks were passed with. Of a line in
+/// `thinned` (a sharp cycle's further harmonics) only those bins are left
+/// out of their band's median, and a band left with under half its bins
+/// is dropped: a sharp cycle's harmonics reach into most bands, and
+/// leaving those out whole hid flicker beneath it.
+pub fn timing_fit_culled(
+    power: &[f64],
+    df: f64,
+    step_s: f64,
+    from: usize,
+    scale: f64,
+    cull: &Cull,
+) -> TimingFit {
+    let Cull {
+        removed,
+        thinned,
+        half,
+    } = *cull;
+    let near =
+        |lines: &[f64], j: usize| lines.iter().any(|&f| (j as f64 * df - f).abs() < half * df);
+    let u = |j: usize| {
+        let s = (std::f64::consts::PI * j as f64 * df * step_s).sin();
+        1.0 / (4.0 * s * s)
+    };
+    let top = power.len().saturating_sub(1);
+    let mut bands: Vec<(f64, f64)> = Vec::new();
+    let mut a = from.max(1);
+    while a < top {
+        let b = ((a as f64 * 2f64.powf(0.25)).ceil() as usize)
+            .max(a + 4)
+            .min(top);
+        let mut v: Vec<f64> = (a..b)
+            .filter(|&j| !near(thinned, j))
+            .map(|j| power[j])
+            .collect();
+        if !(a..b).any(|j| near(removed, j)) && 2 * v.len() >= b - a {
+            let mid = (a + b) / 2;
+            bands.push((u(mid), crate::dsp::median(&mut v) / std::f64::consts::LN_2));
+        }
+        a = b;
+    }
+    if bands.len() < 3 {
+        return TimingFit {
+            mix: f64::NAN,
+            flicker: f64::NAN,
+            misfit: f64::NAN,
+        };
+    }
+    fit_bands(&bands, step_s, scale)
+}
+
+/// The rms log10 distance of `bands` (u, power) from `model`.
+fn misfit_of(bands: &[(f64, f64)], model: impl Fn(f64) -> f64) -> f64 {
+    let ss: f64 = bands
+        .iter()
+        .map(|&(uu, p)| (p.max(1e-300) / model(uu).max(1e-300)).log10().powi(2))
+        .sum();
+    (ss / bands.len() as f64).sqrt()
+}
+
+/// The terms of timing's noise at u = 1/(4 sin²(πfΔ)): flicker of the
+/// rate (u^1.5, f⁻³), the walk (u, f⁻²) and the white floor (1).
+const TERMS: [fn(f64) -> f64; 3] = [|u| u * u.sqrt(), |u| u, |_| 1.0];
+
+/// `bands` fitted by least squares relative to the model, three times
+/// over, with the terms in `on` (each of [`TERMS`]); None where a term
+/// fits at or under nothing, or the system is singular.
+fn fit_terms(bands: &[(f64, f64)], on: [bool; 3]) -> Option<[f64; 3]> {
+    let idx: Vec<usize> = (0..3).filter(|&k| on[k]).collect();
+    let mut w: Vec<f64> = bands.iter().map(|b| 1.0 / b.1.max(1e-300)).collect();
+    let mut c = [0.0; 3];
+    for _ in 0..3 {
+        let n = idx.len();
+        let mut m = [[0.0; 3]; 3];
+        let mut r = [0.0; 3];
+        for (&(uu, p), &wt) in bands.iter().zip(&w) {
+            let w2 = wt * wt;
+            for (a, &ka) in idx.iter().enumerate() {
+                r[a] += w2 * TERMS[ka](uu) * p;
+                for (b, &kb) in idx.iter().enumerate() {
+                    m[a][b] += w2 * TERMS[ka](uu) * TERMS[kb](uu);
+                }
+            }
+        }
+        let x = solve(&m, &r, n)?;
+        c = [0.0; 3];
+        for (a, &k) in idx.iter().enumerate() {
+            if x[a] <= 0.0 || !x[a].is_finite() {
+                return None;
+            }
+            c[k] = x[a];
+        }
+        w = bands
+            .iter()
+            .map(|&(uu, _)| 1.0 / (0..3).map(|k| c[k] * TERMS[k](uu)).sum::<f64>())
+            .collect();
+    }
+    Some(c)
+}
+
+/// `m x = r` for the leading `n` × `n` block, by Gaussian elimination with
+/// partial pivoting; None when singular.
+fn solve(m: &[[f64; 3]; 3], r: &[f64; 3], n: usize) -> Option<[f64; 3]> {
+    let (mut a, mut b) = (*m, *r);
+    for col in 0..n {
+        let piv = (col..n).max_by(|&i, &j| a[i][col].abs().total_cmp(&a[j][col].abs()))?;
+        if a[piv][col].abs() < 1e-300 {
+            return None;
+        }
+        a.swap(col, piv);
+        b.swap(col, piv);
+        for row in col + 1..n {
+            let f = a[row][col] / a[col][col];
+            let pivot = a[col];
+            for (x, p) in a[row][col..n].iter_mut().zip(&pivot[col..n]) {
+                *x -= f * p;
+            }
+            b[row] -= f * b[col];
+        }
+    }
+    let mut x = [0.0; 3];
+    for row in (0..n).rev() {
+        let s: f64 = (row + 1..n).map(|k| a[row][k] * x[k]).sum();
+        x[row] = (b[row] - s) / a[row][row];
+    }
+    Some(x)
+}
+
+/// Walk plus flicker plus white fitted to `bands`: of the fits whose
+/// every term is above nothing, the one that sits nearest the bands (the
+/// fullest wins a tie), and from it the mix and the flicker.
+///
+/// The tie rule only makes the choice deterministic; no reading depends
+/// on it. Two fits sit within 1e-12 of each other in misfit only when the
+/// fuller one's extra term is next to nothing (the bands are what the
+/// smaller fit draws), so either one gives the same mix, and a share of
+/// nil or next to it, which reads the no-flicker cell.
+fn fit_bands(bands: &[(f64, f64)], step_s: f64, scale: f64) -> TimingFit {
+    let subsets: [[bool; 3]; 7] = [
+        [true, true, true],
+        [false, true, true],
+        [true, false, true],
+        [true, true, false],
+        [false, false, true],
+        [false, true, false],
+        [true, false, false],
+    ];
+    let model = |c: [f64; 3]| move |uu: f64| (0..3).map(|k| c[k] * TERMS[k](uu)).sum::<f64>();
+    let best = subsets
+        .iter()
+        .filter_map(|&on| fit_terms(bands, on))
+        .map(|c| (misfit_of(bands, model(c)), c))
+        .fold(None::<(f64, [f64; 3])>, |b, x| match b {
+            Some(b) if b.0 <= x.0 + 1e-12 => Some(b),
+            _ => Some(x),
+        });
+    let Some((misfit, [cf, ca, cb])) = best else {
+        return TimingFit {
+            mix: f64::NAN,
+            flicker: f64::NAN,
+            misfit: f64::NAN,
+        };
+    };
+    // f from u: sin²(πfΔ) = 1/(4u); None past the Nyquist frequency.
+    let f_of = |uu: f64| {
+        let s2 = 1.0 / (4.0 * uu);
+        (s2 < 1.0).then(|| s2.sqrt().asin() / (std::f64::consts::PI * step_s))
+    };
+    let nyquist = 0.5 / step_s;
+    let red = |uu: f64| cf * TERMS[0](uu) + ca * uu;
+    // Where the red terms meet the floor, in Hz (the Nyquist frequency
+    // where no floor shows), red rising in u.
+    let f_r = if cf == 0.0 && ca == 0.0 {
+        None
+    } else if cb == 0.0 || red(0.25) >= cb {
+        Some(nyquist)
+    } else {
+        let (mut lo, mut hi) = (0.25f64, 0.25f64);
+        while red(hi) < cb {
+            hi *= 4.0;
+        }
+        for _ in 0..200 {
+            let mid = (lo * hi).sqrt();
+            if red(mid) < cb {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        Some(f_of((lo * hi).sqrt()).unwrap_or(nyquist))
+    };
+    let mix = match f_r {
+        None => 0.0,
+        Some(f) if f >= nyquist => WALK_MIX,
+        Some(f) => f * scale,
+    };
+    // The flicker meets the walk where u^½ = a/c.
+    let flicker = match f_r {
+        _ if cf == 0.0 => 0.0,
+        _ if ca == 0.0 => FLICKER_ONLY,
+        None => 0.0,
+        Some(fr) => f_of((ca / cf).powi(2)).map_or(FLICKER_ONLY, |fk| (fk / fr).min(FLICKER_ONLY)),
+    };
+    TimingFit {
+        mix,
+        flicker,
+        misfit,
+    }
+}
+
+#[cfg(test)]
+#[path = "null_tests.rs"]
+mod tests;

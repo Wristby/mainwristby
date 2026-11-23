@@ -1,0 +1,1203 @@
+//! Breaks in a take: pauses in listening, and resumes of a saved take.
+//!
+//! A take's audio runs straight on across a break, while true time jumps
+//! by however long listening stopped. The beats on either side keep the
+//! watch's rate but not its phase, and after a long gap not its rate
+//! either (the mainspring ran down meanwhile), so each stretch between
+//! breaks is fitted on its own: see [`crate::timing::fit_pieces`].
+//!
+//! A break is known from the take's `session.json` (`breaks`, one entry per
+//! resume or pause) or, for takes saved before that list existed, from the
+//! step it leaves in the clock log (see [`crate::clock::ClockFit`]).
+
+use crate::amplitude::AmplitudeWindow;
+use crate::beats::Beat;
+use crate::capture::Block;
+use serde::Serialize;
+use std::time::SystemTime;
+
+/// One break: where it falls in the take's audio, and how long listening
+/// stopped there.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Break {
+    /// Audio seconds before the break, on the sound card's clock.
+    pub audio_s: f64,
+    /// True seconds that passed with no audio, as near as the clock log or
+    /// the recorder could tell.
+    pub gap_s: f64,
+}
+
+/// In the clock log, a step of the system time over the audio time of at
+/// least this many seconds between two entries is a break. A late
+/// timestamp (the logger descheduled) is a spike instead, and is told
+/// apart by the entries after it falling back.
+pub const MIN_GAP_S: f64 = 0.5;
+
+/// How many entries, from the one after a step on, say whether the step
+/// was kept: their median offset (see [`held_step`]).
+pub const HELD_ENTRIES: usize = 4;
+
+/// How much of a step in the offset between the clocks the entries from
+/// the one after it on keep: the median of their offsets (at most
+/// [`HELD_ENTRIES`] of them) less the offset before the step. A break keeps
+/// at least half its step; a late entry (a spike) keeps little of it.
+pub fn held_step(before: f64, later: &[f64]) -> f64 {
+    let mut v = later[..later.len().min(HELD_ENTRIES)].to_vec();
+    v.sort_by(|a, b| a.total_cmp(b));
+    v[v.len() / 2] - before
+}
+
+/// The gap a step of at least [`MIN_GAP_S`] in the offset between the
+/// clocks leaves, when the entries after it keep at least half of it
+/// (`held`, from [`held_step`]): what they keep, never more than the step.
+/// `None` for a smaller step, or a spike the entries fall back from. The
+/// one rule for a break, live ([`GapWatch`]) and in a clock log
+/// ([`from_clock_at`]).
+pub fn kept_gap(step: f64, held: f64) -> Option<f64> {
+    (step >= MIN_GAP_S && held >= 0.5 * step).then(|| held.min(step))
+}
+
+/// The backlog after a break: how far a step's first entry (or first late
+/// block) rose beyond the `gap` the entries after it keep, when that is at
+/// least [`BACKLOG_MIN_S`]. That much sound after it came late from before
+/// the gap, so the sound truly jumps there, and it is culled with a break
+/// at its end ([`Live::Cut`]). The one rule, live ([`GapWatch`]) and in a
+/// clock log ([`crate::clock::ClockFit::backlog_cuts`]).
+pub fn backlog_s(step: f64, gap: f64) -> Option<f64> {
+    let excess = step - gap;
+    (excess >= BACKLOG_MIN_S).then_some(excess)
+}
+
+/// The shortest backlog culled, seconds: under it, too little sound lies
+/// between the break and the jump for a beat to fall there.
+pub const BACKLOG_MIN_S: f64 = 0.001;
+
+/// What a live input's blocks become once [`GapWatch`] has seen them: the
+/// blocks, in order, with a break before the first block after a gap.
+#[derive(Debug)]
+pub enum Live {
+    Block(Block),
+    /// The true seconds that passed with no audio before the next block:
+    /// the rise in the offset since the clock log's last line that the
+    /// blocks after it keep ([`kept_gap`]), which
+    /// [`crate::recorder::Recorder::sound_lost`] lists for the break.
+    Break(f64),
+    /// The seconds of sound the input dropped before the next block, its
+    /// queue full ([`crate::capture::Event::Lost`]): a break as
+    /// [`Live::Break`] is, however short, told apart only to say why.
+    Dropped(f64),
+    /// The input glitched here ([`crate::capture::Event::Glitch`]): a
+    /// buffer underrun or overrun, after which it carried on. A moment of
+    /// sound may be missing, of a length not known, so it is a break of no
+    /// time lost: the sound either side is never read across. A loss of
+    /// [`MIN_GAP_S`] or more still shows in the offset after it and is
+    /// found as a [`Live::Break`] (#1046).
+    Glitch,
+    /// The end of sound culled after a [`Live::Break`]: a break with no
+    /// time lost. The blocks between the two came late, all together,
+    /// after the gap (an input waking from a suspend brings the sound it
+    /// held from before), so the sound truly jumps at their end, not
+    /// where the break was found. A break at each end leaves them a piece
+    /// of their own, read across by nothing ([`GapWatch`]).
+    Cut,
+}
+
+impl Live {
+    /// The seconds lost before the next block: a break's gap, and none at
+    /// a block or a [`Live::Cut`].
+    pub fn lost_s(&self) -> f64 {
+        match self {
+            Live::Break(gap) | Live::Dropped(gap) => *gap,
+            Live::Block(_) | Live::Cut | Live::Glitch => 0.0,
+        }
+    }
+}
+
+/// How long a stretch of sound the input dropped was ([`Live::Dropped`]),
+/// as the app and `record` both say it: "<1 ms" for under half a
+/// millisecond, whole milliseconds under a second, whole seconds under two
+/// minutes, and `4:05` or `1:30:00` from then on.
+pub fn lost_text(gap_s: f64) -> String {
+    if gap_s < 0.0005 {
+        "<1 ms".to_string()
+    } else if gap_s < 0.9995 {
+        format!("{} ms", (gap_s * 1000.0).round() as u64)
+    } else if gap_s < 119.5 {
+        format!("{} s", gap_s.round() as u64)
+    } else {
+        crate::library::length_text(gap_s)
+    }
+}
+
+/// What the app and `record` both say at a [`Live::Glitch`].
+pub const GLITCH_TEXT: &str = "The computer fell behind reading this input for a moment, and \
+     some sound may be lost. That moment is left out as a break, and listening carries on.";
+
+/// Audio seconds after a rise in a live input's offset that are held back
+/// before judging it, or the rise itself when it is shorter: longer than
+/// an input's own buffer, so when the input was only late, its backlog has
+/// come and the offset is back down by then.
+pub const HOLD_S: f64 = 5.0;
+
+/// The breaks of a live input, found as a saved take's clock log finds
+/// them ([`from_clock_at`]). Each block's offset is its arrival less the
+/// audio up to its end. A break is a rise of at least [`MIN_GAP_S`] in that
+/// offset since the clock log's last line (the blocks the recorder logs:
+/// [`crate::recorder::clock_line_due`]) which the blocks after it keep
+/// ([`held_step`] over the [`HELD_ENTRIES`] blocks after those that
+/// cover the rise, or [`HOLD_S`], in audio). So small losses add up between lines
+/// as they do in the log, and a late block whose sound is all there is no
+/// break: the backlog after it brings the offset back. Blocks after a
+/// rise are held back until then, so a break is known before the block
+/// after it is written, and [`crate::recorder::Recorder::sound_lost`]
+/// lists it with the same gap. When the first late block rose more than
+/// the gap, the blocks that cover the excess are a backlog of sound from
+/// before the gap that came late with it; they are let through and
+/// culled with a [`Live::Cut`] at their end, so no stretch holds the jump.
+#[derive(Debug)]
+pub struct GapWatch {
+    rate: f64,
+    frames: u64,
+    /// The offset at the clock log's last line, and that block's arrival.
+    line: Option<(f64, SystemTime)>,
+    /// What is held back after a rise, in stream order (#1048).
+    held: Vec<Held>,
+    /// A [`Live::Glitch`] given back, with no block since: another before
+    /// the next block is the same moment, not a second break.
+    glitched: bool,
+    /// A [`Live::Dropped`] given back: the recorder logs the first block
+    /// let through after it, so that block's offset becomes the line. Until
+    /// then the line before the drop stays, so a rise that comes with the
+    /// drop (a suspend) is still judged (#1051).
+    relog: bool,
+}
+
+/// What [`GapWatch`] holds back after a rise, in stream order: a block,
+/// with its offset and the audio seconds by its end, or a break the input
+/// told of ([`Live::Dropped`], [`Live::Glitch`]) with the audio second it
+/// came at. A told break waits in place, so the rise before it is judged
+/// on the blocks after it as on any others: its backlog is still culled,
+/// and the sound either side of the jump is never spliced.
+#[derive(Debug)]
+enum Held {
+    Block(Block, f64, f64),
+    Told(Live, f64),
+}
+
+impl Held {
+    /// The audio second it starts at.
+    fn start_s(&self, rate: f64) -> f64 {
+        match self {
+            Held::Block(b, _, end_s) => end_s - b.samples.len() as f64 / rate,
+            Held::Told(_, at_s) => *at_s,
+        }
+    }
+
+    /// A block's offset and the audio seconds by its end.
+    fn block(&self) -> Option<(f64, f64)> {
+        match self {
+            Held::Block(_, off, end_s) => Some((*off, *end_s)),
+            Held::Told(..) => None,
+        }
+    }
+}
+
+impl GapWatch {
+    pub fn new(sample_rate: u32) -> Self {
+        GapWatch {
+            rate: sample_rate.max(1) as f64,
+            frames: 0,
+            line: None,
+            held: Vec::new(),
+            glitched: false,
+            relog: false,
+        }
+    }
+
+    /// Take the next block; give back what can be let through now.
+    pub fn push(&mut self, b: Block) -> Vec<Live> {
+        self.glitched = false;
+        self.frames += b.samples.len() as u64;
+        let end_s = self.frames as f64 / self.rate;
+        let at =
+            b.at.duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0.0, |d| d.as_secs_f64());
+        let mut out = Vec::new();
+        self.take(b, at - end_s, end_s, &mut out);
+        out
+    }
+
+    /// The input dropped `frames` of sound here ([`crate::capture::Event::Lost`]):
+    /// a [`Live::Dropped`] in its place among the blocks, so the sound
+    /// either side is never spliced. The lost frames count as audio, so
+    /// the offset after them doesn't rise and the same loss isn't found
+    /// again as a gap.
+    pub fn lost(&mut self, frames: u64) -> Vec<Live> {
+        let mut out = Vec::new();
+        if frames > 0 {
+            let at_s = self.frames as f64 / self.rate;
+            self.frames += frames;
+            self.told(Live::Dropped(frames as f64 / self.rate), at_s, &mut out);
+        }
+        out
+    }
+
+    /// The input glitched here ([`crate::capture::Event::Glitch`]): a
+    /// [`Live::Glitch`] in its place among the blocks, so the sound either
+    /// side is never spliced. Its loss isn't known: the frames counted
+    /// stay as they are, and a step of [`MIN_GAP_S`] or more in the offset
+    /// after it is still found as a gap. Glitches with no block between
+    /// are one.
+    pub fn glitch(&mut self) -> Vec<Live> {
+        let mut out = Vec::new();
+        if !self.glitched {
+            self.glitched = true;
+            let at_s = self.frames as f64 / self.rate;
+            self.told(Live::Glitch, at_s, &mut out);
+        }
+        out
+    }
+
+    /// The blocks still held back, at the end of the input, judged on the
+    /// blocks there are, as the clock log's last entries are.
+    pub fn finish(&mut self) -> Vec<Live> {
+        let mut out = Vec::new();
+        while !self.held.is_empty() {
+            self.settle(&mut out);
+        }
+        out
+    }
+
+    /// A break the input told of: given back now, or held in its place
+    /// behind the blocks held after a rise.
+    fn told(&mut self, l: Live, at_s: f64, out: &mut Vec<Live>) {
+        if self.held.is_empty() {
+            self.give(l, out);
+        } else {
+            self.held.push(Held::Told(l, at_s));
+        }
+    }
+
+    fn give(&mut self, l: Live, out: &mut Vec<Live>) {
+        if matches!(l, Live::Dropped(_)) {
+            // The recorder logs the first block after a break; the line
+            // before it stays the reference until then, since the lost
+            // frames already count as audio (#1051).
+            self.relog = true;
+        }
+        out.push(l);
+    }
+
+    fn let_through(&mut self, b: Block, off: f64, end_s: f64, out: &mut Vec<Live>) {
+        if self.relog || crate::recorder::clock_line_due(end_s, self.line.map(|l| l.1), b.at) {
+            self.line = Some((off, b.at));
+            self.relog = false;
+        }
+        out.push(Live::Block(b));
+    }
+
+    fn take(&mut self, b: Block, off: f64, end_s: f64, out: &mut Vec<Live>) {
+        let line = self.line.map(|l| l.0);
+        if self.held.is_empty() && line.is_none_or(|o| off - o < MIN_GAP_S) {
+            self.let_through(b, off, end_s, out);
+            return;
+        }
+        self.held.push(Held::Block(b, off, end_s));
+        // Held until the blocks cover the rise (or HOLD_S), so a backlog
+        // has come, and then HELD_ENTRIES more to judge it on.
+        let rate = self.rate;
+        let blocks: Vec<&Held> = self.held.iter().filter(|h| h.block().is_some()).collect();
+        let (first_off, _) = blocks[0].block().expect("a held block");
+        let rise = first_off - line.unwrap_or(off);
+        let start_s = blocks[0].start_s(rate);
+        let covered = blocks.iter().position(|h| {
+            h.block()
+                .is_some_and(|(_, e)| e - start_s >= rise.min(HOLD_S) - 1e-9)
+        });
+        if covered.is_some_and(|j| blocks.len() > j + HELD_ENTRIES) {
+            self.settle(out);
+        }
+    }
+
+    /// Judge the first held block's rise on the last blocks held, let it
+    /// through, and take the rest again in order. What is held always
+    /// starts with a block: a told break comes back at once when nothing
+    /// is held.
+    fn settle(&mut self, out: &mut Vec<Live>) {
+        let held = std::mem::take(&mut self.held);
+        let offs: Vec<f64> = held.iter().filter_map(|h| h.block().map(|b| b.0)).collect();
+        let line = self.line.map_or(offs[0], |l| l.0);
+        let step = offs[0] - line;
+        let kept = held_step(line, &offs[offs.len().saturating_sub(HELD_ENTRIES)..]);
+        let mut rest = held.into_iter().peekable();
+        if let Some(gap) = kept_gap(step, kept) {
+            out.push(Live::Break(gap));
+            // The recorder logs the first block after a break.
+            self.line = None;
+            // What the first late block rose by beyond the gap is sound
+            // from before the gap that came late after it: with it, the
+            // backlog, and any break told of within it.
+            let first_end = rest.peek().and_then(Held::block).expect("a held block").1;
+            let backlog_end = backlog_s(step, gap).map(|b| first_end + b);
+            let rate = self.rate;
+            let mut culled = false;
+            while let Some(h) =
+                rest.next_if(|h| backlog_end.is_some_and(|e| h.start_s(rate) < e - 1e-6))
+            {
+                culled |= h.block().is_some();
+                self.pass(h, out);
+            }
+            if culled {
+                out.push(Live::Cut);
+                self.line = None;
+            }
+        } else {
+            let first = rest.next().expect("a held block");
+            self.pass(first, out);
+        }
+        for h in rest {
+            match h {
+                Held::Block(b, off, end_s) => self.take(b, off, end_s, out),
+                Held::Told(l, at_s) => self.told(l, at_s, out),
+            }
+        }
+    }
+
+    fn pass(&mut self, h: Held, out: &mut Vec<Live>) {
+        match h {
+            Held::Block(b, off, end_s) => self.let_through(b, off, end_s, out),
+            Held::Told(l, _) => self.give(l, out),
+        }
+    }
+}
+
+/// Breaks seen in a clock log's `(audio_s, true_s)` entries, sorted by
+/// audio time: a step in the offset between the two clocks that the next
+/// entries keep, with a break also at each of `at` (audio seconds)
+/// whatever the size of its step: at the first entry after it, its gap the
+/// step the next entries keep. An entry at the same second is the last one
+/// before the break, as the recorder writes it at a pause.
+pub fn from_clock_at(pairs: &[(f64, f64)], at: &[f64]) -> Vec<Break> {
+    let off: Vec<f64> = pairs.iter().map(|q| q.1 - q.0).collect();
+    let mut out = Vec::new();
+    for i in 1..pairs.len() {
+        let step = off[i] - off[i - 1];
+        if at
+            .iter()
+            .any(|&a| pairs[i - 1].0 <= a + 1e-6 && a + 1e-6 < pairs[i].0)
+        {
+            out.push(Break {
+                audio_s: pairs[i].0,
+                gap_s: held_step(off[i - 1], &off[i..]),
+            });
+            continue;
+        }
+        // Kept: the offset a few entries on stays at least halfway up the
+        // step, or there are no entries after this one to say otherwise.
+        if step < MIN_GAP_S {
+            continue;
+        }
+        if let Some(gap_s) = kept_gap(step, held_step(off[i - 1], &off[i..])) {
+            out.push(Break {
+                audio_s: pairs[i].0,
+                gap_s,
+            });
+        }
+    }
+    out
+}
+
+/// Why a take's breaks are not all from the list its `session.json`
+/// keeps, but from its clock log ([`crate::clock::ClockFit`]) instead: the
+/// caveat [`crate::measure::Caveat::BreaksUnlisted`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Unlisted {
+    /// The take's `session.json` could not be read, or is not JSON.
+    Unreadable,
+    /// Some of its listed breaks give no place or no gap, so the clock
+    /// log stands in for them.
+    EntriesSkipped,
+    /// The files are not the take's segments in order (one opened alone
+    /// out of several), so its list, for the whole take, is not used.
+    NotTheTake,
+}
+
+/// A take's breaks, and why they are not all its own list's.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Found {
+    pub breaks: Vec<Break>,
+    pub unlisted: Option<Unlisted>,
+}
+
+/// Breaks from a take's `session.json`, sorted: each entry's `frame`
+/// (frames before the break) over the sample rate, else its `audio_s`, and
+/// its `gap_s`; and how many entries give neither place nor a finite gap,
+/// left out. An absent or empty list gives none.
+pub fn from_session(json: &serde_json::Value, sample_rate: u32) -> (Vec<Break>, usize) {
+    let list = json
+        .get("breaks")
+        .and_then(|b| b.as_array())
+        .map_or(&[][..], |l| l.as_slice());
+    let mut out: Vec<Break> = list
+        .iter()
+        .filter_map(|e| {
+            let audio_s = match e.get("frame").and_then(|f| f.as_u64()) {
+                Some(f) if sample_rate > 0 => f as f64 / sample_rate as f64,
+                _ => e.get("audio_s")?.as_f64()?,
+            };
+            let gap_s = match e.get("gap_s") {
+                None | Some(serde_json::Value::Null) => 0.0,
+                Some(g) => g.as_f64()?,
+            };
+            (audio_s.is_finite() && gap_s.is_finite()).then_some(Break { audio_s, gap_s })
+        })
+        .collect();
+    let skipped = list.len() - out.len();
+    out.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
+    (out, skipped)
+}
+
+/// A take's breaks: those its `session.json` lists, when it lists any,
+/// else those its clock log shows. An entry the list cannot place is left
+/// to the clock log, and said ([`Unlisted::EntriesSkipped`]).
+pub fn for_take(
+    session_json: Option<&serde_json::Value>,
+    clock: Option<&crate::clock::ClockFit>,
+    sample_rate: u32,
+) -> Found {
+    let (listed, skipped) = session_json.map_or((Vec::new(), 0), |v| from_session(v, sample_rate));
+    let unlisted = (skipped > 0).then_some(Unlisted::EntriesSkipped);
+    let breaks = if listed.is_empty() {
+        clock.map_or_else(Vec::new, |c| c.breaks.clone())
+    } else {
+        listed
+    };
+    Found { breaks, unlisted }
+}
+
+/// A take's `session.json` at `path`, as every reader of its breaks
+/// reads it: `Ok(None)` when there is none, and
+/// [`Unlisted::Unreadable`] when one is there but can't be read or isn't
+/// JSON, so a reader never takes a broken file for a missing one.
+pub fn read_session(path: &std::path::Path) -> Result<Option<serde_json::Value>, Unlisted> {
+    match std::fs::read_to_string(path) {
+        Ok(t) => serde_json::from_str(&t)
+            .map(Some)
+            .map_err(|_| Unlisted::Unreadable),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err(Unlisted::Unreadable),
+    }
+}
+
+/// The breaks the clock log shows, for a take whose own list can't be
+/// used, and why ([`Unlisted`]).
+pub fn of_clock(clock: Option<&crate::clock::ClockFit>, why: Unlisted) -> Found {
+    Found {
+        breaks: clock.map_or_else(Vec::new, |c| c.breaks.clone()),
+        unlisted: Some(why),
+    }
+}
+
+/// The breaks of the take that `files` (in order) make up: from the
+/// `session.json` beside the first file when the files are that take's
+/// segments, else from the clock fit. A file given on its own out of a
+/// take of several segments takes its breaks from the clock alone, and a
+/// `session.json` that cannot be read leaves them to the clock too; each
+/// is said ([`Unlisted`]). A take with no `session.json` (a plain sound
+/// file) lists none, so its clock's breaks are all it has.
+pub fn of_files(
+    files: &[&std::path::Path],
+    clock: Option<&crate::clock::ClockFit>,
+    sample_rate: u32,
+) -> Found {
+    let path = files
+        .first()
+        .and_then(|f| f.parent())
+        .map(|d| d.join(crate::take::RECORD));
+    let json = match path {
+        Some(p) => read_session(&p),
+        None => Ok(None),
+    };
+    let json = match json {
+        Ok(json) => json,
+        Err(why) => return of_clock(clock, why),
+    };
+    let whole = json.as_ref().is_some_and(|v| lists_segments(v, files));
+    let mut found = for_take(json.as_ref().filter(|_| whole), clock, sample_rate);
+    if json.is_some() && !whole {
+        found.unlisted = Some(Unlisted::NotTheTake);
+    }
+    found
+}
+
+/// Whether `json`, a take's `session.json`, lists `files` (in order) as
+/// its segments: the take's own order, which the files' times don't
+/// overrule. A WAV listed and the FLAC it was kept as are the same file
+/// (#503).
+pub fn lists_segments(json: &serde_json::Value, files: &[&std::path::Path]) -> bool {
+    let kept = |n: &std::ffi::OsStr| crate::flac::kept_name(std::path::Path::new(n));
+    let names: Vec<std::path::PathBuf> = files
+        .iter()
+        .filter_map(|f| f.file_name().map(kept))
+        .collect();
+    match json.get("segments").and_then(|s| s.as_array()) {
+        Some(list) => list
+            .iter()
+            .filter_map(|s| s.as_str())
+            .map(|s| kept(s.as_ref()))
+            .eq(names.iter().cloned()),
+        None => names.len() == 1,
+    }
+}
+
+/// Whether `files` (in order) are the segments the `session.json` beside
+/// the first lists ([`lists_segments`]); false with none there, or one
+/// that can't be read.
+pub fn are_take_segments(files: &[&std::path::Path]) -> bool {
+    let Some(dir) = files.first().and_then(|f| f.parent()) else {
+        return false;
+    };
+    matches!(read_session(&dir.join(crate::take::RECORD)), Ok(Some(v)) if lists_segments(&v, files))
+}
+
+/// [`of_files`], placed on the clock with [`on_clock`].
+pub fn of_files_on_clock(
+    files: &[&std::path::Path],
+    clock: Option<&mut crate::clock::ClockFit>,
+    sample_rate: u32,
+) -> Found {
+    let found = of_files(files, clock.as_deref(), sample_rate);
+    Found {
+        breaks: on_clock(found.breaks, clock),
+        ..found
+    }
+}
+
+/// The listed breaks with the clock fit's breaks moved to them
+/// ([`crate::clock::ClockFit::place_breaks`]), so the clock and the breaks
+/// put each gap at the same audio second, and with every step in the
+/// clock log that no listed break explains (a system clock step, or a
+/// dropout the recorder did not list) as a break of its own, as it is
+/// when nothing is listed; and with a break at the end of each backlog
+/// the log shows ([`crate::clock::ClockFit::backlog_cuts`]) that none
+/// listed already ends. Sorted.
+pub fn on_clock(listed: Vec<Break>, clock: Option<&mut crate::clock::ClockFit>) -> Vec<Break> {
+    let Some(c) = clock else {
+        return listed;
+    };
+    c.place_breaks(&listed);
+    let mut out = listed.clone();
+    out.extend(
+        c.breaks
+            .iter()
+            .filter(|cb| !listed.iter().any(|b| (b.audio_s - cb.audio_s).abs() < 1e-9))
+            .copied(),
+    );
+    // The end of each backlog the log shows, unless a listed break is
+    // already there. Only the same second: a break any later would leave
+    // the jump inside the piece, and a spare cut costs nothing.
+    out.extend(c.backlog_cuts().into_iter().filter(|cut| {
+        !listed
+            .iter()
+            .any(|b| (b.audio_s - cut.audio_s).abs() < BACKLOG_MIN_S)
+    }));
+    out.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
+    out
+}
+
+/// How near a jump in the beats must be to a listed break to be that break,
+/// seconds: the beats can take a second or two to be found again after it.
+pub const JUMP_MATCH_S: f64 = 5.0;
+
+/// The breaks with the jumps the beats show ([`crate::stream::BeatLog`]'s
+/// `jumps`) where none is listed: a jump within [`JUMP_MATCH_S`] of a
+/// listed break is that break; any other is a break of unknown length,
+/// with `gap_s` 0.
+pub fn with_jumps(listed: Vec<Break>, jumps: &[f64]) -> Vec<Break> {
+    let mut out = listed.clone();
+    for &j in jumps {
+        if !listed.iter().any(|b| (b.audio_s - j).abs() <= JUMP_MATCH_S) {
+            out.push(Break {
+                audio_s: j,
+                gap_s: 0.0,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.audio_s.total_cmp(&b.audio_s));
+    out
+}
+
+/// How many events the breaks at `at` (audio seconds, sorted) are: breaks
+/// with under [`JUMP_MATCH_S`] of the watch heard between them, by the good
+/// beats (better than [`crate::beats::SIDE_QUALITY`]) of `beats` between
+/// them at `bph`, are one, as after a silence the beats can step more than
+/// once before they are found again. This is the count the `breaks` caveat
+/// gives.
+pub fn events(at: &[f64], beats: &[Beat], bph: u32) -> usize {
+    let period = 3600.0 / bph.max(1) as f64;
+    let heard = |a: f64, b: f64| {
+        let (i, j) = (
+            beats.partition_point(|x| x.time <= a),
+            beats.partition_point(|x| x.time < b),
+        );
+        beats[i..j.max(i)]
+            .iter()
+            .filter(|x| x.quality > crate::beats::SIDE_QUALITY)
+            .count() as f64
+            * period
+    };
+    let new = at
+        .windows(2)
+        .filter(|p| heard(p[0], p[1]) >= JUMP_MATCH_S)
+        .count();
+    if at.is_empty() {
+        0
+    } else {
+        new + 1
+    }
+}
+
+/// True seconds from the start of the take for audio second `t`, adding
+/// the gaps of the breaks before it (a negative gap counts as none).
+pub fn wall(breaks: &[Break], t: f64) -> f64 {
+    t + breaks
+        .iter()
+        .filter(|b| b.audio_s <= t)
+        .map(|b| b.gap_s.max(0.0))
+        .sum::<f64>()
+}
+
+/// Whether a stretch from `start` to `end` (audio seconds) spans a break.
+pub fn straddles(breaks: &[Break], start: f64, end: f64) -> bool {
+    breaks.iter().any(|b| start < b.audio_s && b.audio_s < end)
+}
+
+/// Which stretch between breaks audio second `t` falls in, from 0.
+pub fn piece(breaks: &[Break], t: f64) -> usize {
+    breaks.iter().filter(|b| b.audio_s <= t).count()
+}
+
+/// Make beat numbers run on across the breaks as the watch did: each
+/// stretch after a break is renumbered by the beats the gap held (none for
+/// a negative gap), rounded to keep the sides. Where the side sounds told
+/// the sides apart at a jump within [`JUMP_MATCH_S`] of the break (`sided`,
+/// [`crate::stream::BeatLog`]'s), the numbers already keep them; elsewhere
+/// the sides are kept by the beat count alone, and those breaks are
+/// returned (audio seconds) for [`crate::measure::Caveat::SidesByCount`].
+/// Amplitude windows that span a break are dropped.
+pub fn renumber(
+    beats: &mut [Beat],
+    windows: &mut Vec<AmplitudeWindow>,
+    breaks: &[Break],
+    sided: &[f64],
+    bph: u32,
+) -> Vec<f64> {
+    windows.retain(|w| !straddles(breaks, w.start_s, w.end_s));
+    let shifts = index_shifts(breaks, bph);
+    for beat in beats.iter_mut() {
+        beat.index += index_shift_at(&shifts, beat.time);
+    }
+    by_count(breaks.iter().map(|b| b.audio_s), sided)
+}
+
+/// `breaks` with each gap the take's `clock` does not keep taken as none
+/// ([`crate::clock::ClockFit::keeps_gap`]): a listed pause its log spans
+/// and shows no gap at is a break of no width (#646). The one rule for
+/// the gaps true time ([`crate::clean::Cuts`]) and the beat numbers
+/// ([`renumber`]) run on across; a negative or non-finite gap is none.
+pub fn as_kept(breaks: &[Break], clock: Option<&crate::clock::ClockFit>) -> Vec<Break> {
+    breaks
+        .iter()
+        .map(|b| Break {
+            gap_s: if b.gap_s.is_finite() && clock.is_none_or(|c| c.keeps_gap(b)) {
+                b.gap_s.max(0.0)
+            } else {
+                0.0
+            },
+            ..*b
+        })
+        .collect()
+}
+
+/// How far [`renumber`] moves the beat numbers from each break on: the
+/// break's audio second, with the beats the gaps up to it held (none for
+/// a negative gap), each gap's rounded to keep the sides. A reader drawing
+/// beats on audio seconds takes it off again.
+pub fn index_shifts(breaks: &[Break], bph: u32) -> Vec<(f64, i64)> {
+    let period = 3600.0 / bph.max(1) as f64;
+    let mut shift = 0i64;
+    breaks
+        .iter()
+        .map(|b| {
+            shift += 2 * (b.gap_s.max(0.0) / (2.0 * period)).round() as i64;
+            (b.audio_s, shift)
+        })
+        .collect()
+}
+
+/// The shift of [`index_shifts`] for a beat at audio second `t`: the last
+/// break's at or before it, none before the first.
+pub fn index_shift_at(shifts: &[(f64, i64)], t: f64) -> i64 {
+    shifts
+        .iter()
+        .take_while(|s| s.0 <= t)
+        .last()
+        .map_or(0, |s| s.1)
+}
+
+/// Of the breaks at `at` (audio seconds), those where the sides were not
+/// told apart by their sound (no time in `sided` within [`JUMP_MATCH_S`]):
+/// their sides are kept by the count.
+pub fn by_count(at: impl IntoIterator<Item = f64>, sided: &[f64]) -> Vec<f64> {
+    at.into_iter()
+        .filter(|&t| !sided.iter().any(|&j| (j - t).abs() <= JUMP_MATCH_S))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_kept_step_is_a_break_of_what_is_kept() {
+        assert_eq!(kept_gap(MIN_GAP_S - 0.01, 10.0), None);
+        assert_eq!(kept_gap(3.0, 3.0), Some(3.0));
+        assert_eq!(kept_gap(3.0, 2.0), Some(2.0));
+        assert_eq!(kept_gap(3.0, 4.0), Some(3.0));
+        assert_eq!(kept_gap(3.0, 1.4), None);
+    }
+
+    #[test]
+    fn a_live_gap_breaks_only_where_the_sound_was_lost() {
+        // Blocks of 0.1 s at 48 kHz, each arriving at `arrive(k)` seconds.
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
+        let run = |arrive: &dyn Fn(usize) -> f64| {
+            let mut w = GapWatch::new(48_000);
+            let mut out = Vec::new();
+            for k in 0..200 {
+                out.extend(w.push(Block {
+                    samples: vec![k as f32; 4_800],
+                    at: t0 + std::time::Duration::from_secs_f64(arrive(k)),
+                }));
+            }
+            out.extend(w.finish());
+            // Every block comes out, in order; the breaks as (blocks
+            // before, gap).
+            let mut blocks = 0;
+            let mut found = Vec::new();
+            for l in out {
+                match l {
+                    Live::Block(b) => {
+                        assert_eq!(b.samples[0], blocks as f32);
+                        blocks += 1;
+                    }
+                    Live::Break(g) => found.push((blocks, g)),
+                    Live::Dropped(g) => panic!("nothing was dropped, but {g} s"),
+                    Live::Cut => found.push((blocks, -1.0)),
+                    Live::Glitch => panic!("no glitch, but one"),
+                }
+            }
+            assert_eq!(blocks, 200);
+            found
+        };
+        let near = |f: Vec<(usize, f64)>, want: &[(usize, f64)]| {
+            assert_eq!(f.len(), want.len(), "{f:?}");
+            for (a, b) in f.iter().zip(want) {
+                assert_eq!(a.0, b.0, "{f:?}");
+                assert!((a.1 - b.1).abs() < 1e-6, "{f:?}");
+            }
+        };
+        // Steady, with a little jitter: no break.
+        near(run(&|k| 0.1 * (k + 1) as f64 + 0.03 * (k % 3) as f64), &[]);
+        // 3 s with no sound before block 50 (the computer slept): a break.
+        near(
+            run(&|k| 0.1 * (k + 1) as f64 + if k >= 50 { 3.0 } else { 0.0 }),
+            &[(50, 3.0)],
+        );
+        // One gap just at MIN_GAP_S and one just under it.
+        near(
+            run(&|k| {
+                0.1 * (k + 1) as f64
+                    + if k >= 40 { MIN_GAP_S } else { 0.0 }
+                    + if k >= 120 { MIN_GAP_S - 0.01 } else { 0.0 }
+            }),
+            &[(40, MIN_GAP_S)],
+        );
+        // The input stalled 2 s and then brought every block it held at
+        // once: nothing was lost, so no break.
+        near(
+            run(&|k| (0.1 * (k + 1) as f64).max(if k >= 50 { 7.1 } else { 0.0 })),
+            &[],
+        );
+        // A single block late, the next ones on time: no break.
+        near(
+            run(&|k| 0.1 * (k + 1) as f64 + if k == 80 { 1.5 } else { 0.0 }),
+            &[],
+        );
+        // A gap in the last blocks is judged on the blocks there are.
+        near(
+            run(&|k| 0.1 * (k + 1) as f64 + if k >= 198 { 2.0 } else { 0.0 }),
+            &[(198, 2.0)],
+        );
+    }
+
+    /// Blocks of 0.1 s at 1 kHz, each arriving at `arrive(k)`, with `tell`
+    /// called before block `at`: (blocks before, what) for each break, the
+    /// gap of a [`Live::Break`], -1 a cut, -2 a glitch, -3 a drop.
+    fn told_run(
+        arrive: &dyn Fn(usize) -> f64,
+        at: usize,
+        tell: &dyn Fn(&mut GapWatch) -> Vec<Live>,
+    ) -> Vec<(usize, f64)> {
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
+        let mut w = GapWatch::new(1_000);
+        let mut out = Vec::new();
+        for k in 0..120 {
+            if k == at {
+                out.extend(tell(&mut w));
+            }
+            out.extend(w.push(Block {
+                samples: vec![k as f32; 100],
+                at: t0 + std::time::Duration::from_secs_f64(arrive(k)),
+            }));
+        }
+        out.extend(w.finish());
+        let mut blocks = 0;
+        let mut found = Vec::new();
+        for l in out {
+            match l {
+                Live::Block(b) => {
+                    assert_eq!(b.samples[0], blocks as f32);
+                    blocks += 1;
+                }
+                Live::Break(g) => found.push((blocks, (g * 100.0).round() / 100.0)),
+                Live::Cut => found.push((blocks, -1.0)),
+                Live::Glitch => found.push((blocks, -2.0)),
+                Live::Dropped(_) => found.push((blocks, -3.0)),
+            }
+        }
+        assert_eq!(blocks, 120);
+        found
+    }
+
+    /// A break the input tells of while blocks are held after a rise
+    /// waits in its place: the rise is judged as without it, its backlog
+    /// still culled, so the sound either side of the jump is never
+    /// spliced (#1048). A 10 s suspend before block 50, and blocks 50 to
+    /// 69 a backlog of sound from before it that comes all at once on
+    /// waking.
+    #[test]
+    fn a_told_break_waits_in_place_behind_held_blocks() {
+        let arrive = |k: usize| match k {
+            0..50 => 0.1 * (k + 1) as f64,
+            50..70 => 17.0,
+            _ => 0.1 * (k + 1) as f64 + 10.0,
+        };
+        let glitch = |w: &mut GapWatch| w.glitch();
+        assert_eq!(
+            told_run(&arrive, usize::MAX, &glitch),
+            [(50, 10.0), (70, -1.0)]
+        );
+        for (at, want) in [
+            (30, vec![(30, -2.0), (50, 10.0), (70, -1.0)]),
+            (52, vec![(50, 10.0), (52, -2.0), (70, -1.0)]),
+            (60, vec![(50, 10.0), (60, -2.0), (70, -1.0)]),
+            (72, vec![(50, 10.0), (70, -1.0), (72, -2.0)]),
+        ] {
+            assert_eq!(told_run(&arrive, at, &glitch), want, "a glitch at {at}");
+        }
+        // A drop the same: it counts as audio, so the gap after it is
+        // what it is less the drop.
+        for (at, want) in [
+            (52, vec![(50, 9.9), (52, -3.0), (70, -1.0)]),
+            (60, vec![(50, 9.9), (60, -3.0), (70, -1.0)]),
+        ] {
+            let lose = |w: &mut GapWatch| w.lost(100);
+            assert_eq!(told_run(&arrive, at, &lose), want, "a drop at {at}");
+        }
+    }
+
+    /// A drop told just before the first late block after a suspend,
+    /// when nothing is held yet, hides neither the gap nor its backlog: the
+    /// line before the drop stays the reference, so the rise is judged as
+    /// with a glitch there, and the drop is listed in its own place
+    /// (#1051). The 10 s suspend before block 50 and its backlog in blocks
+    /// 50 to 69 as above; the drop is 0.1 s.
+    #[test]
+    fn a_drop_at_the_first_late_block_hides_no_gap() {
+        let arrive = |k: usize| match k {
+            0..50 => 0.1 * (k + 1) as f64,
+            50..70 => 17.0,
+            _ => 0.1 * (k + 1) as f64 + 10.0,
+        };
+        let lose = |w: &mut GapWatch| w.lost(100);
+        assert_eq!(
+            told_run(&arrive, 50, &lose),
+            [(50, -3.0), (50, 9.9), (70, -1.0)]
+        );
+        // The issue's run: arrivals after the drop shift by its 0.1 s, so
+        // the gap is the suspend's whole 10 s.
+        let shifted = |k: usize| arrive(k) + if k >= 50 { 0.1 } else { 0.0 };
+        assert_eq!(
+            told_run(&shifted, 50, &lose),
+            [(50, -3.0), (50, 10.0), (70, -1.0)]
+        );
+        // A drop with no suspend is a break and nothing more.
+        let steady = |k: usize| 0.1 * (k + 1) as f64 + if k >= 50 { 0.1 } else { 0.0 };
+        assert_eq!(told_run(&steady, 50, &lose), [(50, -3.0)]);
+    }
+
+    /// Behind blocks held after a small rise that is no break (one block
+    /// 1.5 s late), a glitch comes out after the blocks before it and
+    /// before those after; two with no block between are one.
+    #[test]
+    fn a_glitch_behind_a_late_block_keeps_its_place_and_two_are_one() {
+        let arrive = |k: usize| 0.1 * (k + 1) as f64 + if k == 80 { 1.5 } else { 0.0 };
+        let once = |w: &mut GapWatch| w.glitch();
+        assert_eq!(told_run(&arrive, 82, &once), [(82, -2.0)]);
+        let twice = |w: &mut GapWatch| {
+            let mut out = w.glitch();
+            out.extend(w.glitch());
+            out
+        };
+        assert_eq!(told_run(&arrive, 82, &twice), [(82, -2.0)]);
+        assert_eq!(told_run(&arrive, 30, &twice), [(30, -2.0)]);
+    }
+
+    /// The shifts run on over the gaps, each rounded to whole tick-tock
+    /// pairs, none for a negative gap; renumber moves each beat by the
+    /// shift at its second, and a reader taking it off gets the numbers
+    /// back.
+    #[test]
+    fn the_index_shift_is_the_beats_the_gaps_held() {
+        let breaks = [
+            Break {
+                audio_s: 10.0,
+                gap_s: 1.0,
+            },
+            Break {
+                audio_s: 20.0,
+                gap_s: -0.5,
+            },
+            Break {
+                audio_s: 30.0,
+                gap_s: 0.3,
+            },
+        ];
+        // 28800 bph: 0.125 s a beat, 0.25 s a tick-tock pair.
+        let shifts = index_shifts(&breaks, 28800);
+        assert_eq!(shifts, [(10.0, 8), (20.0, 8), (30.0, 10)]);
+        assert_eq!(index_shift_at(&shifts, 9.9), 0);
+        assert_eq!(index_shift_at(&shifts, 10.0), 8);
+        assert_eq!(index_shift_at(&shifts, 25.0), 8);
+        assert_eq!(index_shift_at(&shifts, 31.0), 10);
+        let mut beats: Vec<Beat> = [5.0, 10.0, 15.0, 29.0, 35.0]
+            .iter()
+            .enumerate()
+            .map(|(i, &time)| Beat {
+                index: i as i64,
+                time,
+                quality: 1.0,
+            })
+            .collect();
+        let was = beats.clone();
+        renumber(&mut beats, &mut Vec::new(), &breaks, &[], 28800);
+        let moved: Vec<i64> = beats.iter().map(|b| b.index).collect();
+        assert_eq!(moved, [0, 9, 10, 11, 14]);
+        for (b, w) in beats.iter().zip(&was) {
+            assert_eq!(b.index - index_shift_at(&shifts, b.time), w.index);
+        }
+    }
+
+    #[test]
+    fn the_middle_of_the_entries_after_a_step_is_what_it_keeps() {
+        // The first HELD_ENTRIES of them, sorted: the upper middle one.
+        assert_eq!(held_step(0.5, &[4.0, 1.0, 3.0, 2.0, 9.0]), 2.5);
+        assert_eq!(held_step(0.5, &[3.0, 1.0, 2.0]), 1.5);
+        assert_eq!(held_step(1.0, &[7.0]), 6.0);
+    }
+
+    /// A listed break is placed by its frame count when the sample rate is
+    /// known, and by its `audio_s` when it is not, since frames over no
+    /// rate place nothing.
+    #[test]
+    fn a_listed_break_is_placed_by_its_frame_when_the_rate_is_known() {
+        let json = serde_json::json!({ "breaks": [
+            { "frame": 96_000, "audio_s": 5.0, "gap_s": 1.5 },
+            { "audio_s": 1.0 },
+            { "frame": 48_000 },
+        ] });
+        let at = |audio_s, gap_s| Break { audio_s, gap_s };
+        assert_eq!(
+            from_session(&json, 48_000),
+            (vec![at(1.0, 0.0), at(1.0, 0.0), at(2.0, 1.5)], 0)
+        );
+        // With no rate the frames are no use: the first entry falls back
+        // on its `audio_s`, and the last, with nothing else, is skipped.
+        assert_eq!(
+            from_session(&json, 0),
+            (vec![at(1.0, 0.0), at(5.0, 1.5)], 1)
+        );
+    }
+
+    #[test]
+    fn a_clock_log_breaks_where_its_offset_steps_up_and_stays() {
+        // Audio seconds against true seconds a long way on, as a clock
+        // log's are: 3 s lost after 20 s of audio, and a pause listed at
+        // 40 s whose step is too small to find on its own.
+        let pairs: Vec<(f64, f64)> = (0..=60)
+            .map(|k| {
+                let a = k as f64;
+                let lost = if a >= 21.0 { 3.0 } else { 0.0 } + if a >= 41.0 { 0.2 } else { 0.0 };
+                (a, 1.0e9 + a + lost)
+            })
+            .collect();
+        let found = from_clock_at(&pairs, &[40.0]);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].audio_s, 21.0);
+        assert!((found[0].gap_s - 3.0).abs() < 1e-6, "{found:?}");
+        assert_eq!(found[1].audio_s, 41.0);
+        assert!((found[1].gap_s - 0.2).abs() < 1e-6, "{found:?}");
+        // Without the listed pause, only the step that stays.
+        assert_eq!(from_clock_at(&pairs, &[]).len(), 1);
+        // A step of just MIN_GAP_S is a break.
+        let edge: Vec<(f64, f64)> = (0..10)
+            .map(|k| (k as f64, k as f64 + if k >= 5 { MIN_GAP_S } else { 0.0 }))
+            .collect();
+        assert_eq!(
+            from_clock_at(&edge, &[]),
+            [Break {
+                audio_s: 5.0,
+                gap_s: MIN_GAP_S
+            }]
+        );
+    }
+
+    /// Blocks after a rise come out once the blocks held cover the rise
+    /// (or HOLD_S of audio) and HELD_ENTRIES more have come: each block's
+    /// push is the one it came out on.
+    #[test]
+    fn a_rise_is_held_until_its_blocks_cover_it_and_then_four_more() {
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000);
+        let run = |arrive: &dyn Fn(usize) -> f64| {
+            let mut w = GapWatch::new(1_000);
+            let mut out_at = Vec::new();
+            let mut found = Vec::new();
+            for k in 0..200 {
+                for l in w.push(Block {
+                    samples: vec![k as f32; 100],
+                    at: t0 + std::time::Duration::from_secs_f64(arrive(k)),
+                }) {
+                    match l {
+                        Live::Block(b) => out_at.push((b.samples[0] as usize, k)),
+                        Live::Break(g) => found.push((out_at.len(), g)),
+                        Live::Dropped(g) => panic!("nothing was dropped, but {g} s"),
+                        Live::Cut => panic!("no backlog, but a cut"),
+                        Live::Glitch => panic!("no glitch, but one"),
+                    }
+                }
+            }
+            for l in w.finish() {
+                if let Live::Block(b) = l {
+                    out_at.push((b.samples[0] as usize, 200));
+                }
+            }
+            (out_at, found)
+        };
+        let pushed_out = |out_at: &[(usize, usize)], block: usize| {
+            assert_eq!(out_at[block].0, block);
+            out_at[block].1
+        };
+        // 0.1 s blocks. A 3 s gap before block 50 (audio 5.0 s): held
+        // until audio 8.0 s (block 79), then 4 more.
+        let (o, f) = run(&|k| 0.1 * (k + 1) as f64 + if k >= 50 { 3.0 } else { 0.0 });
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].0, 50);
+        assert_eq!(pushed_out(&o, 49), 49);
+        assert_eq!(pushed_out(&o, 50), 83);
+        assert_eq!(pushed_out(&o, 84), 84);
+        // An 8 s gap: held for HOLD_S, to audio 10.0 s (block 99), then 4.
+        let (o, _) = run(&|k| 0.1 * (k + 1) as f64 + if k >= 50 { 8.0 } else { 0.0 });
+        assert_eq!(pushed_out(&o, 50), 103);
+        // Stalled 2 s, then every block at once: held to audio 7.0 s
+        // (block 69), then 4; no break.
+        let (o, f) = run(&|k| (0.1 * (k + 1) as f64).max(if k >= 50 { 7.1 } else { 0.0 }));
+        assert!(f.is_empty(), "{f:?}");
+        assert_eq!(pushed_out(&o, 50), 73);
+        // Two losses of 0.3 s, at blocks 40 and 45, between the clock log's
+        // lines: the rise is 0.6 s since the last line, held to audio 5.1 s.
+        let (o, f) = run(&|k| {
+            0.1 * (k + 1) as f64 + if k >= 40 { 0.3 } else { 0.0 } + if k >= 45 { 0.3 } else { 0.0 }
+        });
+        assert_eq!(pushed_out(&o, 40), 40);
+        assert_eq!(pushed_out(&o, 45), 54);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].0, 45);
+        assert!((f[0].1 - 0.6).abs() < 1e-6, "{f:?}");
+    }
+
+    #[test]
+    fn sound_the_input_dropped_is_a_break_however_short() {
+        // Blocks of 0.1 s at 48 kHz arriving on time, and `lost` frames
+        // dropped after block 50, so the blocks after it arrive that much
+        // later than the audio before them says.
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000);
+        for lost in [1_440u64, 48_000] {
+            let late = lost as f64 / 48_000.0;
+            let mut w = GapWatch::new(48_000);
+            let mut out = Vec::new();
+            for k in 0..100 {
+                if k == 50 {
+                    out.extend(w.lost(lost));
+                }
+                let at = 0.1 * (k + 1) as f64 + if k >= 50 { late } else { 0.0 };
+                out.extend(w.push(Block {
+                    samples: vec![k as f32; 4_800],
+                    at: t0 + std::time::Duration::from_secs_f64(at),
+                }));
+            }
+            out.extend(w.finish());
+            let mut blocks = 0;
+            let (mut found, mut dropped) = (Vec::new(), Vec::new());
+            for l in out {
+                match l {
+                    Live::Block(b) => {
+                        assert_eq!(b.samples[0], blocks as f32);
+                        blocks += 1;
+                    }
+                    Live::Break(g) => found.push((blocks, g)),
+                    Live::Dropped(g) => dropped.push((blocks, g)),
+                    Live::Cut => panic!("no backlog, but a cut"),
+                    Live::Glitch => panic!("no glitch, but one"),
+                }
+            }
+            assert_eq!(blocks, 100);
+            // One break, where the sound was lost, of what was lost: not
+            // found a second time from the blocks' arrival.
+            assert!(found.is_empty(), "{lost}: {found:?}");
+            assert_eq!(dropped.len(), 1, "{lost}: {dropped:?}");
+            assert_eq!(dropped[0].0, 50);
+            assert!((dropped[0].1 - late).abs() < 1e-9, "{lost}: {dropped:?}");
+        }
+    }
+
+    #[test]
+    fn a_lost_stretch_reads_in_the_unit_that_fits_it() {
+        for (gap, want) in [
+            (0.0, "<1 ms"),
+            (0.0004, "<1 ms"),
+            (0.0005, "1 ms"),
+            (0.03, "30 ms"),
+            (0.999, "999 ms"),
+            (0.9996, "1 s"),
+            (1.365, "1 s"),
+            (119.4, "119 s"),
+            (119.5, "2:00"),
+            (245.0, "4:05"),
+            (5400.0, "1:30:00"),
+        ] {
+            assert_eq!(lost_text(gap), want, "{gap}");
+        }
+    }
+}
