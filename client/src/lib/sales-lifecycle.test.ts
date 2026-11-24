@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { InventoryReturn, InventorySale } from "@shared/schema";
 import {
   buildReturnReconciliationCsv,
+  applyCurrentDeliveryToLatestSaleCycles,
   getReturnAdjustmentCents,
   getSaleCycleNetProfitCents,
   groupReceivedReturnsByMonth,
@@ -82,6 +83,23 @@ const saleWithReturns = (
 });
 
 describe("sales lifecycle accounting", () => {
+  it("uses the current delivery date only for the watch's latest sale cycle", () => {
+    const earlier = sale({ id: 1, inventoryId: 9, cycleNumber: 1, deliveredDate: "2026-01-12" });
+    const latest = sale({ id: 2, inventoryId: 9, cycleNumber: 2, deliveredDate: null });
+    const otherWatch = sale({ id: 3, inventoryId: 10, cycleNumber: 1, deliveredDate: null });
+
+    const reconciled = applyCurrentDeliveryToLatestSaleCycles(
+      [earlier, latest, otherWatch],
+      [{ id: 9, status: "sold", deliveredDate: "2026-03-05" }],
+    );
+
+    expect(reconciled.map(item => item.deliveredDate)).toEqual([
+      "2026-01-12",
+      "2026-03-05",
+      null,
+    ]);
+  });
+
   it("keeps the sale snapshot while separately reversing a completed full return", () => {
     const item = saleWithReturns({ returns: [returnCase()] });
     expect(item.profitAtSaleCents).toBe(220000);

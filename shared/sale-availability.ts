@@ -27,6 +27,7 @@ export interface SaleAvailabilityEntry {
 
 export interface SaleAvailabilitySummary {
   totalSaleCount: number;
+  totalTrackedSaleCount: number;
   awaitingDelivery: SaleAvailabilityEntry[];
   inReturnWindow: SaleAvailabilityEntry[];
   available: SaleAvailabilityEntry[];
@@ -35,6 +36,7 @@ export interface SaleAvailabilitySummary {
   awaitingDeliveryCents: number;
   inReturnWindowCents: number;
   availableCents: number;
+  totalTrackedCents: number;
 }
 
 function nextCalendarDate(value: string): string {
@@ -117,9 +119,11 @@ export function calculateSaleAvailability(
 
   const sum = (entries: readonly SaleAvailabilityEntry[]) =>
     entries.reduce((total, entry) => total + (entry.proceedsCents ?? 0), 0);
+  const trackedSales = [...awaitingDelivery, ...inReturnWindow, ...available];
 
   return {
     totalSaleCount: sales.length,
+    totalTrackedSaleCount: trackedSales.length,
     awaitingDelivery,
     inReturnWindow,
     available,
@@ -128,5 +132,6 @@ export function calculateSaleAvailability(
     awaitingDeliveryCents: sum(awaitingDelivery),
     inReturnWindowCents: sum(inReturnWindow),
     availableCents: sum(available),
+    totalTrackedCents: sum(trackedSales),
   };
 }

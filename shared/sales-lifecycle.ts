@@ -2,6 +2,38 @@ import type { InventoryReturn, InventorySale } from "./schema";
 
 export type InventorySaleWithReturns = InventorySale & { returns: InventoryReturn[] };
 
+export type CurrentInventoryDelivery = {
+  id: number;
+  status: string;
+  deliveredDate: string | null;
+};
+
+/** Use the current watch delivery date for its latest sale cycle, including legacy unsynced snapshots. */
+export function applyCurrentDeliveryToLatestSaleCycles(
+  sales: readonly InventorySale[],
+  currentInventory: readonly CurrentInventoryDelivery[],
+): InventorySale[] {
+  const currentById = new Map(currentInventory.map(item => [item.id, item]));
+  const latestCycleByInventoryId = new Map<number, number>();
+
+  for (const sale of sales) {
+    if (sale.inventoryId == null) continue;
+    const latestCycle = latestCycleByInventoryId.get(sale.inventoryId) ?? 0;
+    if (sale.cycleNumber > latestCycle) {
+      latestCycleByInventoryId.set(sale.inventoryId, sale.cycleNumber);
+    }
+  }
+
+  return sales.map(sale => {
+    if (sale.inventoryId == null || latestCycleByInventoryId.get(sale.inventoryId) !== sale.cycleNumber) {
+      return sale;
+    }
+    const current = currentById.get(sale.inventoryId);
+    if (!current || current.status !== "sold") return sale;
+    return { ...sale, deliveredDate: current.deliveredDate };
+  });
+}
+
 export interface SalesLifecycleSummary {
   revenueCents: number;
   purchaseCostsCents: number;

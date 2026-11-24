@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { InventoryReturn, InventorySale } from "@shared/schema";
 import { calculateSaleAvailability } from "@shared/sale-availability";
-import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
+import {
+  applyCurrentDeliveryToLatestSaleCycles,
+  type InventorySaleWithReturns,
+} from "@shared/sales-lifecycle";
 
 const sale = (overrides: Partial<InventorySale> = {}): InventorySaleWithReturns => ({
   id: 1,
@@ -75,6 +78,8 @@ describe("sale availability", () => {
     expect(result.awaitingDelivery).toHaveLength(1);
     expect(result.inReturnWindowCents).toBe(0);
     expect(result.availableCents).toBe(0);
+    expect(result.totalTrackedCents).toBe(935_000);
+    expect(result.totalTrackedSaleCount).toBe(1);
   });
 
   it("shows a release countdown after delivery and releases the day after the deadline", () => {
@@ -90,6 +95,35 @@ describe("sale availability", () => {
     const afterWindow = calculateSaleAvailability([delivered], new Date("2026-03-18T12:00:00.000Z"));
     expect(afterWindow.availableCents).toBe(935_000);
     expect(afterWindow.available[0].state).toBe("available");
+    expect(afterWindow.totalTrackedCents).toBe(935_000);
+  });
+
+  it("places an already-delivered sold watch in the return window using its current inventory date", () => {
+    const legacySale = sale({ deliveredDate: null });
+    const reconciled = applyCurrentDeliveryToLatestSaleCycles(
+      [legacySale],
+      [{ id: 9, status: "sold", deliveredDate: "2026-03-02" }],
+    );
+    const result = calculateSaleAvailability(reconciled, now);
+
+    expect(result.awaitingDelivery).toHaveLength(0);
+    expect(result.inReturnWindow).toHaveLength(1);
+    expect(result.inReturnWindowCents).toBe(935_000);
+  });
+
+  it("adds only the three active proceeds stages to the pipeline total", () => {
+    const result = calculateSaleAvailability([
+      sale({ id: 1, deliveredDate: null }),
+      sale({ id: 2, deliveredDate: "2026-03-02" }),
+      sale({ id: 3, deliveredDate: "2026-02-22" }),
+      sale({ id: 4, returns: [returnCase("requested")] }),
+    ], now);
+
+    expect(result.awaitingDeliveryCents).toBe(935_000);
+    expect(result.inReturnWindowCents).toBe(935_000);
+    expect(result.availableCents).toBe(935_000);
+    expect(result.totalTrackedCents).toBe(2_805_000);
+    expect(result.totalTrackedSaleCount).toBe(3);
   });
 
   it("keeps cleared proceeds only through delivery day 17", () => {
@@ -123,6 +157,8 @@ describe("sale availability", () => {
     expect(result.returnExcludedCount).toBe(2);
     expect(result.awaitingDelivery).toHaveLength(2);
     expect(result.awaitingDeliveryCents).toBe(1_870_000);
+    expect(result.totalTrackedCents).toBe(1_870_000);
+    expect(result.totalTrackedSaleCount).toBe(2);
   });
 
   it("flags unpriced and invalid delivery records for review instead of treating them as available", () => {

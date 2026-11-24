@@ -51,6 +51,8 @@ describe("SaleAvailabilityCard", () => {
     );
     expect(html).toContain("Incoming Sale Proceeds");
     expect(html).toContain("Inside return window");
+    expect(html).toContain("Total proceeds in pipeline");
+    expect(html).toContain("€9350.00");
     expect(html).toContain("€9350.00");
     expect(html).toContain("Available 17 Mar 2026 · 7 days");
     expect(html).toContain("shown as it moves toward payout");
@@ -59,6 +61,19 @@ describe("SaleAvailabilityCard", () => {
     expect(html).toContain("Day 14 · return period ends");
     expect(html).toContain("Day 17 · payout ends");
     expect(html).toContain('data-testid="sale-timeline-entry-1"');
+  });
+
+  it("shows one combined total across the active proceeds stages", () => {
+    const summary = calculateSaleAvailability([
+      sale({ id: 1, deliveredDate: null }),
+      sale({ id: 2, deliveredDate: "2026-03-02" }),
+      sale({ id: 3, deliveredDate: "2026-02-22" }),
+    ], new Date("2026-03-10T12:00:00.000Z"));
+    const html = renderToStaticMarkup(
+      <SaleAvailabilityCard summary={summary} isLoading={false} isError={false} formatCurrency={formatCurrency} />,
+    );
+    expect(html).toContain("€28050.00");
+    expect(html).toContain("3 sales");
   });
 
   it("shows clear error and no-sale states", () => {

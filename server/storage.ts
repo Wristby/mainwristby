@@ -21,7 +21,10 @@ import { shouldRecordListedPrice } from "@shared/price-history";
 import { RetentionError } from "./retention";
 import { retentionKey } from "@shared/retention";
 import { DEFAULT_WARRANTY_MONTHS, normalizeWarrantyMonths } from "@shared/warranty";
-import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
+import {
+  applyCurrentDeliveryToLatestSaleCycles,
+  type InventorySaleWithReturns,
+} from "@shared/sales-lifecycle";
 import type { CreateInventoryTimingReading, InventoryTimingSettings } from "@shared/timing";
 import {
   canCaptureNotebookInventory,
@@ -572,6 +575,17 @@ export class DatabaseStorage implements IStorage {
       .where(inventoryId == null ? undefined : eq(inventorySales.inventoryId, inventoryId))
       .orderBy(desc(inventorySales.soldDate), desc(inventorySales.id));
     if (!saleRows.length) return [];
+    const inventoryIds = Array.from(new Set(
+      saleRows.flatMap(sale => sale.inventoryId == null ? [] : [sale.inventoryId]),
+    ));
+    const currentInventory = inventoryIds.length
+      ? await db.select({
+          id: inventory.id,
+          status: inventory.status,
+          deliveredDate: inventory.deliveredDate,
+        }).from(inventory).where(inArray(inventory.id, inventoryIds))
+      : [];
+    const currentSaleRows = applyCurrentDeliveryToLatestSaleCycles(saleRows, currentInventory);
     const returnRows = await db.select().from(inventoryReturns)
       .where(inArray(inventoryReturns.saleId, saleRows.map(sale => sale.id)))
       .orderBy(desc(inventoryReturns.createdAt));
@@ -581,7 +595,7 @@ export class DatabaseStorage implements IStorage {
       group.push(record);
       returnsBySale.set(record.saleId, group);
     }
-    return saleRows.map(sale => ({ ...sale, returns: returnsBySale.get(sale.id) ?? [] }));
+    return currentSaleRows.map(sale => ({ ...sale, returns: returnsBySale.get(sale.id) ?? [] }));
   }
 
   async createInventoryReturn(saleId: number, input: CreateInventoryReturn): Promise<InventoryReturn> {
@@ -722,11 +736,25 @@ export class DatabaseStorage implements IStorage {
 
   async updateInventoryItem(id: number, updates: UpdateInventoryRequest, saleBuyer?: SaleBuyerInput): Promise<InventoryItem> {
     const normalizedUpdates = normalizeSoldDateFields(updates);
-    // Delivery-only confirmation never rewrites or corrects financial records.
+    // Delivery edits sync only the operational date, never the sale's financial snapshots.
     if (!saleBuyer && Object.keys(updates).every(key => key === "deliveredDate")) {
-      const [item] = await db.update(inventory).set(normalizedUpdates).where(eq(inventory.id, id)).returning();
-      if (!item) throw new Error("Item not found");
-      return item;
+      return db.transaction(async tx => {
+        const [item] = await tx.update(inventory).set(normalizedUpdates)
+          .where(eq(inventory.id, id)).returning();
+        if (!item) throw new Error("Item not found");
+        if (item.status === "sold") {
+          const [latestSale] = await tx.select().from(inventorySales)
+            .where(eq(inventorySales.inventoryId, id))
+            .orderBy(desc(inventorySales.cycleNumber))
+            .limit(1);
+          if (latestSale) {
+            await tx.update(inventorySales)
+              .set({ deliveredDate: item.deliveredDate, updatedAt: new Date() })
+              .where(eq(inventorySales.id, latestSale.id));
+          }
+        }
+        return item;
+      });
     }
     return db.transaction(async tx => {
       // Serialize fee corrections as well as buyer changes. Watch and expense

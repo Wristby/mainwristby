@@ -9,6 +9,8 @@ For the return workflow, preserve original sale history and log each return sepa
 
 The original purchase cost (COGS) must never change because a watch is returned. Keep the original sale and its profit snapshot; show refunds and return costs as a separate adjustment. Restore the original cost only as a return credit after the watch is received, then count that same cost once on a later sale cycle without changing the inventory purchase cost.
 
-**Why:** The user needs a reliable return record without erasing sales, shipping, and profit history when the same watch is resold, and explicitly requires the original COGS to remain unchanged.
+For proceeds tracking, use the watch's current delivery date for its latest active sale cycle. When a delivery-only edit is saved, sync only that date to the latest sale-cycle snapshot; never recalculate sale financials. Keep earlier sale-cycle delivery dates historical.
 
-**How to apply:** Keep delivery dates manually confirmable and correctable. Treat the countdown as an operational reminder, not a determination of legal eligibility. Link return events to sale cycles so repeated sales and returns remain attributable.
+**Why:** The proceeds card depends on the sale cycle's delivery date, but delivery is edited separately on the watch. If those values drift, a delivered sale stays mislabeled as awaiting delivery. Financial snapshots must remain stable while correcting this operational date.
+
+**How to apply:** Keep delivery dates manually confirmable and correctable. For the latest active sale cycle, keep the delivered date in sync without changing financial fields; do not overwrite older cycle dates. Treat the countdown as an operational reminder, not a determination of legal eligibility. Link return events to sale cycles so repeated sales and returns remain attributable.

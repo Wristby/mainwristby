@@ -243,6 +243,17 @@ export function SaleAvailabilityCard({
               <Metric title="Inside return window" amount={formatCurrency(summary.inReturnWindowCents)} count={summary.inReturnWindow.length} tone="amber" />
               <Metric title="Cleared from return hold" amount={formatCurrency(summary.availableCents)} count={summary.available.length} tone="emerald" />
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3" data-testid="sale-availability-total">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">Total proceeds in pipeline</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Combined across awaiting delivery, return window, and cleared hold · {summary.totalTrackedSaleCount} {summary.totalTrackedSaleCount === 1 ? "sale" : "sales"}
+                </p>
+              </div>
+              <p className="text-xl font-bold tabular-nums text-emerald-900">
+                {formatCurrency(summary.totalTrackedCents)}
+              </p>
+            </div>
             {!compact && (
               <>
             <p className="text-xs text-slate-500">
