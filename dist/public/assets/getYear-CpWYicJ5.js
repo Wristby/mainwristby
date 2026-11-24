@@ -1,0 +1,1 @@
+import{t as r}from"./differenceInCalendarDays-DUL8NNSh.js";function o(t){const e=r(t),a=e.getFullYear();return e.setFullYear(a+1,0,0),e.setHours(23,59,59,999),e}function s(t){return r(t).getFullYear()}export{o as e,s as g};
