@@ -14,3 +14,9 @@ The timing printout targets an 80 mm thermal receipt printer and uses English la
 **Why:** The user specified 80 mm thermal paper and asked for the timing results to print in English with the logo at the top.
 
 **How to apply:** Keep the receipt layout within 80 mm and verify the final fit on the actual printer when available.
+
+For Omega Co-Axial presets, keep movement-specific lift-angle data separate from settings required by named timing-machine models. Preserve existing editable values when sources conflict or do not verify a field, and label lower-confidence references clearly.
+
+**Why:** Omega service guides describe equipment-specific Co-Axial modes, while the browser analyzer has no verified equivalent.
+
+**How to apply:** Only prefill sourced values; do not present a browser preset as an Omega service-machine mode or treat unverified amplitude as calibrated.

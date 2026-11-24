@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 
 const mocks = vi.hoisted(() => ({
   authenticated: true,
+  timingSettings: new Map<number, { liftAngleDegrees: number; beatRateVph: number | null }>(),
   getInventoryItem: vi.fn(),
   getInventoryTimingSettings: vi.fn(),
   updateInventoryTimingSettings: vi.fn(),
@@ -58,10 +59,15 @@ afterAll(async () => {
 
 beforeEach(() => {
   mocks.authenticated = true;
+  mocks.timingSettings = new Map([[35, { liftAngleDegrees: 52, beatRateVph: null }]]);
   mocks.getClients.mockReset().mockResolvedValue([{ id: 1 }]);
   mocks.getInventoryItem.mockReset().mockResolvedValue({ id: 35 });
-  mocks.getInventoryTimingSettings.mockReset().mockResolvedValue({ liftAngleDegrees: 52, beatRateVph: null });
-  mocks.updateInventoryTimingSettings.mockReset().mockImplementation(async (_id, settings) => settings);
+  mocks.getInventoryTimingSettings.mockReset().mockImplementation(async (id: number) =>
+    mocks.timingSettings.get(id) ?? { liftAngleDegrees: 52, beatRateVph: null });
+  mocks.updateInventoryTimingSettings.mockReset().mockImplementation(async (id: number, settings) => {
+    mocks.timingSettings.set(id, settings);
+    return settings;
+  });
   mocks.getInventoryTimingReadings.mockReset().mockResolvedValue([]);
   mocks.createInventoryTimingReading.mockReset().mockImplementation(async (_id, reading) => ({
     id: 4,
@@ -125,6 +131,23 @@ describe("watch timing API", () => {
       liftAngleDegrees: 48,
       beatRateVph: 28_800,
     });
+  });
+
+  it("stores timing settings independently for each watch", async () => {
+    const saveFor = (id: number, settings: { liftAngleDegrees: number; beatRateVph: number | null }) =>
+      fetch(`${base}/api/inventory/${id}/timing-settings`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+
+    expect((await saveFor(35, { liftAngleDegrees: 38, beatRateVph: 25_200 })).status).toBe(200);
+    expect((await saveFor(36, { liftAngleDegrees: 52, beatRateVph: 28_800 })).status).toBe(200);
+
+    const watch35 = await fetch(`${base}/api/inventory/35/timing-settings`);
+    const watch36 = await fetch(`${base}/api/inventory/36/timing-settings`);
+    expect(await watch35.json()).toEqual({ liftAngleDegrees: 38, beatRateVph: 25_200 });
+    expect(await watch36.json()).toEqual({ liftAngleDegrees: 52, beatRateVph: 28_800 });
   });
 
   it("loads and saves calculated readings while rejecting invalid samples", async () => {

@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   Check,
+  ChevronsUpDown,
   Clock3,
   History,
   Loader2,
@@ -26,8 +27,17 @@ import { useTimegrapherCapture } from "@/hooks/use-timegrapher-capture";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -37,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { TimingEngineSnapshot } from "@/lib/timegrapher/types";
+import { applyOmegaTimingPreset, OMEGA_TIMING_PRESETS } from "@/lib/timegrapher/omega-timing-presets";
 
 type Props = { item: InventoryItem };
 type PrintableReading = {
@@ -141,8 +152,11 @@ export function TimingTab({ item }: Props) {
   const [beatRateText, setBeatRateText] = useState("");
   const [savedThisRun, setSavedThisRun] = useState(false);
   const [printReading, setPrintReading] = useState<PrintableReading | null>(null);
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState("");
 
   const savedSettings = settingsQuery.data ?? { liftAngleDegrees: 52, beatRateVph: null };
+  const selectedPreset = OMEGA_TIMING_PRESETS.find((preset) => preset.id === selectedPresetId);
   const liftAngle = Number(liftAngleText);
   const beatRate = beatRateText.trim() ? Number(beatRateText) : null;
   const settingsValid = Number.isFinite(liftAngle)
@@ -182,7 +196,22 @@ export function TimingTab({ item }: Props) {
     if (!settingsQuery.data) return;
     setLiftAngleText(String(settingsQuery.data.liftAngleDegrees));
     setBeatRateText(settingsQuery.data.beatRateVph?.toString() ?? "");
+    setSelectedPresetId("");
   }, [item.id, settingsQuery.data?.beatRateVph, settingsQuery.data?.liftAngleDegrees]);
+
+  const selectPreset = (presetId: string) => {
+    const preset = OMEGA_TIMING_PRESETS.find((entry) => entry.id === presetId);
+    if (!preset) return;
+    const currentLiftAngle = Number(liftAngleText);
+    const values = applyOmegaTimingPreset(preset, {
+      liftAngleDegrees: Number.isFinite(currentLiftAngle) ? currentLiftAngle : 52,
+      beatRateVph: beatRateText.trim() ? Number(beatRateText) : null,
+    });
+    setLiftAngleText(String(values.liftAngleDegrees));
+    setBeatRateText(values.beatRateVph?.toString() ?? "");
+    setSelectedPresetId(preset.id);
+    setPresetOpen(false);
+  };
 
   useEffect(() => {
     const cleanup = () => document.body.classList.remove("timing-print-active");
@@ -256,6 +285,79 @@ export function TimingTab({ item }: Props) {
               <Timer className="h-4 w-4 text-emerald-700" />
               <h2 className="font-semibold text-slate-900">Watch settings</h2>
             </div>
+            <div className="mb-4 space-y-2">
+              <Label htmlFor="omega-timing-preset">Omega movement preset (optional)</Label>
+              <Popover open={presetOpen} onOpenChange={setPresetOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="omega-timing-preset"
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={presetOpen}
+                    disabled={capture.status !== "idle" || settingsQuery.isLoading}
+                    className="w-full justify-between border-[#cbd9d0] bg-white text-left font-normal text-slate-700"
+                  >
+                    <span className="truncate">{selectedPreset?.label ?? "Search Omega calibres…"}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+                  <Command>
+                    <CommandInput placeholder="Search by caliber…" />
+                    <CommandList>
+                      <CommandEmpty>No sourced Omega preset found.</CommandEmpty>
+                      <CommandGroup>
+                        {OMEGA_TIMING_PRESETS.map((preset) => (
+                          <CommandItem
+                            key={preset.id}
+                            value={preset.label}
+                            onSelect={() => selectPreset(preset.id)}
+                            className="items-start py-3"
+                          >
+                            <Check className={cn("mt-0.5 h-4 w-4", selectedPresetId === preset.id ? "opacity-100" : "opacity-0")} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-medium">{preset.label}</span>
+                              <span className="mt-1 block text-xs text-slate-500">
+                                {preset.beatRateVph == null ? "rate unchanged" : `${preset.beatRateVph.toLocaleString()} vph`}
+                                {preset.liftAngleDegrees == null ? " · lift angle unchanged" : ` · ${preset.liftAngleDegrees}°`}
+                              </span>
+                            </span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-slate-500">
+                These source-backed starters cover a verified subset of Omega calibres. Enter missing specs manually; saving affects this watch only, not past readings.
+              </p>
+              {selectedPreset && (
+                <div className="rounded-lg border border-[#dce5df] bg-[#f5f8f5] px-3 py-2.5 text-xs text-slate-600">
+                  <p className="font-medium text-slate-700">{selectedPreset.confidenceLabel}</p>
+                  <p className="mt-1 leading-relaxed">{selectedPreset.note}</p>
+                  {selectedPreset.liftAngleDegrees == null && (
+                    <p className="mt-1 font-medium text-amber-800">
+                      Current lift angle ({liftAngleText || "52"}°) was kept; verify it before relying on amplitude.
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {selectedPreset.sources.map((source) => (
+                      <a
+                        key={source.url}
+                        href={source.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-emerald-800 underline underline-offset-2"
+                      >
+                        {source.label}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="timing-lift-angle">Lift angle (degrees)</Label>
@@ -266,7 +368,10 @@ export function TimingTab({ item }: Props) {
                   max={70}
                   step={1}
                   value={liftAngleText}
-                  onChange={(event) => setLiftAngleText(event.target.value)}
+                  onChange={(event) => {
+                    setLiftAngleText(event.target.value);
+                    setSelectedPresetId("");
+                  }}
                   disabled={capture.status !== "idle"}
                   aria-invalid={!settingsValid}
                 />
@@ -282,7 +387,10 @@ export function TimingTab({ item }: Props) {
                   step={1}
                   placeholder="Auto-detect"
                   value={beatRateText}
-                  onChange={(event) => setBeatRateText(event.target.value)}
+                  onChange={(event) => {
+                    setBeatRateText(event.target.value);
+                    setSelectedPresetId("");
+                  }}
                   disabled={capture.status !== "idle"}
                   aria-invalid={!settingsValid}
                 />

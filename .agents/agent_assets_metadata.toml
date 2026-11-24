@@ -28,3 +28,17 @@ mtime_ms = 1795515466467
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:dc971a96-a384-479a-8aa3-8af1e59cd131/26d9081d-58fe-4dc6-b4cf-f7c405f97497/c88157f8-d287-429c-aeed-2f797574d30d"
 storage_version_token = "1795515467429288"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "Xuj8NVgitVylpLMQvQxKz"
+uri = "file://research/omega-timing-presets.md"
+type = "text"
+title = "Modern Omega Timing Presets"
+description = "Source-backed Omega beat-rate and lift-angle guidance, with documented conflicts and the presets now available in WRISTBY."
+logical_id = "b08064e5-dbd1-4e0d-a7cd-b8a0e62236f2"
+content_hash = "sha256:cec1feb6fa66596e32d4c276a9c9839850dd3ccc1356e773497529a07ffcd711"
+size = 19218
+mtime_ms = 1795552282031
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:dc971a96-a384-479a-8aa3-8af1e59cd131/b08064e5-dbd1-4e0d-a7cd-b8a0e62236f2/124a2632-8d75-4407-8d55-ce24cdf09a0e"
+storage_version_token = "1795552282702021"
+content_type = "text/markdown"

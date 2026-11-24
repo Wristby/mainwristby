@@ -193,6 +193,46 @@
       "publicationDate": "n.d.",
       "tier": "1",
       "evidencePath": "research/sources/omega-current-calibers-snippets.md"
+    },
+    {
+      "key": "omega-2500abc-guide-2009",
+      "title": "OMEGA Technical Guide: Calibre 2500 A/B/C",
+      "url": "https://mccawcompany.com/wp-content/uploads/2020/04/omega_2500abc.pdf",
+      "publicationDate": "2009-06-04",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-gapfill-02-2500abc-guide.md"
+    },
+    {
+      "key": "omega-9300-9900-guide-2016",
+      "title": "OMEGA Technical Guide: Calibre 9300/9301–9900/9901",
+      "url": "https://www.cousinsuk.com/PDF/categories/8597_Omega%209300,%209301,%209900,%209901.pdf",
+      "publicationDate": "2016-10-18",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-gapfill-01-9300-9900-guide.md"
+    },
+    {
+      "key": "omega-8500-lift-angle-forum",
+      "title": "Lift Angle Setting for Cal. 8500",
+      "url": "https://omegaforums.net/threads/lift-angle-setting-for-cal-8500.34439",
+      "publicationDate": "2016-01-19",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-gapfill-05-8500-forum.md"
+    },
+    {
+      "key": "timegrapher-agent-interface",
+      "title": "Timegrapher Agent Interface Reference",
+      "url": "https://github.com/peterhudson/timegrapher/blob/main/docs/reference/agent-interface.md",
+      "publicationDate": "n.d.",
+      "tier": "2",
+      "evidencePath": "research/sources/omega-gapfill-06-timegrapher-calibre-data.md"
+    },
+    {
+      "key": "timegrapher-shipped-calibre-table",
+      "title": "Timegrapher Shipped Train-Wheels Table",
+      "url": "https://raw.githubusercontent.com/peterhudson/timegrapher/main/crates/timegrapher-core/data/train-wheels.json",
+      "publicationDate": "n.d.",
+      "tier": "2",
+      "evidencePath": "research/sources/omega-gapfill-09-timegrapher-omega-calibres.md"
     }
   ]
 }
