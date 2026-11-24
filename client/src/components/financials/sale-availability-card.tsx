@@ -141,8 +141,10 @@ export function SaleAvailabilityCard({
         </div>
 
         {isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Loading sale availability">
-            {[0, 1, 2, 3].map((key) => <div key={key} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
+          <div className="overflow-x-auto pb-1" aria-label="Loading sale availability">
+            <div className="grid min-w-[760px] grid-cols-4 gap-3">
+              {[0, 1, 2, 3].map((key) => <div key={key} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
+            </div>
           </div>
         ) : isError ? (
           <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600" role="status">
@@ -154,17 +156,19 @@ export function SaleAvailabilityCard({
           </p>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Metric title="Awaiting delivery" amount={formatCurrency(summary.awaitingDeliveryCents)} count={summary.awaitingDelivery.length} tone="slate" />
-              <Metric title="Inside return window" amount={formatCurrency(summary.inReturnWindowCents)} count={summary.inReturnWindow.length} tone="amber" />
-              <Metric title="Cleared from return hold" amount={formatCurrency(summary.availableCents)} count={summary.available.length} tone="emerald" />
-              <Metric
-                title="Total proceeds in pipeline"
-                amount={formatCurrency(summary.totalTrackedCents)}
-                count={summary.totalTrackedSaleCount}
-                tone="emerald"
-                testId="sale-availability-total"
-              />
+            <div className="overflow-x-auto pb-1">
+              <div className="grid min-w-[760px] grid-cols-4 gap-3">
+                <Metric title="Awaiting delivery" amount={formatCurrency(summary.awaitingDeliveryCents)} count={summary.awaitingDelivery.length} tone="slate" />
+                <Metric title="Inside return window" amount={formatCurrency(summary.inReturnWindowCents)} count={summary.inReturnWindow.length} tone="amber" />
+                <Metric title="Cleared from return hold" amount={formatCurrency(summary.availableCents)} count={summary.available.length} tone="emerald" />
+                <Metric
+                  title="Total proceeds in pipeline"
+                  amount={formatCurrency(summary.totalTrackedCents)}
+                  count={summary.totalTrackedSaleCount}
+                  tone="emerald"
+                  testId="sale-availability-total"
+                />
+              </div>
             </div>
             {!compact && (
               <>
