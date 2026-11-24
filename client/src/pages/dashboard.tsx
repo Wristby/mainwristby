@@ -380,13 +380,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>}
-      <SaleAvailabilityCard
-        summary={saleAvailability}
-        isLoading={salesLoading}
-        isError={salesError}
-        formatCurrency={formatCurrency}
-        compact
-      />
       {isSectionVisible("quick_actions") && <Card className="bg-white border-slate-200">
         <CardHeader className="pb-4">
           <CardTitle className="text-slate-900 text-lg">Quick Actions</CardTitle>
@@ -488,6 +481,13 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>}
+      <SaleAvailabilityCard
+        summary={saleAvailability}
+        isLoading={salesLoading}
+        isError={salesError}
+        formatCurrency={formatCurrency}
+        compact
+      />
       {isSectionVisible("quick_actions") && <DashboardReferenceSearch watches={inventory || []} unavailable={inventoryError && !inventory} />}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* Left column: stacked sections */}
