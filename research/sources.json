@@ -1,0 +1,198 @@
+{
+  "researchTopic": "Modern Omega Timing Presets",
+  "collectedAt": "2026-11-24",
+  "sources": [
+    {
+      "key": "omega-operating-manual",
+      "title": "OMEGA Operating Instructions",
+      "url": "https://www.omegawatches.com/media/pdf/user-manuals/OMEGA_Operating_Instructions_EN.pdf",
+      "publicationDate": "2024-01; 2nd edition",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-current-calibers-01-official-user-manual.md"
+    },
+    {
+      "key": "omega-2500-guide-2011",
+      "title": "OMEGA Technical Guide: Calibre 2500 A/B/C/D",
+      "url": "https://www.cousinsuk.com/PDF/categories/4435_Omega%202500A,2500B,2500C,2500D.pdf",
+      "publicationDate": "2011-09-29",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-coaxial-settings-01-calibre-2500-technical-guide.md"
+    },
+    {
+      "key": "omega-8500-8900-guide-2015",
+      "title": "OMEGA Technical Guide: Calibre 8500/8501–8900/8901",
+      "url": "https://www.awci.com/wp-content/uploads/2018/03/Omega_8500-8501-8900-8901_TECH_E.pdf",
+      "publicationDate": "2015-10-15",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-coaxial-settings-02-calibre-8500-8900-guide.md"
+    },
+    {
+      "key": "watchguy-lift-angles",
+      "title": "WatchGuy Lift Angles",
+      "url": "https://watchguy.co.uk/cgi-bin/lift_angles",
+      "publicationDate": "n.d.",
+      "tier": "2",
+      "evidencePath": "research/sources/omega-lift-angle-evidence-02-watchguy-list.md"
+    },
+    {
+      "key": "omega-forums-coaxial-angles",
+      "title": "Lift Angles for New Coaxial Calibres",
+      "url": "https://omegaforums.net/threads/lift-angles-for-new-coaxial-calibres.98306",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-coaxial-settings-04-forum-cross-reference.md"
+    },
+    {
+      "key": "watchmakingtools-lift-angles",
+      "title": "Watch Lift Angles: Essential Knowledge for Watchmakers",
+      "url": "https://watchmakingtools.com/watchmaking-resources/watch-movement-lift-angles",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-coaxial-settings-05-watchmakingtools-table.md"
+    },
+    {
+      "key": "watchscope-omega-8800",
+      "title": "Omega 8800: Specs and How to Measure It",
+      "url": "https://watchscope.app/en/calibers/omega-8800",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-coaxial-settings-06-watchscope-8800.md"
+    },
+    {
+      "key": "strapcode-omega-modern-calibres",
+      "title": "Omega Calibres – Modern Omega Movements",
+      "url": "https://www.strapcode.com/blogs/omega-watches/omega-calibers-part-2-modern-omega-movements",
+      "publicationDate": "2021-04-05",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-coaxial-settings-07-strapcode-modern-families.md"
+    },
+    {
+      "key": "emmywatch-omega-321",
+      "title": "Omega 321 Watch Movement",
+      "url": "https://www.emmywatch.com/db/movement/omega--321",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-chronographs-snippets.md"
+    },
+    {
+      "key": "calibercorner-omega-3861",
+      "title": "Omega Caliber 3861 Watch Movement",
+      "url": "https://calibercorner.com/omega-caliber-3861",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-chronographs-03-caliber-corner-3861.md"
+    },
+    {
+      "key": "watchbase-omega-9900",
+      "title": "Omega Caliber 9900",
+      "url": "https://watchbase.com/omega/caliber/9900",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-chronographs-snippets.md"
+    },
+    {
+      "key": "ranfft-omega-3330",
+      "title": "Omega 3330",
+      "url": "https://ranfft.org/caliber/13382-Omega-3330",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-chronographs-snippets.md"
+    },
+    {
+      "key": "watchbase-omega-3330",
+      "title": "Omega Caliber 3330",
+      "url": "https://watchbase.com/omega/caliber/3330",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-chronographs-snippets.md"
+    },
+    {
+      "key": "omega-2628a-guide",
+      "title": "OMEGA Technical Guide: Calibre 2628A",
+      "url": "https://mccawcompany.com/wp-content/uploads/2020/04/omega_2628a_1.pdf",
+      "publicationDate": "2007-06-13",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-lift-angle-evidence-03-omega-2628a-technical-guide.md"
+    },
+    {
+      "key": "calibercorner-omega-8500",
+      "title": "Omega Caliber 8500 Watch Movement",
+      "url": "https://calibercorner.com/omega-caliber-8500",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-lift-angle-evidence-snippets.md"
+    },
+    {
+      "key": "calibercorner-omega-8800",
+      "title": "Omega Caliber 8800 Watch Movement",
+      "url": "https://calibercorner.com/omega-caliber-8800",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-lift-angle-evidence-snippets.md"
+    },
+    {
+      "key": "calibercorner-omega-coaxial",
+      "title": "Omega Co-Axial Calibers Watch Movement",
+      "url": "https://calibercorner.com/omega-co-axial-calibers",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-lift-angle-evidence-snippets.md"
+    },
+    {
+      "key": "omega-2007a-guide",
+      "title": "OMEGA Technical Guide: Calibre 2007A",
+      "url": "https://mccawcompany.com/wp-content/uploads/2020/04/omega_2007a.pdf",
+      "publicationDate": "2009-01-08",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-timegrapher-compatibility-02-omega-technical-guide.md"
+    },
+    {
+      "key": "omega-2500a-guide-2004",
+      "title": "OMEGA Technical Guide: Calibre 2500A",
+      "url": "https://boley.de/downloads/1ece3e416fd4423892bf2573756b92d1/OMEGA-2500.pdf",
+      "publicationDate": "2004-07-06",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-timegrapher-compatibility-03-calibre-2500-guide.md"
+    },
+    {
+      "key": "timegrapher-settings",
+      "title": "Timegrapher: Settings and Calibres",
+      "url": "https://github.com/peterhudson/timegrapher/blob/main/docs/user-guide/24-settings-and-calibres.md",
+      "publicationDate": "2026-11-20 (latest commit shown on fetched page)",
+      "tier": "2",
+      "evidencePath": "research/sources/omega-timegrapher-compatibility-01-timegrapher-settings.md"
+    },
+    {
+      "key": "timegrapher-watchmaker-skill",
+      "title": "Timegrapher Watchmaker Skill",
+      "url": "https://github.com/peterhudson/timegrapher/blob/main/skills/watchmaker/SKILL.md",
+      "publicationDate": "n.d.",
+      "tier": "2",
+      "evidencePath": "research/sources/omega-timegrapher-compatibility-snippets.md"
+    },
+    {
+      "key": "witschi-chronomaster-pro",
+      "title": "Witschi ChronoMaster PRO",
+      "url": "https://www.witschi.com/en/products/chronomaster-pro-2/",
+      "publicationDate": "n.d.",
+      "tier": "3",
+      "evidencePath": "research/sources/omega-timegrapher-compatibility-snippets.md"
+    },
+    {
+      "key": "watchguy-2628b-service",
+      "title": "Service: Omega Seamaster Co-Axial GMT Calibre 2628B",
+      "url": "https://watchguy.co.uk/service-omega-seamaster-gmt-calibre-2628b/",
+      "publicationDate": "2013-10-09",
+      "tier": "2",
+      "evidencePath": "research/sources/omega-timegrapher-compatibility-snippets.md"
+    },
+    {
+      "key": "omega-moonwatch-collection",
+      "title": "OMEGA Speedmaster Moonwatch Professional Collection",
+      "url": "https://www.omegawatches.com/watches/speedmaster/moonwatch-professional/product",
+      "publicationDate": "n.d.",
+      "tier": "1",
+      "evidencePath": "research/sources/omega-current-calibers-snippets.md"
+    }
+  ]
+}

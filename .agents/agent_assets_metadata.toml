@@ -14,3 +14,17 @@ mtime_ms = 1792661073371
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:dc971a96-a384-479a-8aa3-8af1e59cd131/098eb75c-c8ef-423b-b37a-1d36d2eebbdc/545ca8f6-47bd-410b-bf0a-954531caf11d"
 storage_version_token = "1792661137028582"
 content_type = "text/html"
+
+[[outputs]]
+id = "7dMtgUwaVzC9_nsE6dugx"
+uri = "file://research/notes.md"
+type = "text"
+title = "Research Notes: Omega Timing Presets"
+description = "Research plan and running findings log; this file will update as the caliber evidence is checked."
+logical_id = "26d9081d-58fe-4dc6-b4cf-f7c405f97497"
+content_hash = "sha256:9cb0a51ee3faabd8332e36436d6c5dc4f9bdcb271db514054cf01fed5f86aa07"
+size = 2812
+mtime_ms = 1795515466467
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:dc971a96-a384-479a-8aa3-8af1e59cd131/26d9081d-58fe-4dc6-b4cf-f7c405f97497/c88157f8-d287-429c-aeed-2f797574d30d"
+storage_version_token = "1795515467429288"
+content_type = "text/markdown"
