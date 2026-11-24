@@ -18,11 +18,13 @@ function Metric({
   amount,
   count,
   tone,
+  testId,
 }: {
   title: string;
   amount: string;
   count: number;
   tone: "slate" | "amber" | "emerald";
+  testId?: string;
 }) {
   const amountColor = {
     slate: "text-slate-900",
@@ -30,7 +32,7 @@ function Metric({
     emerald: "text-emerald-800",
   }[tone];
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 p-4" data-testid={testId}>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
       <p className={`mt-1 truncate text-xl font-bold tabular-nums ${amountColor}`}>{amount}</p>
       <p className="mt-1 text-xs text-slate-500">{count} {count === 1 ? "sale" : "sales"}</p>
@@ -139,8 +141,8 @@ export function SaleAvailabilityCard({
         </div>
 
         {isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-3" aria-label="Loading sale availability">
-            {[0, 1, 2].map((key) => <div key={key} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Loading sale availability">
+            {[0, 1, 2, 3].map((key) => <div key={key} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
           </div>
         ) : isError ? (
           <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600" role="status">
@@ -152,21 +154,17 @@ export function SaleAvailabilityCard({
           </p>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Metric title="Awaiting delivery" amount={formatCurrency(summary.awaitingDeliveryCents)} count={summary.awaitingDelivery.length} tone="slate" />
               <Metric title="Inside return window" amount={formatCurrency(summary.inReturnWindowCents)} count={summary.inReturnWindow.length} tone="amber" />
               <Metric title="Cleared from return hold" amount={formatCurrency(summary.availableCents)} count={summary.available.length} tone="emerald" />
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3" data-testid="sale-availability-total">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">Total proceeds in pipeline</p>
-                <p className="mt-1 text-xs text-slate-600">
-                  Combined across awaiting delivery, return window, and cleared hold · {summary.totalTrackedSaleCount} {summary.totalTrackedSaleCount === 1 ? "sale" : "sales"}
-                </p>
-              </div>
-              <p className="text-xl font-bold tabular-nums text-emerald-900">
-                {formatCurrency(summary.totalTrackedCents)}
-              </p>
+              <Metric
+                title="Total proceeds in pipeline"
+                amount={formatCurrency(summary.totalTrackedCents)}
+                count={summary.totalTrackedSaleCount}
+                tone="emerald"
+                testId="sale-availability-total"
+              />
             </div>
             {!compact && (
               <>
