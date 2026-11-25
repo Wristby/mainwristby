@@ -125,11 +125,6 @@ function ReturnEditor({ item, sale }: { item: InventoryReturn; sale: InventorySa
       setNextAction(saved.nextAction);
       setPlatformFeeRefunded(saved.platformFeeRefunded);
       await queryClient.invalidateQueries({ queryKey: [...salesQueryKey] });
-      if (sale.inventoryId != null) {
-        await queryClient.invalidateQueries({ queryKey: [`/api/inventory/${sale.inventoryId}/sales`] });
-        await queryClient.invalidateQueries({ queryKey: [api.inventory.get.path, sale.inventoryId] });
-        await queryClient.invalidateQueries({ queryKey: [api.inventory.list.path] });
-      }
       toast({ title: "Return updated" });
     } catch (error) {
       toast({
@@ -284,7 +279,7 @@ export default function ReturnsPage() {
           <h1 className="mt-1 flex items-center gap-2 text-3xl font-semibold tracking-tight text-slate-900">
             <RotateCcw className="h-7 w-7 text-emerald-700" /> Returns
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">Keep the original sale record and track each return, refund, shipment, and inspection separately.</p>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">Keep the original sale record and track each return, refund, shipment, and inspection separately. This page only logs the return; update the watch separately to change its inventory status or sale details.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={downloadReturnReport} disabled={isLoading || isError}>

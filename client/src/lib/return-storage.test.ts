@@ -134,7 +134,7 @@ beforeEach(() => {
 });
 
 describe("sale returns and resale persistence", () => {
-  it("keeps the purchase cost and original sale snapshot while logging return and resale cycles", async () => {
+  it("logs returns without changing inventory or expenses, while preserving later resale cycles", async () => {
     const storage = new DatabaseStorage(() => new Date("2026-02-01T12:00:00.000Z"));
     const created = await storage.createInventoryReturn(20, {
       requestDate: "2026-02-01",
@@ -154,13 +154,14 @@ describe("sale returns and resale persistence", () => {
     expect(received.cogsRestoredCents).toBe(700000);
     expect(received.platformFeeRefunded).toBe(false);
     expect(state.inventory[0]).toMatchObject({
-      status: "received",
+      status: "sold",
       purchasePrice: 700000,
-      salePrice: 0,
-      soldTo: null,
-      platformFees: 0,
-      soldDate: null,
+      salePrice: 1000000,
+      soldTo: "Buyer",
+      platformFees: 65000,
+      soldDate: new Date("2026-01-10T00:00:00.000Z"),
     });
+    expect(state.expenses).toHaveLength(0);
     expect(state.inventory_sales[0]).toMatchObject({
       salePrice: 1000000,
       soldTo: "Buyer",
@@ -175,8 +176,32 @@ describe("sale returns and resale persistence", () => {
       nextAction: "relist",
     });
     expect(completed.platformFeeRefunded).toBe(true);
-    expect(state.inventory[0].status).toBe("in_stock");
+    expect(state.inventory[0]).toMatchObject({
+      status: "sold",
+      salePrice: 1000000,
+      soldDate: new Date("2026-01-10T00:00:00.000Z"),
+    });
+    expect(state.expenses).toHaveLength(0);
 
+    // Inventory changes are made explicitly, outside the return editor.
+    await storage.updateInventoryItem(9, {
+      status: "in_stock",
+      salePrice: 0,
+      soldPrice: null,
+      soldTo: null,
+      buyerId: null,
+      platformFees: 0,
+      chrono24FeeRate: null,
+      shippingFee: 0,
+      insuranceFee: 0,
+      soldDate: null,
+      dateSold: null,
+      soldPlatform: null,
+      shippingPartner: null,
+      trackingNumber: null,
+      dateShipped: null,
+      deliveredDate: null,
+    });
     await storage.updateInventoryItem(9, {
       status: "sold",
       salePrice: 1200000,

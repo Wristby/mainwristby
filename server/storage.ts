@@ -671,40 +671,6 @@ export class DatabaseStorage implements IStorage {
       };
       const [saved] = await tx.update(inventoryReturns).set(savedFields)
         .where(eq(inventoryReturns.id, id)).returning();
-
-      if (sale.inventoryId != null && receivedDate) {
-        const nextAction = updates.nextAction ?? current.nextAction;
-        const inspectionComplete = ["inspected", "completed"].includes(status);
-        const nextInventoryStatus = inspectionComplete
-          ? nextAction === "relist" ? "in_stock" : nextAction === "service" ? "servicing" : "received"
-          : "received";
-        const watchUpdates: Partial<InventoryItem> = { status: nextInventoryStatus };
-        if (inspectionComplete && nextAction === "relist") {
-          watchUpdates.dateListed = null;
-        }
-        if (!wasReceived) {
-          Object.assign(watchUpdates, {
-            salePrice: 0,
-            soldPrice: null,
-            soldTo: null,
-            buyerId: null,
-            platformFees: 0,
-            chrono24FeeRate: null,
-            shippingFee: 0,
-            insuranceFee: 0,
-            soldDate: null,
-            dateSold: null,
-            soldPlatform: null,
-            shippingPartner: null,
-            trackingNumber: null,
-            dateShipped: null,
-            deliveredDate: null,
-          });
-        }
-        const [watch] = await tx.update(inventory).set(watchUpdates)
-          .where(eq(inventory.id, sale.inventoryId)).returning();
-        if (watch) await this.syncWatchFeesToExpenses(watch, tx);
-      }
       return saved;
     });
   }
