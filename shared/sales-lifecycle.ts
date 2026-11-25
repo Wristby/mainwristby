@@ -190,9 +190,11 @@ const saleMonthFormatter = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
 });
 
-function saleMonthKey(value: Date | null): string | null {
-  if (!value || !Number.isFinite(value.getTime())) return null;
-  const parts = saleMonthFormatter.formatToParts(value);
+function saleMonthKey(value: Date | string | null): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = saleMonthFormatter.formatToParts(date);
   const year = parts.find(part => part.type === "year")?.value;
   const month = parts.find(part => part.type === "month")?.value;
   return year && month ? `${year}-${month}` : null;

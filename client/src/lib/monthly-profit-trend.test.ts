@@ -1,0 +1,129 @@
+import { describe, expect, it } from "vitest";
+import type { InventoryReturn, InventorySale } from "@shared/schema";
+import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
+import { buildMonthlyProfitTrend, getCurrentReportingYear } from "./monthly-profit-trend";
+
+const sale = (overrides: Partial<InventorySale> = {}): InventorySaleWithReturns => ({
+  id: 1,
+  inventoryId: 9,
+  cycleNumber: 1,
+  brandSnapshot: "Rolex",
+  modelSnapshot: "Submariner",
+  referenceNumberSnapshot: "126610",
+  serialNumberSnapshot: null,
+  salePrice: 1_000_000,
+  soldTo: null,
+  buyerId: null,
+  platformFees: 65_000,
+  chrono24FeeRate: null,
+  shippingFee: 0,
+  insuranceFee: 0,
+  soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date,
+  soldPlatform: "Chrono24",
+  shippingPartner: null,
+  trackingNumber: null,
+  dateShipped: null,
+  deliveredDate: null,
+  purchaseDateSnapshot: null,
+  dateListedSnapshot: null,
+  purchasePriceSnapshot: 700_000,
+  importFeeSnapshot: 0,
+  serviceFeeSnapshot: 0,
+  polishFeeSnapshot: 0,
+  watchRegisterFeeSnapshot: 0,
+  watchRegisterSnapshot: false,
+  acquisitionCostCents: 700_000,
+  profitAtSaleCents: 235_000,
+  createdAt: new Date("2026-01-15T12:00:00.000Z"),
+  updatedAt: new Date("2026-01-15T12:00:00.000Z"),
+  returns: [],
+  ...overrides,
+});
+
+const returnCase = (overrides: Partial<InventoryReturn> = {}): InventoryReturn => ({
+  id: 10,
+  saleId: 1,
+  status: "completed",
+  requestDate: "2026-02-01",
+  reason: "Changed mind",
+  returnShippedDate: null,
+  receivedDate: "2026-02-10",
+  carrier: null,
+  trackingNumber: null,
+  shippingCostCents: 5_000,
+  shippingPayer: "seller",
+  refundAmountCents: 100_000,
+  refundDate: "2026-02-11",
+  inspectionCondition: null,
+  missingItems: null,
+  inspectionNotes: null,
+  inspectionCostCents: 0,
+  nextAction: "hold",
+  cogsRestoredCents: 0,
+  platformFeeRefunded: false,
+  completedDate: "2026-02-11",
+  createdAt: new Date("2026-02-01T12:00:00.000Z"),
+  updatedAt: new Date("2026-02-11T12:00:00.000Z"),
+  ...overrides,
+});
+
+describe("monthly Financials profit trend", () => {
+  it("returns January through December for the selected year", () => {
+    const result = buildMonthlyProfitTrend([], [], 2026);
+
+    expect(result).toHaveLength(12);
+    expect(result[0]).toMatchObject({ key: "2026-01", fullMonth: "January 2026" });
+    expect(result[11]).toMatchObject({ key: "2026-12", fullMonth: "December 2026" });
+  });
+
+  it("groups sales and expenses by the sale or expense month including year", () => {
+    const result = buildMonthlyProfitTrend([
+      sale({ id: 1, soldDate: "2025-01-15T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 100_000 }),
+      sale({ id: 2, soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 300_000 }),
+      sale({ id: 3, soldDate: "2026-11-15T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 500_000 }),
+    ], [
+      { date: "2026-01-25T12:00:00.000Z", amount: 50_000 },
+      { date: "2025-01-25T12:00:00.000Z", amount: 80_000 },
+      { date: "2026-05-25T12:00:00.000Z", amount: 25_000 },
+    ], 2026);
+
+    expect(result.find(month => month.key === "2026-01")?.profitCents).toBe(250_000);
+    expect(result.find(month => month.key === "2026-11")?.profitCents).toBe(500_000);
+    expect(result.find(month => month.key === "2026-05")?.profitCents).toBe(0);
+    expect(result.find(month => month.key === "2025-01")).toBeUndefined();
+  });
+
+  it("includes return adjustments with the sale cycle in its original sale month", () => {
+    const result = buildMonthlyProfitTrend([
+      sale({
+        soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date,
+        profitAtSaleCents: 235_000,
+        returns: [returnCase()],
+      }),
+    ], [], 2026);
+
+    expect(result.find(month => month.key === "2026-01")?.profitCents).toBe(130_000);
+    expect(result.find(month => month.key === "2026-02")?.profitCents).toBe(0);
+  });
+
+  it("keeps empty months at zero and ignores sales and expenses outside the selected year", () => {
+    const result = buildMonthlyProfitTrend([
+      sale({ soldDate: "2025-11-30T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 900_000 }),
+      sale({ id: 2, soldDate: "invalid" as unknown as Date, profitAtSaleCents: 200_000 }),
+    ], [
+      { date: "2026-11-30T12:00:00.000Z", amount: 12_000 },
+      { date: "invalid", amount: 15_000 },
+    ], 2026);
+
+    expect(result).toHaveLength(12);
+    expect(result.reduce((sum, month) => sum + month.profitCents, 0)).toBe(0);
+  });
+
+  it("uses the Amsterdam year when choosing the default", () => {
+    expect(getCurrentReportingYear(new Date("2026-12-31T23:30:00.000Z"))).toBe(2027);
+  });
+
+  it("returns no monthly bars for the All Years selection", () => {
+    expect(buildMonthlyProfitTrend([], [], null)).toEqual([]);
+  });
+});

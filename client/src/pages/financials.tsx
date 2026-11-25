@@ -61,10 +61,10 @@ import {
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertExpenseSchema, type InventoryItem } from "@shared/schema";
+import { insertExpenseSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { format, getMonth, getYear, getDaysInMonth, differenceInDays, startOfYear, endOfYear } from "date-fns";
+import { format, getYear, getDaysInMonth, differenceInDays, startOfYear, endOfYear } from "date-fns";
 import {
   Tooltip,
   TooltipContent,
@@ -80,6 +80,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { aggregateVat } from "@/lib/vat-calculations";
+import { buildMonthlyProfitTrend, getCurrentReportingYear } from "@/lib/monthly-profit-trend";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { SaleAvailabilityCard } from "@/components/financials/sale-availability-card";
 
@@ -119,7 +120,7 @@ export default function Financials() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
-  const [yearFilter, setYearFilter] = useState<string>("all");
+  const [yearFilter, setYearFilter] = useState<string>(() => String(getCurrentReportingYear()));
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const { settings } = useSettings();
@@ -217,10 +218,14 @@ export default function Financials() {
   };
 
   const years = useMemo(() => {
-    if (!expenses) return [];
-    const uniqueYears = Array.from(new Set(expenses.map(e => getYear(new Date(e.date)))));
-    return uniqueYears.sort((a, b) => b - a);
-  }, [expenses]);
+    const uniqueYears = new Set<number>([getCurrentReportingYear()]);
+    expenses?.forEach(expense => uniqueYears.add(getYear(new Date(expense.date))));
+    sales?.forEach(sale => {
+      const soldDate = getSoldDate(sale);
+      if (soldDate) uniqueYears.add(getYear(soldDate));
+    });
+    return Array.from(uniqueYears).sort((a, b) => b - a);
+  }, [expenses, sales]);
 
   const filteredExpenses = useMemo(() => {
     if (!expenses) return [];
@@ -239,34 +244,9 @@ export default function Financials() {
   }, [expenses, search, categoryFilter, monthFilter, yearFilter]);
 
   const monthlyData = useMemo(() => {
-    if (!inventory || !expenses) return [];
-    
-    const months: Record<string, { watches: InventoryItem[]; overheadCents: number }> = {};
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    monthNames.forEach(m => {
-      months[m] = { watches: [], overheadCents: 0 };
-    });
-
-    inventory.forEach(item => {
-      const soldDate = item.status === "sold" ? getSoldDate(item) : null;
-      if (!soldDate) return;
-      months[monthNames[soldDate.getMonth()]].watches.push(item);
-    });
-
-    expenses.forEach(expense => {
-      const month = monthNames[new Date(expense.date).getMonth()];
-      months[month].overheadCents += expense.amount;
-    });
-
-    return monthNames.map(month => {
-      const totals = summarizeWatchSales(months[month].watches, settings.watch_register_fee);
-      return {
-        month,
-        profit: (totals.netProfitCents - months[month].overheadCents) / 100,
-      };
-    });
-  }, [inventory, expenses, settings.watch_register_fee]);
+    const selectedYear = yearFilter === "all" ? null : Number(yearFilter);
+    return buildMonthlyProfitTrend(sales ?? [], expenses ?? [], selectedYear);
+  }, [sales, expenses, yearFilter]);
 
   const getCategoryLabel = (category: string) => {
     return EXPENSE_CATEGORIES.find(c => c.value === category)?.label || category;
@@ -668,41 +648,59 @@ export default function Financials() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-slate-900">Monthly Net Profit Trend</h3>
-            <span className="text-xs text-slate-400">Last 12 months</span>
+            <span className="text-xs text-slate-400">
+              {yearFilter === "all" ? "Select a year above" : yearFilter}
+            </span>
           </div>
-          <div className="h-32 flex items-end justify-between gap-1">
-            <TooltipProvider delayDuration={0}>
-              {monthlyData.map((data, idx) => {
-                const maxProfit = Math.max(...monthlyData.map(d => Math.abs(d.profit)), 1);
-                const height = Math.abs(data.profit) / maxProfit * 100;
-                const isNegative = data.profit < 0;
-                
-                return (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="w-full h-24 flex items-end justify-center cursor-pointer">
-                          <div 
-                            className={`w-full max-w-6 rounded-t transition-all hover:opacity-80 ${isNegative ? 'bg-red-400' : 'bg-emerald-500'}`}
-                            style={{ height: `${Math.max(height, 4)}%` }}
-                          />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div className="text-center">
-                          <p className="font-semibold">{data.month}</p>
-                          <p className={isNegative ? 'text-red-500' : 'text-emerald-600'}>
-                            {formatCurrency(data.profit * 100)}
-                          </p>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                    <span className="text-xs text-slate-400">{data.month}</span>
-                  </div>
-                );
-              })}
-            </TooltipProvider>
-          </div>
+          {yearFilter === "all" ? (
+            <div className="h-32 flex items-center justify-center text-sm text-slate-400">
+              Choose a year above to view monthly profit.
+            </div>
+          ) : salesLoading ? (
+            <div className="h-32 flex items-center justify-center text-sm text-slate-400">Loading sale history…</div>
+          ) : salesError ? (
+            <div className="h-32 flex items-center justify-center text-sm text-slate-500">
+              Monthly profit trend is unavailable because sale history could not be loaded.
+            </div>
+          ) : (
+            <div className="h-32 flex items-end justify-between gap-1">
+              <TooltipProvider delayDuration={0}>
+                {monthlyData.map(data => {
+                  const maxProfit = Math.max(...monthlyData.map(month => Math.abs(month.profitCents)), 1);
+                  const height = Math.abs(data.profitCents) / maxProfit * 100;
+                  const isNegative = data.profitCents < 0;
+
+                  return (
+                    <div key={data.key} className="flex-1 flex flex-col items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className="w-full h-24 flex items-end justify-center cursor-pointer"
+                            aria-label={`${data.fullMonth}: ${formatCurrency(data.profitCents)}`}
+                            data-testid={`monthly-profit-bar-${data.key}`}
+                          >
+                            <div
+                              className={`w-full max-w-6 rounded-t transition-all hover:opacity-80 ${isNegative ? "bg-red-400" : "bg-emerald-500"}`}
+                              style={{ height: `${height === 0 ? 0 : Math.max(height, 4)}%` }}
+                            />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <div className="text-center">
+                            <p className="font-semibold">{data.fullMonth}</p>
+                            <p className={isNegative ? "text-red-500" : "text-emerald-600"}>
+                              {formatCurrency(data.profitCents)}
+                            </p>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                      <span className="text-xs text-slate-400">{data.month}</span>
+                    </div>
+                  );
+                })}
+              </TooltipProvider>
+            </div>
+          )}
         </CardContent>
       </Card>
       <SaleAvailabilityCard
