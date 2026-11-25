@@ -3,6 +3,7 @@ import type { InventoryReturn, InventorySale } from "@shared/schema";
 import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
 import {
   buildMonthlyProfitTrend,
+  buildMonthlySaleCyclesCsv,
   getCurrentReportingYear,
   getSaleCycleHistoryLabel,
   getSalesForMonth,
@@ -178,5 +179,36 @@ describe("monthly Financials profit trend", () => {
     expect(getSaleCycleHistoryLabel(returned)).toBe("Returned");
     expect(getSaleCycleHistoryLabel(resale)).toBe("Resale · cycle 2");
     expect(getSaleCycleHistoryLabel(openReturn)).toBe("Return in progress");
+  });
+
+  it("exports sale-cycle snapshots, prices, adjusted profit, and labels", () => {
+    const csv = buildMonthlySaleCyclesCsv([
+      sale({
+        soldDate: "2026-01-31T22:30:00.000Z" as unknown as Date,
+        salePrice: 1_000_000,
+        returns: [returnCase()],
+      }),
+      sale({
+        id: 2,
+        brandSnapshot: 'Rolex, "Vintage"',
+        cycleNumber: 2,
+        soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date,
+        salePrice: 1_200_000,
+      }),
+    ]);
+
+    expect(csv).toContain(
+      "Sale Date,Brand,Model,Reference Number,Sale Cycle,Sale Price (EUR),Profit After Return Adjustments (EUR),Return / Resale",
+    );
+    expect(csv).toContain(
+      "2026-01-31,Rolex,Submariner,126610,1,10000.00,1300.00,Returned",
+    );
+    expect(csv).toContain(
+      '2026-01-15,"Rolex, ""Vintage""",Submariner,126610,2,12000.00,2350.00,Resale · cycle 2',
+    );
+  });
+
+  it("does not produce a misleading CSV for months without sale cycles", () => {
+    expect(buildMonthlySaleCyclesCsv([])).toBe("");
   });
 });

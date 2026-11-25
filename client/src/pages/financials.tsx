@@ -84,6 +84,7 @@ import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { aggregateVat } from "@/lib/vat-calculations";
 import {
   buildMonthlyProfitTrend,
+  buildMonthlySaleCyclesCsv,
   getCurrentReportingYear,
   getSaleCycleHistoryLabel,
   getSalesForMonth,
@@ -262,6 +263,28 @@ export default function Financials() {
     () => getSalesForMonth(sales ?? [], selectedTrendMonth),
     [sales, selectedTrendMonth],
   );
+
+  const exportSelectedMonthSales = () => {
+    if (!selectedTrendMonth || selectedTrendSales.length === 0) return;
+
+    const csvContent = buildMonthlySaleCyclesCsv(selectedTrendSales);
+    if (!csvContent) return;
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `sale_cycles_${selectedTrendMonth}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Success",
+      description: `Exported ${selectedTrendSales.length} sale cycles for ${selectedTrendPoint?.fullMonth ?? selectedTrendMonth}`,
+    });
+  };
 
   const getCategoryLabel = (category: string) => {
     return EXPENSE_CATEGORIES.find(c => c.value === category)?.label || category;
@@ -791,6 +814,20 @@ export default function Financials() {
               monthly expenses are reflected in the chart total, not these row amounts.
             </DialogDescription>
           </DialogHeader>
+          {selectedTrendSales.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-slate-200 text-slate-700"
+                onClick={exportSelectedMonthSales}
+                data-testid="button-export-month-sale-cycles"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Export month CSV
+              </Button>
+            </div>
+          )}
           {selectedTrendPoint && (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-4">
               <div>

@@ -126,6 +126,56 @@ export function getSaleCycleHistoryLabel(sale: InventorySaleWithReturns): string
   return sale.cycleNumber > 1 ? `Resale · cycle ${sale.cycleNumber}` : "Original sale";
 }
 
+function escapeCsvCell(value: string | number): string {
+  let text = String(value);
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function formatSaleDateForCsv(value: Date | string | null): string {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORTING_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+export function buildMonthlySaleCyclesCsv(sales: readonly InventorySaleWithReturns[]): string {
+  if (sales.length === 0) return "";
+
+  const headers = [
+    "Sale Date",
+    "Brand",
+    "Model",
+    "Reference Number",
+    "Sale Cycle",
+    "Sale Price (EUR)",
+    "Profit After Return Adjustments (EUR)",
+    "Return / Resale",
+  ];
+  const rows = sales.map(sale => [
+    formatSaleDateForCsv(sale.soldDate),
+    sale.brandSnapshot,
+    sale.modelSnapshot,
+    sale.referenceNumberSnapshot,
+    sale.cycleNumber,
+    (sale.salePrice / 100).toFixed(2),
+    (getSaleCycleNetProfitCents(sale) / 100).toFixed(2),
+    getSaleCycleHistoryLabel(sale),
+  ]);
+
+  return [
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map(row => row.map(escapeCsvCell).join(",")),
+  ].join("\r\n");
+}
+
 export function getCurrentReportingYear(now = new Date()): number {
   const parts = getMonthParts(now);
   return parts?.year ?? now.getFullYear();
