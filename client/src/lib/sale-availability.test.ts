@@ -82,6 +82,19 @@ describe("sale availability", () => {
     expect(result.totalTrackedSaleCount).toBe(1);
   });
 
+  it("includes sold watches without tracking numbers before and after delivery", () => {
+    const awaiting = calculateSaleAvailability([
+      sale({ trackingNumber: null }),
+    ], now);
+    const delivered = calculateSaleAvailability([
+      sale({ trackingNumber: null, deliveredDate: "2026-03-02" }),
+    ], now);
+
+    expect(awaiting.awaitingDeliveryCents).toBe(935_000);
+    expect(delivered.inReturnWindowCents).toBe(935_000);
+    expect(delivered.inReturnWindow).toHaveLength(1);
+  });
+
   it("shows a release countdown after delivery and releases the day after the deadline", () => {
     const delivered = sale({ deliveredDate: "2026-03-02" });
     const result = calculateSaleAvailability([delivered], now);
