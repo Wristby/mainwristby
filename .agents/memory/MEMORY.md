@@ -13,7 +13,7 @@
 - [Month-end inventory accuracy](month-end-inventory-accuracy.md) — use dated captures, never reconstruct actual historical stock from today's editable watches
 - [Financial refactor boundaries](financial-refactor-boundaries.md) — preserve VAT estimate treatment, fee snapshots, and intentional reporting scopes when sharing arithmetic
 - [Sale-date consistency](sale-date-consistency.md) — keep soldDate canonical, dateSold as a legacy fallback, and synchronize explicit edits without inventing history
-- [Monthly profit scope](monthly-profit-current-status.md) — include only watches currently marked Sold with a valid sale date; a status change removes them from the monthly trend
+- [Current Sold sales reporting](monthly-profit-current-status.md) — period-based profit metrics and Sales Patterns use current Sold watches with valid sale dates, not stale sale-cycle snapshots
 - [Watch Details boundaries](watch-details-boundaries.md) — isolate identity, sourcing, financials, buyer/delivery/warranty, pricing history, and editor sections
 - [Dependency consistency](dependency-installation-consistency.md) — after a restore, compare installed validation packages with the lockfile before rewriting forms
 - [Request and refresh boundaries](request-refresh-boundaries.md) — distinguish saved writes from failed refreshes; do not retry writes or regenerate saved Notebook history

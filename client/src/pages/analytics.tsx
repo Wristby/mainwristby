@@ -8,10 +8,8 @@ import {
 import { useInventory } from "@/hooks/use-inventory";
 import { useSales } from "@/hooks/use-sales";
 import {
-  getSaleCycleNetProfitCents,
   groupReceivedReturnsByMonth,
   summarizeSalesLifecycle,
-  type InventorySaleWithReturns,
 } from "@shared/sales-lifecycle";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +53,8 @@ import {
 import { useState, useMemo } from "react";
 import { SalesPatternsPreview } from "@/components/sales-patterns-preview";
 import { buildSalesPatternData } from "@/lib/sales-patterns";
+import { buildAnalyticsCurrentSoldWatches, type AnalyticsSoldWatch } from "@/lib/analytics-current-sales";
+import { summarizeConfirmedSalesVat } from "@/lib/analytics-vat";
 import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
@@ -164,85 +164,6 @@ function filterByDateRange(items: InventoryItem[], range: DateRange, customMonth
   });
 }
 
-function filterSaleCyclesByDateRange(
-  items: InventorySaleWithReturns[],
-  range: DateRange,
-  customMonth?: string,
-  customYear?: string,
-  preset?: PeriodPreset,
-): InventorySaleWithReturns[] {
-  return items.filter((item) => {
-    const date = toReportDate(item.soldDate);
-    if (!date) return preset !== "custom" && !range.start;
-    if (range.start && range.end) return date >= range.start && date <= range.end;
-    if (preset === "custom") {
-      return matchesCalendarPeriod(date, {
-        month: customMonth && customMonth !== "all" ? Number(customMonth) : null,
-        year: customYear && customYear !== "all" ? Number(customYear) : null,
-      });
-    }
-    return true;
-  });
-}
-
-function toAnalyticsSaleItem(
-  sale: InventorySaleWithReturns,
-  currentWatch: InventoryItem | undefined,
-) {
-  const lifecycle = summarizeSalesLifecycle([sale]);
-  const saleDate = toReportDate(sale.soldDate);
-  const acquisitionDate = toReportDate(sale.dateListedSnapshot) ?? toReportDate(sale.purchaseDateSnapshot);
-  const profit = getSaleCycleNetProfitCents(sale);
-  const netRevenue = lifecycle.revenueCents;
-  const totalSaleCosts = lifecycle.saleCostsCents;
-  const effectiveAcquisitionCosts = lifecycle.acquisitionCostsCents;
-  const base = currentWatch ?? ({} as InventoryItem);
-  const purchasePrice = sale.purchasePriceSnapshot;
-  const remainingOtherAcquisitionCost = Math.max(0, effectiveAcquisitionCosts - purchasePrice);
-  const roi = sale.purchasePriceSnapshot > 0 ? (profit / sale.purchasePriceSnapshot) * 100 : 0;
-  return {
-    ...base,
-    id: sale.inventoryId ?? -sale.id,
-    saleCycleNumber: sale.cycleNumber,
-    brand: sale.brandSnapshot,
-    model: sale.modelSnapshot,
-    referenceNumber: sale.referenceNumberSnapshot,
-    serialNumber: sale.serialNumberSnapshot,
-    purchasePrice,
-    importFee: remainingOtherAcquisitionCost,
-    serviceFee: 0,
-    polishFee: 0,
-    watchRegister: false,
-    watchRegisterFeeSnapshot: 0,
-    salePrice: netRevenue,
-    soldPrice: netRevenue,
-    soldTo: sale.soldTo,
-    buyerId: sale.buyerId,
-    platformFees: Math.max(0, sale.platformFees - (sale.returns.some(record => record.platformFeeRefunded) ? sale.platformFees : 0)),
-    shippingFee: sale.shippingFee + sale.returns.reduce((sum, record) =>
-      sum + (record.shippingPayer === "seller" ? record.shippingCostCents : 0), 0),
-    insuranceFee: sale.insuranceFee + sale.returns.reduce((sum, record) => sum + record.inspectionCostCents, 0),
-    soldDate: sale.soldDate,
-    dateSold: sale.soldDate,
-    soldPlatform: sale.soldPlatform,
-    status: "sold" as const,
-    purchaseDate: sale.purchaseDateSnapshot,
-    dateListed: sale.dateListedSnapshot,
-    profit,
-    roi,
-    daysOnMarket: saleDate && acquisitionDate ? differenceInDays(saleDate, acquisitionDate) : 0,
-    netRevenue,
-    netFees: totalSaleCosts + remainingOtherAcquisitionCost,
-  } as InventoryItem & {
-    profit: number;
-    roi: number;
-    daysOnMarket: number;
-    netRevenue: number;
-    netFees: number;
-    saleCycleNumber: number;
-  };
-}
-
 const PERIOD_OPTIONS: { value: PeriodPreset; label: string; group: string }[] = [
   { value: "all", label: "All Time", group: "general" },
   { value: "this_month", label: "This Month", group: "general" },
@@ -301,10 +222,13 @@ export default function Analytics() {
     () => buildSalesPatternData(filteredInventory, settings.watch_register_fee),
     [filteredInventory, settings.watch_register_fee],
   );
-  const filteredSales = useMemo(
-    () => filterSaleCyclesByDateRange(sales, primaryDateRange, monthFilter, yearFilter, periodPreset),
-    [sales, primaryDateRange, monthFilter, yearFilter, periodPreset],
-  );
+  const analyticsSalesDateFilter = useMemo(() => ({
+    start: periodPreset === "all" ? null : primaryDateRange.start,
+    end: periodPreset === "all" ? null : primaryDateRange.end,
+    month: periodPreset === "custom" && monthFilter !== "all" ? Number(monthFilter) : null,
+    year: periodPreset === "custom" && yearFilter !== "all" ? Number(yearFilter) : null,
+    custom: periodPreset === "custom",
+  }), [periodPreset, primaryDateRange, monthFilter, yearFilter]);
   const monthlyReturnCounts = useMemo(() => {
     const counts = new Map(groupReceivedReturnsByMonth(sales).map(entry => [entry.month, entry.count]));
     const thisMonth = startOfMonth(new Date());
@@ -344,14 +268,7 @@ export default function Analytics() {
   const fmtMoney = (cents: number) => (cents / 100).toFixed(2);
   const fmtDate = (d: string | Date | null | undefined) => d ? formatDate(new Date(d), "yyyy-MM-dd") : "";
 
-  type EnrichedItem = InventoryItem & {
-    profit: number;
-    roi: number;
-    daysOnMarket: number;
-    netRevenue: number;
-    netFees: number;
-    saleCycleNumber: number;
-  };
+  type EnrichedItem = AnalyticsSoldWatch;
   const buildWatchRows = (items: EnrichedItem[]) => {
     const header = [
       "Brand","Model","Reference Number","Serial Number",
@@ -428,62 +345,60 @@ export default function Analytics() {
 
   // Calculate metrics (moved before loading check for hook consistency)
   const calculatedMetrics = useMemo(() => {
-    const profits = filteredSales.map(sale => toAnalyticsSaleItem(
-      sale,
-      inventory?.find(watch => watch.id === sale.inventoryId),
-    ));
+    const profits = buildAnalyticsCurrentSoldWatches(
+      inventory ?? [],
+      analyticsSalesDateFilter,
+      settings.watch_register_fee,
+    );
     const soldItems = profits;
     const activeItems = filteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
-    const salesSummary = summarizeSalesLifecycle(filteredSales);
-    const totalRevenue = salesSummary.revenueCents;
-    const totalCOGS = salesSummary.purchaseCostsCents;
+    const totalRevenue = profits.reduce((sum, item) => sum + item.netRevenue, 0);
+    const totalCOGS = profits.reduce((sum, item) => sum + item.purchasePrice, 0);
     const totalGrossMargin = totalRevenue - totalCOGS;
-    const totalFees = salesSummary.saleCostsCents + salesSummary.otherAcquisitionCostsCents;
-    const totalNetIncome = salesSummary.netProfitCents;
+    const totalFees = profits.reduce((sum, item) => sum + item.netFees, 0);
+    const totalNetIncome = profits.reduce((sum, item) => sum + item.profit, 0);
     const averageMargin = totalRevenue > 0 ? (totalNetIncome / totalRevenue) * 100 : 0;
-    const confirmedSales = filteredSales.filter(sale => sale.salePrice > 0);
-    const vatSummary = {
-      confirmedSales: confirmedSales.length,
-      vatAmountCents: confirmedSales.reduce((sum, sale) => {
-        const profit = getSaleCycleNetProfitCents(sale);
-        return sum + (profit > 0 ? Math.round(profit * settings.vat_rate / 100) : 0);
-      }, 0),
-    };
+    const vatSummary = summarizeConfirmedSalesVat(
+      profits,
+      settings.vat_rate,
+      settings.watch_register_fee,
+    );
 
     // Capital deployed (COGS of active inventory)
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
     return { soldItems, activeItems, today, totalRevenue, totalCOGS, totalGrossMargin, totalFees, totalNetIncome, averageMargin, profits, capitalDeployed, vatSummary };
-  }, [filteredInventory, filteredSales, inventory, settings.vat_rate]);
+  }, [filteredInventory, inventory, analyticsSalesDateFilter, settings.vat_rate, settings.watch_register_fee]);
 
   const compareFilteredInventory = useMemo(() => {
     if (!inventory || !compareMode) return [];
     if (comparePeriodPreset === "all") return inventory;
     return filterByDateRange(inventory, compareDateRange, compareMonthFilter, compareYearFilter, comparePeriodPreset);
   }, [inventory, compareMode, comparePeriodPreset, compareDateRange, compareMonthFilter, compareYearFilter]);
-  const compareFilteredSales = useMemo(
-    () => filterSaleCyclesByDateRange(sales, compareDateRange, compareMonthFilter, compareYearFilter, comparePeriodPreset),
-    [sales, compareDateRange, compareMonthFilter, compareYearFilter, comparePeriodPreset],
-  );
-
   const compareMetrics = useMemo(() => {
     if (!compareMode) return null;
     
-    const profits = compareFilteredSales.map(sale => toAnalyticsSaleItem(
-      sale,
-      inventory?.find(watch => watch.id === sale.inventoryId),
-    ));
+    const profits = buildAnalyticsCurrentSoldWatches(
+      inventory ?? [],
+      {
+        start: comparePeriodPreset === "all" ? null : compareDateRange.start,
+        end: comparePeriodPreset === "all" ? null : compareDateRange.end,
+        month: comparePeriodPreset === "custom" && compareMonthFilter !== "all" ? Number(compareMonthFilter) : null,
+        year: comparePeriodPreset === "custom" && compareYearFilter !== "all" ? Number(compareYearFilter) : null,
+        custom: comparePeriodPreset === "custom",
+      },
+      settings.watch_register_fee,
+    );
     const soldItems = profits;
     const activeItems = compareFilteredInventory.filter((i) => i.status !== "sold");
     const today = new Date();
 
-    const salesSummary = summarizeSalesLifecycle(compareFilteredSales);
-    const totalRevenue = salesSummary.revenueCents;
-    const totalCOGS = salesSummary.purchaseCostsCents;
-    const totalFees = salesSummary.saleCostsCents + salesSummary.otherAcquisitionCostsCents;
-    const totalNetIncome = salesSummary.netProfitCents;
+    const totalRevenue = profits.reduce((sum, item) => sum + item.netRevenue, 0);
+    const totalCOGS = profits.reduce((sum, item) => sum + item.purchasePrice, 0);
+    const totalFees = profits.reduce((sum, item) => sum + item.netFees, 0);
+    const totalNetIncome = profits.reduce((sum, item) => sum + item.profit, 0);
     const averageMargin = totalRevenue > 0 ? (totalNetIncome / totalRevenue) * 100 : 0;
     const capitalDeployed = activeItems.reduce((sum, item) => sum + item.purchasePrice, 0);
 
@@ -515,7 +430,7 @@ export default function Analytics() {
       periodLabel: compareDateRange.label,
       watchesSold: soldItems.length
     };
-  }, [compareMode, compareFilteredInventory, compareFilteredSales, compareDateRange, comparePeriodPreset, inventory]);
+  }, [compareMode, compareFilteredInventory, compareDateRange, comparePeriodPreset, compareMonthFilter, compareYearFilter, inventory, settings.watch_register_fee]);
 
   const profitPerDayData = useMemo(() => {
     const { soldItems, today, totalNetIncome } = calculatedMetrics;
@@ -1314,10 +1229,10 @@ export default function Analytics() {
             ) : (
               topPerformers.map((item, index) => (
                 <Link
-                  key={`${item.id}-${item.saleCycleNumber}`}
+                  key={item.id}
                   href={`/inventory/${item.id}`}
                   className="group flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 transition-colors hover:bg-emerald-50/60 hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-                  data-testid={`top-performer-watch-${item.id}-cycle-${item.saleCycleNumber}`}
+                  data-testid={`top-performer-watch-${item.id}`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 font-bold text-sm border border-amber-100">
@@ -1327,7 +1242,7 @@ export default function Analytics() {
                       <p className="font-medium text-slate-900 text-sm">
                         {item.brand} {item.model}
                       </p>
-                      <p className="text-xs text-slate-500">{item.referenceNumber} · Sale cycle {item.saleCycleNumber}</p>
+                      <p className="text-xs text-slate-500">{item.referenceNumber} · Current sale</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -1354,10 +1269,10 @@ export default function Analytics() {
             ) : (
               underperformers.map((item, index) => (
                 <Link
-                  key={`${item.id}-${item.saleCycleNumber}`}
+                  key={item.id}
                   href={`/inventory/${item.id}`}
                   className="group flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 transition-colors hover:bg-emerald-50/60 hover:border-emerald-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-                  data-testid={`underperformer-watch-${item.id}-cycle-${item.saleCycleNumber}`}
+                  data-testid={`underperformer-watch-${item.id}`}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-sm border border-slate-200">
@@ -1367,7 +1282,7 @@ export default function Analytics() {
                       <p className="font-medium text-slate-900 text-sm">
                         {item.brand} {item.model}
                       </p>
-                      <p className="text-xs text-slate-500">{item.referenceNumber} · Sale cycle {item.saleCycleNumber}</p>
+                      <p className="text-xs text-slate-500">{item.referenceNumber} · Current sale</p>
                     </div>
                   </div>
                   <div className="text-right">
