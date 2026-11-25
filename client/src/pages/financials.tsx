@@ -42,12 +42,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { 
-  Search, 
-  Plus, 
-  Loader2, 
-  Filter, 
-  TrendingUp, 
-  Receipt, 
+  Search,
+  Plus,
+  Loader2,
+  Filter,
+  TrendingUp,
+  Receipt,
   Wallet,
   BarChart3,
   Pencil,
@@ -58,7 +58,7 @@ import {
   Download,
   Check,
   X,
-  Info
+  Info,
 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -90,6 +90,8 @@ import {
   getSaleCycleHistoryLabel,
   getSalesForMonth,
   type SaleCycleHistoryFilter,
+  getSaleYear,
+  getSalesForYear,
 } from "@/lib/monthly-profit-trend";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { SaleAvailabilityCard } from "@/components/financials/sale-availability-card";
@@ -236,7 +238,8 @@ export default function Financials() {
     expenses?.forEach(expense => uniqueYears.add(getYear(new Date(expense.date))));
     sales?.forEach(sale => {
       const soldDate = getSoldDate(sale);
-      if (soldDate) uniqueYears.add(getYear(soldDate));
+      const saleYear = getSaleYear(soldDate);
+      if (saleYear != null) uniqueYears.add(saleYear);
     });
     return Array.from(uniqueYears).sort((a, b) => b - a);
   }, [expenses, sales]);
@@ -271,18 +274,25 @@ export default function Financials() {
     () => filterMonthlySaleCycles(selectedTrendSales, trendSaleSearch, trendSaleKindFilter),
     [selectedTrendSales, trendSaleSearch, trendSaleKindFilter],
   );
+  const selectedYearSales = useMemo(
+    () => getSalesForYear(sales ?? [], yearFilter === "all" ? null : Number(yearFilter)),
+    [sales, yearFilter],
+  );
 
-  const exportSelectedMonthSales = () => {
-    if (!selectedTrendMonth || filteredTrendSales.length === 0) return;
-
-    const csvContent = buildMonthlySaleCyclesCsv(filteredTrendSales);
+  const downloadSaleCyclesCsv = (
+    saleCycles: typeof selectedTrendSales,
+    filename: string,
+    periodLabel: string,
+  ) => {
+    if (saleCycles.length === 0) return;
+    const csvContent = buildMonthlySaleCyclesCsv(saleCycles);
     if (!csvContent) return;
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `sale_cycles_${selectedTrendMonth}.csv`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -290,8 +300,22 @@ export default function Financials() {
 
     toast({
       title: "Success",
-      description: `Exported ${filteredTrendSales.length} sale cycles for ${selectedTrendPoint?.fullMonth ?? selectedTrendMonth}`,
+      description: `Exported ${saleCycles.length} sale cycles for ${periodLabel}`,
     });
+  };
+
+  const exportSelectedMonthSales = () => {
+    if (!selectedTrendMonth) return;
+    downloadSaleCyclesCsv(
+      filteredTrendSales,
+      `sale_cycles_${selectedTrendMonth}.csv`,
+      selectedTrendPoint?.fullMonth ?? selectedTrendMonth,
+    );
+  };
+
+  const exportSelectedYearSales = () => {
+    if (yearFilter === "all") return;
+    downloadSaleCyclesCsv(selectedYearSales, `sale_cycles_${yearFilter}.csv`, yearFilter);
   };
 
   const getCategoryLabel = (category: string) => {
@@ -692,11 +716,27 @@ export default function Financials() {
 
       <Card className="bg-white border-slate-200">
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-lg font-semibold text-slate-900">Monthly Net Profit Trend</h3>
-            <span className="text-xs text-slate-400">
-              {yearFilter === "all" ? "Select a year above" : yearFilter}
-            </span>
+            {yearFilter === "all" ? (
+              <span className="text-xs text-slate-400">Select a year above</span>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-400">{yearFilter}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-slate-200 text-slate-700"
+                  onClick={exportSelectedYearSales}
+                  disabled={salesLoading || salesError || selectedYearSales.length === 0}
+                  title={selectedYearSales.length === 0 ? "No sale cycles recorded for this year" : undefined}
+                  data-testid="button-export-year-sale-cycles"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Export year CSV
+                </Button>
+              </div>
+            )}
           </div>
           {yearFilter === "all" ? (
             <div className="h-32 flex items-center justify-center text-sm text-slate-400">

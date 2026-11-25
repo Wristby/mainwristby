@@ -109,12 +109,25 @@ export function getSaleMonthKey(value: Date | string | null): string | null {
   return value ? getMonthKey(value) : null;
 }
 
+export function getSaleYear(value: Date | string | null): number | null {
+  const key = getSaleMonthKey(value);
+  return key ? Number(key.slice(0, 4)) : null;
+}
+
 export function getSalesForMonth(
   sales: readonly InventorySaleWithReturns[],
   monthKey: string | null,
 ): InventorySaleWithReturns[] {
   if (!monthKey) return [];
   return sales.filter(sale => getSaleMonthKey(sale.soldDate) === monthKey);
+}
+
+export function getSalesForYear(
+  sales: readonly InventorySaleWithReturns[],
+  year: number | null,
+): InventorySaleWithReturns[] {
+  if (year == null || !Number.isInteger(year)) return [];
+  return sales.filter(sale => getSaleYear(sale.soldDate) === year);
 }
 
 export type SaleCycleHistoryKind =

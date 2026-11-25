@@ -8,6 +8,8 @@ import {
   getCurrentReportingYear,
   getSaleCycleHistoryLabel,
   getSalesForMonth,
+  getSaleYear,
+  getSalesForYear,
 } from "./monthly-profit-trend";
 
 const sale = (overrides: Partial<InventorySale> = {}): InventorySaleWithReturns => ({
@@ -170,6 +172,22 @@ describe("monthly Financials profit trend", () => {
     ], "2026-01");
 
     expect(result.map(item => item.id)).toEqual([1, 3]);
+  });
+
+  it("filters all sale cycles by the Amsterdam reporting year", () => {
+    const sales = [
+      sale({ id: 1, soldDate: "2025-12-31T22:30:00.000Z" as unknown as Date }),
+      sale({ id: 2, soldDate: "2026-12-31T23:30:00.000Z" as unknown as Date }),
+      sale({ id: 3, inventoryId: null, soldDate: "2026-06-01T12:00:00.000Z" as unknown as Date }),
+      sale({ id: 4, soldDate: "invalid" as unknown as Date }),
+    ];
+
+    expect(getSaleYear(sales[0].soldDate)).toBe(2025);
+    expect(getSaleYear(sales[1].soldDate)).toBe(2027);
+    expect(getSalesForYear(sales, 2026).map(item => item.id)).toEqual([3]);
+    expect(getSalesForYear(sales, 2027).map(item => item.id)).toEqual([2]);
+    expect(getSalesForYear(sales, null)).toEqual([]);
+    expect(getSalesForYear(sales, 2026.5)).toEqual([]);
   });
 
   it("labels returned sale cycles separately from resales", () => {
