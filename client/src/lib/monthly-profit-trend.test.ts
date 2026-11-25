@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { InventoryReturn, InventorySale } from "@shared/schema";
 import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
-import { buildMonthlyProfitTrend, getCurrentReportingYear } from "./monthly-profit-trend";
+import {
+  buildMonthlyProfitTrend,
+  getCurrentReportingYear,
+  getSaleCycleHistoryLabel,
+  getSalesForMonth,
+} from "./monthly-profit-trend";
 
 const sale = (overrides: Partial<InventorySale> = {}): InventorySaleWithReturns => ({
   id: 1,
@@ -125,5 +130,25 @@ describe("monthly Financials profit trend", () => {
 
   it("returns no monthly bars for the All Years selection", () => {
     expect(buildMonthlyProfitTrend([], [], null)).toEqual([]);
+  });
+
+  it("filters the exact sale month and year while preserving deleted-watch history", () => {
+    const result = getSalesForMonth([
+      sale({ id: 1, soldDate: "2026-01-31T22:30:00.000Z" as unknown as Date }),
+      sale({ id: 2, soldDate: "2025-01-15T12:00:00.000Z" as unknown as Date }),
+      sale({ id: 3, inventoryId: null, soldDate: "2026-01-10T12:00:00.000Z" as unknown as Date }),
+    ], "2026-01");
+
+    expect(result.map(item => item.id)).toEqual([1, 3]);
+  });
+
+  it("labels returned sale cycles separately from resales", () => {
+    const returned = sale({ returns: [returnCase()] });
+    const resale = sale({ cycleNumber: 2 });
+    const openReturn = sale({ returns: [returnCase({ receivedDate: null })] });
+
+    expect(getSaleCycleHistoryLabel(returned)).toBe("Returned");
+    expect(getSaleCycleHistoryLabel(resale)).toBe("Resale · cycle 2");
+    expect(getSaleCycleHistoryLabel(openReturn)).toBe("Return in progress");
   });
 });

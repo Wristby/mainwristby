@@ -4,6 +4,7 @@ import { useSales } from "@/hooks/use-sales";
 import { calculateWatchCostBreakdown } from "@shared/watch-financials";
 import { calculateSaleAvailability } from "@shared/sale-availability";
 import { getSoldDate } from "@shared/sold-date";
+import { getSaleCycleNetProfitCents } from "@shared/sales-lifecycle";
 import {
   getSaleAmount,
   isSoldInCalendarPeriod,
@@ -25,6 +26,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -80,7 +82,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { aggregateVat } from "@/lib/vat-calculations";
-import { buildMonthlyProfitTrend, getCurrentReportingYear } from "@/lib/monthly-profit-trend";
+import {
+  buildMonthlyProfitTrend,
+  getCurrentReportingYear,
+  getSaleCycleHistoryLabel,
+  getSalesForMonth,
+} from "@/lib/monthly-profit-trend";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { SaleAvailabilityCard } from "@/components/financials/sale-availability-card";
 
@@ -121,6 +128,7 @@ export default function Financials() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>(() => String(getCurrentReportingYear()));
+  const [selectedTrendMonth, setSelectedTrendMonth] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const { settings } = useSettings();
@@ -247,6 +255,11 @@ export default function Financials() {
     const selectedYear = yearFilter === "all" ? null : Number(yearFilter);
     return buildMonthlyProfitTrend(sales ?? [], expenses ?? [], selectedYear);
   }, [sales, expenses, yearFilter]);
+  const selectedTrendPoint = monthlyData.find(month => month.key === selectedTrendMonth);
+  const selectedTrendSales = useMemo(
+    () => getSalesForMonth(sales ?? [], selectedTrendMonth),
+    [sales, selectedTrendMonth],
+  );
 
   const getCategoryLabel = (category: string) => {
     return EXPENSE_CATEGORIES.find(c => c.value === category)?.label || category;
@@ -674,16 +687,18 @@ export default function Financials() {
                     <div key={data.key} className="flex-1 flex flex-col items-center gap-1">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <div
-                            className="w-full h-24 flex items-end justify-center cursor-pointer"
-                            aria-label={`${data.fullMonth}: ${formatCurrency(data.profitCents)}`}
+                          <button
+                            type="button"
+                            className="w-full h-24 flex items-end justify-center cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                            onClick={() => setSelectedTrendMonth(data.key)}
+                            aria-label={`View sale records for ${data.fullMonth}, net profit ${formatCurrency(data.profitCents)}`}
                             data-testid={`monthly-profit-bar-${data.key}`}
                           >
                             <div
                               className={`w-full max-w-6 rounded-t transition-all hover:opacity-80 ${isNegative ? "bg-red-400" : "bg-emerald-500"}`}
                               style={{ height: `${height === 0 ? 0 : Math.max(height, 4)}%` }}
                             />
-                          </div>
+                          </button>
                         </TooltipTrigger>
                         <TooltipContent>
                           <div className="text-center">
@@ -703,6 +718,100 @@ export default function Financials() {
           )}
         </CardContent>
       </Card>
+      <Dialog
+        open={selectedTrendMonth != null}
+        onOpenChange={open => {
+          if (!open) setSelectedTrendMonth(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
+          <DialogHeader>
+            <DialogTitle>{selectedTrendPoint?.fullMonth ?? "Monthly sale cycles"}</DialogTitle>
+            <DialogDescription>
+              Sale cycles are grouped by their recorded sale date. Return adjustments stay with the original sale cycle;
+              monthly expenses are reflected in the chart total, not these row amounts.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTrendSales.length === 0 ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+              No sale cycles were recorded for this month.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table className="min-w-[620px]" data-testid="financials-month-sale-history">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Watch</TableHead>
+                    <TableHead>Sold</TableHead>
+                    <TableHead className="text-right">Sale-cycle profit</TableHead>
+                    <TableHead className="text-right">Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedTrendSales.map(sale => {
+                    const cycleLabel = getSaleCycleHistoryLabel(sale);
+                    const soldDate = sale.soldDate
+                      ? new Date(String(sale.soldDate))
+                      : null;
+                    const soldDateLabel = soldDate && Number.isFinite(soldDate.getTime())
+                      ? new Intl.DateTimeFormat("en-GB", {
+                          timeZone: "Europe/Amsterdam",
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        }).format(soldDate)
+                      : "Date not recorded";
+
+                    return (
+                      <TableRow key={sale.id} data-testid={`financials-sale-cycle-${sale.id}`}>
+                        <TableCell>
+                          <div className="font-medium text-slate-900">
+                            {sale.brandSnapshot} {sale.modelSnapshot}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Ref. {sale.referenceNumberSnapshot} · Sale cycle {sale.cycleNumber}
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={`mt-1 text-xs font-normal ${
+                              cycleLabel === "Returned"
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : cycleLabel === "Return in progress"
+                                  ? "border-blue-200 bg-blue-50 text-blue-800"
+                                  : cycleLabel.startsWith("Resale")
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-slate-200 bg-slate-50 text-slate-600"
+                            }`}
+                          >
+                            {cycleLabel}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{soldDateLabel}</TableCell>
+                        <TableCell className="text-right whitespace-nowrap font-medium tabular-nums">
+                          {formatCurrency(getSaleCycleNetProfitCents(sale))}
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          {sale.inventoryId != null ? (
+                            <Link
+                              href={`/inventory/${sale.inventoryId}`}
+                              className="font-medium text-emerald-800 underline-offset-4 hover:underline"
+                              data-testid={`link-sale-cycle-watch-${sale.id}`}
+                            >
+                              Open watch
+                            </Link>
+                          ) : (
+                            <span className="text-sm text-slate-400">Watch no longer available</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <SaleAvailabilityCard
         summary={saleAvailability}
         isLoading={salesLoading}

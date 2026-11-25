@@ -62,7 +62,7 @@ export function buildMonthlyProfitTrend(
   const expensesByMonth = new Map<string, number>();
 
   for (const sale of sales) {
-    const key = saleMonthKey(sale.soldDate);
+    const key = getSaleMonthKey(sale.soldDate);
     if (!key || !monthKeySet.has(key)) continue;
     const current = salesByMonth.get(key) ?? { count: 0, profitCents: 0 };
     current.count += 1;
@@ -90,8 +90,25 @@ export function buildMonthlyProfitTrend(
   });
 }
 
-function saleMonthKey(value: Date | string | null): string | null {
+export function getSaleMonthKey(value: Date | string | null): string | null {
   return value ? getMonthKey(value) : null;
+}
+
+export function getSalesForMonth(
+  sales: readonly InventorySaleWithReturns[],
+  monthKey: string | null,
+): InventorySaleWithReturns[] {
+  if (!monthKey) return [];
+  return sales.filter(sale => getSaleMonthKey(sale.soldDate) === monthKey);
+}
+
+export function getSaleCycleHistoryLabel(sale: InventorySaleWithReturns): string {
+  const activeReturns = sale.returns.filter(
+    record => record.status !== "cancelled" && record.status !== "declined",
+  );
+  if (activeReturns.some(record => record.receivedDate != null)) return "Returned";
+  if (activeReturns.length > 0) return "Return in progress";
+  return sale.cycleNumber > 1 ? `Resale · cycle ${sale.cycleNumber}` : "Original sale";
 }
 
 export function getCurrentReportingYear(now = new Date()): number {
