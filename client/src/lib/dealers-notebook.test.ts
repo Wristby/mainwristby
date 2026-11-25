@@ -158,6 +158,100 @@ describe("Dealer's Notebook calculations and privacy projection", () => {
     expect(report.inventorySnapshots).toEqual([]);
   });
 
+  it("captures current inventory queues and sale proceeds without treating them as month history", () => {
+    const inventory = [
+      watch({ id: 1, status: "incoming", soldDate: null }),
+      watch({ id: 2, status: "received", soldDate: null }),
+      watch({ id: 3, status: "servicing", soldDate: null }),
+      watch({ id: 4, status: "in_stock", soldDate: null, listPrice: null }),
+      watch({ id: 5, status: "in_stock", soldDate: null, listPrice: 120_000 }),
+    ];
+    const sale = (id: number, deliveredDate: string | null) => ({
+      id,
+      inventoryId: id,
+      cycleNumber: 1,
+      brandSnapshot: "Omega",
+      modelSnapshot: "Seamaster",
+      referenceNumberSnapshot: "210.30",
+      serialNumberSnapshot: null,
+      salePrice: 100_000,
+      soldTo: null,
+      buyerId: null,
+      platformFees: 10_000,
+      chrono24FeeRate: 650,
+      shippingFee: 0,
+      insuranceFee: 0,
+      soldDate: new Date("2026-10-10T12:00:00Z"),
+      soldPlatform: "Chrono24",
+      shippingPartner: null,
+      trackingNumber: null,
+      dateShipped: null,
+      deliveredDate,
+      purchaseDateSnapshot: null,
+      dateListedSnapshot: null,
+      purchasePriceSnapshot: 70_000,
+      importFeeSnapshot: 0,
+      serviceFeeSnapshot: 0,
+      polishFeeSnapshot: 0,
+      watchRegisterFeeSnapshot: 0,
+      watchRegisterSnapshot: false,
+      acquisitionCostCents: 70_000,
+      profitAtSaleCents: 20_000,
+      createdAt: new Date("2026-10-10T12:00:00Z"),
+      updatedAt: new Date("2026-10-10T12:00:00Z"),
+      returns: [],
+    }) as InventorySaleWithReturns;
+    const capturedAt = new Date("2026-10-31T12:00:00Z");
+
+    const prepared = prepareNotebookAnalysis(
+      inventory,
+      [],
+      "2026-10",
+      "previous-month",
+      600,
+      "",
+      capturedAt,
+      [],
+      [sale(1, null), sale(2, "2026-10-29")],
+    );
+
+    expect(prepared.currentOperations).toMatchObject({
+      capturedAt: capturedAt.toISOString(),
+      inventory: {
+        incomingCount: 1,
+        receivedCount: 1,
+        servicingCount: 1,
+        listedCount: 2,
+        listedWithoutPriceCount: 1,
+      },
+      saleProceeds: {
+        awaitingDeliveryCount: 1,
+        awaitingDeliveryCents: 90_000,
+        inReturnWindowCount: 1,
+        inReturnWindowCents: 90_000,
+        trackedSaleCount: 2,
+        trackedCents: 180_000,
+      },
+    });
+    const report = notebookReportSchema.parse({
+      period: prepared.period,
+      comparison: prepared.comparison,
+      currentStock: prepared.currentStock,
+      currentOperations: prepared.currentOperations,
+      overview: "Current review",
+      wins: [],
+      challenges: [],
+      improvements: [],
+      recommendations: [],
+      evidence: prepared.evidence,
+      dataCaveats: [],
+      generatedAt: capturedAt.toISOString(),
+    });
+    expect(report.currentOperations?.saleProceeds.trackedCents).toBe(180_000);
+    expect(prepared.promptData.dataNotes.join(" ")).toContain("not a reconstruction of operations for the selected month");
+    expect(prepared.promptData.dataNotes.join(" ")).toContain("Returns are grouped by the date the watch was received");
+  });
+
   it("sends received-month return outcomes and sale-cycle distinctions to the review", () => {
     const sale = {
       id: 44,

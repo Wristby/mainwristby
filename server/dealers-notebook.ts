@@ -13,6 +13,7 @@ import {
   summarizeMonthlySalesLifecycle,
   type InventorySaleWithReturns,
 } from "@shared/sales-lifecycle";
+import { calculateSaleAvailability } from "@shared/sale-availability";
 
 const euro = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
 const monthLabel = (key: string) => {
@@ -54,6 +55,31 @@ export function prepareNotebookAnalysis(
     returnOutcomes: summarizeMonthlySalesLifecycle(salesWithReturns, comparisonMonthKeys),
   };
   const currentStock = calculateNotebookCurrentStock(inventory, now);
+  const currentInventory = inventory.filter(watch => watch.archivedAt == null);
+  const proceeds = calculateSaleAvailability(salesWithReturns, now);
+  const currentOperations = {
+    capturedAt: now.toISOString(),
+    inventory: {
+      incomingCount: currentInventory.filter(watch => watch.status === "incoming").length,
+      receivedCount: currentInventory.filter(watch => watch.status === "received").length,
+      servicingCount: currentInventory.filter(watch => watch.status === "servicing").length,
+      listedCount: currentInventory.filter(watch => watch.status === "in_stock").length,
+      listedWithoutPriceCount: currentInventory.filter(
+        watch => watch.status === "in_stock" && watch.listPrice == null,
+      ).length,
+    },
+    saleProceeds: {
+      awaitingDeliveryCount: proceeds.awaitingDelivery.length,
+      awaitingDeliveryCents: proceeds.awaitingDeliveryCents,
+      inReturnWindowCount: proceeds.inReturnWindow.length,
+      inReturnWindowCents: proceeds.inReturnWindowCents,
+      clearedCount: proceeds.available.length,
+      clearedCents: proceeds.availableCents,
+      trackedSaleCount: proceeds.totalTrackedSaleCount,
+      trackedCents: proceeds.totalTrackedCents,
+      needsReviewCount: proceeds.needsReview.length,
+    },
+  };
   const selectedMonths = new Set([monthKey, ...comparisonMonthKeys]);
   const soldWatches = inventory
     .filter((watch) => watch.status === "sold" && selectedMonths.has(notebookMonthKey(getSoldDate(watch)) ?? ""))
@@ -126,6 +152,14 @@ export function prepareNotebookAnalysis(
     profit_change: `Recorded profit is ${percentChange(period.netProfitCents, comparison.netProfitCents, comparisonMonthKeys.length)}`,
     period_returns: lifecycleEvidence(period.label, period.returnOutcomes),
     comparison_returns: lifecycleEvidence(comparison.label, comparison.returnOutcomes),
+    operations_snapshot: `Current at report generation: ${currentOperations.inventory.incomingCount} incoming, `
+      + `${currentOperations.inventory.receivedCount} received to list, ${currentOperations.inventory.servicingCount} in service, `
+      + `${currentOperations.inventory.listedCount} listed; ${currentOperations.inventory.listedWithoutPriceCount} listed watches have no asking price.`,
+    proceeds_pipeline: `Sale proceeds tracked at report generation: ${money(currentOperations.saleProceeds.trackedCents)} across `
+      + `${currentOperations.saleProceeds.trackedSaleCount} sales; ${money(currentOperations.saleProceeds.awaitingDeliveryCents)} await delivery, `
+      + `${money(currentOperations.saleProceeds.inReturnWindowCents)} are inside the return window, and `
+      + `${money(currentOperations.saleProceeds.clearedCents)} have cleared the tracked hold.`,
+    proceeds_needs_review: `${currentOperations.saleProceeds.needsReviewCount} sale records need a proceeds check.`,
     period_margin: period.marginPercent == null ? "Margin unavailable: no priced sales." : `Revenue-weighted margin before VAT: ${period.marginPercent.toFixed(1)}%`,
     comparison_margin: comparison.marginPercent == null ? "Comparison margin unavailable: no priced sales." : `Comparison revenue-weighted margin before VAT: ${comparison.marginPercent.toFixed(1)}%`,
     period_days: period.medianDaysListed == null ? "Days-to-sell unavailable: no complete listing-date samples." : `Median days listed before sale: ${period.medianDaysListed.toFixed(0)} (n=${period.daysSampleCount})`,
@@ -153,11 +187,13 @@ export function prepareNotebookAnalysis(
     period,
     comparison,
     currentStock,
+    currentOperations,
     evidence,
     watchLinks,
     promptData: {
       period,
       comparison,
+      currentOperations,
       currentStock: {
         activeListings: currentStock.activeListings,
         listedCapitalCents: currentStock.listedCapitalCents,
@@ -176,6 +212,8 @@ export function prepareNotebookAnalysis(
         "Profit is calculated from recorded watch-level purchase, import, service, polish, platform, shipping, insurance, and watch-register costs; it is before VAT and excludes general overhead.",
         "Price-change history begins when tracking started; earlier reductions may not be available.",
         "The current-stock view reflects inventory at report generation; a saved month-end stock snapshot is shown separately when available.",
+        "The operations and proceeds snapshot reflects the report-generation time; it is not a reconstruction of operations for the selected month.",
+        "Sale proceeds exclude sale cycles with active or completed return cases; return outcomes are detailed separately.",
         "Month-end snapshots are actual dated captures, not reconstructions. If a selected or comparison month has no snapshot, its month-end inventory is unknown; do not substitute current stock.",
         "Buyer names, client contacts, serial numbers, tracking numbers, notes, and client records are not included.",
       ],

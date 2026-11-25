@@ -77,8 +77,32 @@ export const notebookReturnOutcomesSchema = z.object({
 });
 export type NotebookReturnOutcomes = z.infer<typeof notebookReturnOutcomesSchema>;
 
+export const notebookOperationsSnapshotSchema = z.object({
+  capturedAt: z.string().datetime(),
+  inventory: z.object({
+    incomingCount: z.number().int().nonnegative(),
+    receivedCount: z.number().int().nonnegative(),
+    servicingCount: z.number().int().nonnegative(),
+    listedCount: z.number().int().nonnegative(),
+    listedWithoutPriceCount: z.number().int().nonnegative(),
+  }),
+  saleProceeds: z.object({
+    awaitingDeliveryCount: z.number().int().nonnegative(),
+    awaitingDeliveryCents: z.number().int().nonnegative(),
+    inReturnWindowCount: z.number().int().nonnegative(),
+    inReturnWindowCents: z.number().int().nonnegative(),
+    clearedCount: z.number().int().nonnegative(),
+    clearedCents: z.number().int().nonnegative(),
+    trackedSaleCount: z.number().int().nonnegative(),
+    trackedCents: z.number().int().nonnegative(),
+    needsReviewCount: z.number().int().nonnegative(),
+  }),
+});
+export type NotebookOperationsSnapshot = z.infer<typeof notebookOperationsSnapshotSchema>;
+
 export const notebookReportSchema = z.object({
   inventorySnapshots: z.array(notebookInventorySnapshotSchema).max(4).default([]),
+  currentOperations: notebookOperationsSnapshotSchema.optional(),
   period: z.object({
     monthKeys: z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)),
     label: z.string(),

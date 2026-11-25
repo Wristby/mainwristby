@@ -453,6 +453,39 @@ export default function DealersNotebook() {
             </div>
           </section>
 
+          <section aria-label="Current operations snapshot" className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div><p className="dn-eyebrow">Current operating picture</p><h2 className="mt-1 text-xl font-semibold text-[#244235]">Operations & proceeds</h2></div>
+              {report.currentOperations && (
+                <p className="text-xs text-[#819087]">
+                  Snapshot at {new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.currentOperations.capturedAt))}
+                </p>
+              )}
+            </div>
+            {report.currentOperations ? (
+              <div className="dn-panel overflow-hidden">
+                <div className="grid gap-px bg-[#e2e9e1] sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="bg-white p-5"><Metric label="Incoming watches" value={`${report.currentOperations.inventory.incomingCount} watches`} /></div>
+                  <div className="bg-white p-5"><Metric label="Received to list" value={`${report.currentOperations.inventory.receivedCount} watches`} /></div>
+                  <div className="bg-white p-5"><Metric label="In service" value={`${report.currentOperations.inventory.servicingCount} watches`} /></div>
+                  <div className="bg-white p-5"><Metric label="Listed inventory" value={`${report.currentOperations.inventory.listedCount} watches`} /></div>
+                  <div className="bg-white p-5"><Metric label="Listed without asking price" value={`${report.currentOperations.inventory.listedWithoutPriceCount} watches`} /></div>
+                </div>
+                <div className="grid gap-px border-t border-[#e2e9e1] bg-[#e2e9e1] sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="bg-[#f8faf6] p-5"><Metric label="Tracked proceeds" value={money(report.currentOperations.saleProceeds.trackedCents)} emphasis /><p className="mt-1 text-xs text-[#849087]">{report.currentOperations.saleProceeds.trackedSaleCount} sale cycles</p></div>
+                  <div className="bg-[#f8faf6] p-5"><Metric label="Awaiting delivery" value={money(report.currentOperations.saleProceeds.awaitingDeliveryCents)} /><p className="mt-1 text-xs text-[#849087]">{report.currentOperations.saleProceeds.awaitingDeliveryCount} sale cycles</p></div>
+                  <div className="bg-[#f8faf6] p-5"><Metric label="Inside return window" value={money(report.currentOperations.saleProceeds.inReturnWindowCents)} /><p className="mt-1 text-xs text-[#849087]">{report.currentOperations.saleProceeds.inReturnWindowCount} sale cycles</p></div>
+                  <div className="bg-[#f8faf6] p-5"><Metric label="Cleared from hold" value={money(report.currentOperations.saleProceeds.clearedCents)} /><p className="mt-1 text-xs text-[#849087]">{report.currentOperations.saleProceeds.clearedCount} sale cycles</p></div>
+                </div>
+                <p className="border-t border-[#e2e9e1] px-5 py-3 text-xs leading-5 text-[#819087]">
+                  Live inventory and proceeds captured when this review was generated, not historical values for {report.period.label}. {report.currentOperations.saleProceeds.needsReviewCount} sale cycles need a proceeds check. Actual marketplace payout timing may differ.
+                </p>
+              </div>
+            ) : (
+              <p className="dn-panel px-5 py-4 text-sm leading-6 text-[#718078]">This saved review predates the operations snapshot. Refresh it to include current inventory queues and sale proceeds.</p>
+            )}
+          </section>
+
           <section aria-label="Return outcomes and resale cycles" className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div><p className="dn-eyebrow">Sales lifecycle</p><h2 className="mt-1 text-xl font-semibold text-[#244235]">Returns & resale cycles</h2></div>

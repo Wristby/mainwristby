@@ -57,6 +57,9 @@ import { COUNTRIES } from "@/lib/countries";
 import { useSales } from "@/hooks/use-sales";
 import { calculateSaleAvailability } from "@shared/sale-availability";
 import { SaleAvailabilityCard } from "@/components/financials/sale-availability-card";
+import { MonthlyBusinessBriefing } from "@/components/monthly-business-briefing";
+import { useDealerNotebookEntry } from "@/hooks/use-dealers-notebook";
+import { notebookMonthKey } from "@shared/dealers-notebook";
 
 const createExpenseFormSchema = insertExpenseSchema.extend({
   amount: z.coerce.number(),
@@ -162,6 +165,8 @@ export default function Dashboard() {
   };
 
   const today = useAmsterdamClock();
+  const currentNotebookMonth = notebookMonthKey(today) ?? "";
+  const notebookBriefingQuery = useDealerNotebookEntry(currentNotebookMonth);
   const formattedDate = format(today, "EEEE, MMMM d, yyyy");
   const saleAvailability = useMemo(
     () => calculateSaleAvailability(sales ?? [], today),
@@ -488,6 +493,13 @@ export default function Dashboard() {
         formatCurrency={formatCurrency}
         compact
         headerLink={{ href: "/financials", label: "View more" }}
+      />
+      <MonthlyBusinessBriefing
+        monthKey={currentNotebookMonth}
+        report={notebookBriefingQuery.data?.entry.report ?? null}
+        isLoading={notebookBriefingQuery.isLoading}
+        isError={notebookBriefingQuery.isError}
+        onRetry={() => void notebookBriefingQuery.refetch()}
       />
       {isSectionVisible("quick_actions") && <DashboardReferenceSearch watches={inventory || []} unavailable={inventoryError && !inventory} />}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">

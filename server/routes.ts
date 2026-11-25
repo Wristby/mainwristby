@@ -882,6 +882,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
         "Recorded profit is before VAT and excludes general overhead.",
         "Price history only reflects changes recorded after price tracking began.",
         "The report's current-stock details reflect inventory at report generation; a saved month-end snapshot is displayed separately when available.",
+        "The operating and sale-proceeds snapshot reflects report-generation time, not the selected month.",
       ];
       if (prepared.period.salesCount < 5) caveats.push("This month has fewer than five recorded sales; treat patterns as preliminary.");
       if (prepared.period.salesWithPriceHistory < prepared.period.salesCount) caveats.push("Some sold watches do not have enough saved price history to assess reductions.");
@@ -889,6 +890,7 @@ DATA: ${JSON.stringify(prepared.promptData)}`;
         period: prepared.period,
         comparison: prepared.comparison,
         currentStock: prepared.currentStock,
+        currentOperations: prepared.currentOperations,
         inventorySnapshots,
         overview: aiResult.data.overview,
         wins: aiResult.data.wins.map(normalizeInsight),
