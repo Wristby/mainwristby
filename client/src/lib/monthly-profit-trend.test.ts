@@ -92,9 +92,19 @@ describe("monthly Financials profit trend", () => {
       { date: "2026-05-25T12:00:00.000Z", amount: 25_000 },
     ], 2026);
 
-    expect(result.find(month => month.key === "2026-01")?.profitCents).toBe(250_000);
+    expect(result.find(month => month.key === "2026-01")).toMatchObject({
+      saleCycleProfitCents: 300_000,
+      returnAdjustmentsCents: 0,
+      expensesCents: 50_000,
+      profitCents: 250_000,
+    });
     expect(result.find(month => month.key === "2026-11")?.profitCents).toBe(500_000);
-    expect(result.find(month => month.key === "2026-05")?.profitCents).toBe(0);
+    expect(result.find(month => month.key === "2026-05")).toMatchObject({
+      saleCycleProfitCents: 0,
+      returnAdjustmentsCents: 0,
+      expensesCents: 0,
+      profitCents: 0,
+    });
     expect(result.find(month => month.key === "2025-01")).toBeUndefined();
   });
 
@@ -105,10 +115,28 @@ describe("monthly Financials profit trend", () => {
         profitAtSaleCents: 235_000,
         returns: [returnCase()],
       }),
-    ], [], 2026);
+    ], [
+      { date: "2026-01-25T12:00:00.000Z", amount: 30_000 },
+    ], 2026);
 
-    expect(result.find(month => month.key === "2026-01")?.profitCents).toBe(130_000);
-    expect(result.find(month => month.key === "2026-02")?.profitCents).toBe(0);
+    const january = result.find(month => month.key === "2026-01");
+    expect(january).toMatchObject({
+      saleCycleProfitCents: 235_000,
+      returnAdjustmentsCents: -105_000,
+      expensesCents: 30_000,
+      profitCents: 100_000,
+    });
+    expect(
+      january!.saleCycleProfitCents
+        + january!.returnAdjustmentsCents
+        - january!.expensesCents,
+    ).toBe(january!.profitCents);
+    expect(result.find(month => month.key === "2026-02")).toMatchObject({
+      saleCycleProfitCents: 0,
+      returnAdjustmentsCents: 0,
+      expensesCents: 0,
+      profitCents: 0,
+    });
   });
 
   it("keeps empty months at zero and ignores sales and expenses outside the selected year", () => {

@@ -1,4 +1,5 @@
 import {
+  getReturnAdjustmentCents,
   getSaleCycleNetProfitCents,
   type InventorySaleWithReturns,
 } from "@shared/sales-lifecycle";
@@ -14,6 +15,9 @@ export type MonthlyProfitTrendPoint = {
   key: string;
   month: string;
   fullMonth: string;
+  saleCycleProfitCents: number;
+  returnAdjustmentsCents: number;
+  expensesCents: number;
   profitCents: number;
 };
 
@@ -58,14 +62,23 @@ export function buildMonthlyProfitTrend(
   if (selectedYear == null || !Number.isInteger(selectedYear)) return [];
   const monthKeys = getYearMonthKeys(selectedYear);
   const monthKeySet = new Set(monthKeys);
-  const salesByMonth = new Map<string, { count: number; profitCents: number }>();
+  const salesByMonth = new Map<string, {
+    saleCycleProfitCents: number;
+    returnAdjustmentsCents: number;
+    profitCents: number;
+  }>();
   const expensesByMonth = new Map<string, number>();
 
   for (const sale of sales) {
     const key = getSaleMonthKey(sale.soldDate);
     if (!key || !monthKeySet.has(key)) continue;
-    const current = salesByMonth.get(key) ?? { count: 0, profitCents: 0 };
-    current.count += 1;
+    const current = salesByMonth.get(key) ?? {
+      saleCycleProfitCents: 0,
+      returnAdjustmentsCents: 0,
+      profitCents: 0,
+    };
+    current.saleCycleProfitCents += sale.profitAtSaleCents;
+    current.returnAdjustmentsCents += getReturnAdjustmentCents(sale, sale.returns);
     current.profitCents += getSaleCycleNetProfitCents(sale);
     salesByMonth.set(key, current);
   }
@@ -78,14 +91,16 @@ export function buildMonthlyProfitTrend(
 
   return monthKeys.map(key => {
     const monthSales = salesByMonth.get(key);
+    const expensesCents = monthSales ? expensesByMonth.get(key) ?? 0 : 0;
     return {
       key,
       month: formatMonth(key, { month: "short" }),
       fullMonth: formatMonth(key, { month: "long", year: "numeric" }),
+      saleCycleProfitCents: monthSales?.saleCycleProfitCents ?? 0,
+      returnAdjustmentsCents: monthSales?.returnAdjustmentsCents ?? 0,
+      expensesCents,
       // Empty months stay at zero rather than showing expenses as a loss.
-      profitCents: monthSales
-        ? monthSales.profitCents - (expensesByMonth.get(key) ?? 0)
-        : 0,
+      profitCents: monthSales ? monthSales.profitCents - expensesCents : 0,
     };
   });
 }

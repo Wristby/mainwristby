@@ -129,6 +129,7 @@ export default function Financials() {
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>(() => String(getCurrentReportingYear()));
   const [selectedTrendMonth, setSelectedTrendMonth] = useState<string | null>(null);
+  const [selectedProfitMonth, setSelectedProfitMonth] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const { settings } = useSettings();
@@ -255,6 +256,7 @@ export default function Financials() {
     const selectedYear = yearFilter === "all" ? null : Number(yearFilter);
     return buildMonthlyProfitTrend(sales ?? [], expenses ?? [], selectedYear);
   }, [sales, expenses, yearFilter]);
+  const selectedMonthlyData = monthlyData.find(month => month.key === selectedProfitMonth);
   const selectedTrendPoint = monthlyData.find(month => month.key === selectedTrendMonth);
   const selectedTrendSales = useMemo(
     () => getSalesForMonth(sales ?? [], selectedTrendMonth),
@@ -682,6 +684,7 @@ export default function Financials() {
                   const maxProfit = Math.max(...monthlyData.map(month => Math.abs(month.profitCents)), 1);
                   const height = Math.abs(data.profitCents) / maxProfit * 100;
                   const isNegative = data.profitCents < 0;
+                  const isSelected = selectedProfitMonth === data.key;
 
                   return (
                     <div key={data.key} className="flex-1 flex flex-col items-center gap-1">
@@ -689,9 +692,13 @@ export default function Financials() {
                         <TooltipTrigger asChild>
                           <button
                             type="button"
-                            className="w-full h-24 flex items-end justify-center cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-                            onClick={() => setSelectedTrendMonth(data.key)}
-                            aria-label={`View sale records for ${data.fullMonth}, net profit ${formatCurrency(data.profitCents)}`}
+                            onClick={() => {
+                              setSelectedProfitMonth(data.key);
+                              setSelectedTrendMonth(current => current === data.key ? null : data.key);
+                            }}
+                            className={`w-full h-24 flex items-end justify-center cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 ${isSelected ? "bg-slate-100" : ""}`}
+                            aria-label={`View breakdown and sale records for ${data.fullMonth}, net profit ${formatCurrency(data.profitCents)}`}
+                            aria-pressed={isSelected}
                             data-testid={`monthly-profit-bar-${data.key}`}
                           >
                             <div
@@ -701,11 +708,22 @@ export default function Financials() {
                           </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <div className="text-center">
+                          <div className="space-y-1.5">
                             <p className="font-semibold">{data.fullMonth}</p>
-                            <p className={isNegative ? "text-red-500" : "text-emerald-600"}>
-                              {formatCurrency(data.profitCents)}
-                            </p>
+                            <div className="grid grid-cols-[1fr_auto] gap-x-4 text-left">
+                              <span>Sale-cycle profit</span>
+                              <span className="text-right tabular-nums">{formatCurrency(data.saleCycleProfitCents)}</span>
+                              <span>Return adjustments</span>
+                              <span className="text-right tabular-nums">{formatCurrency(data.returnAdjustmentsCents)}</span>
+                              <span>Expenses</span>
+                              <span className="text-right tabular-nums">
+                                {data.expensesCents > 0 ? "-" : ""}{formatCurrency(data.expensesCents)}
+                              </span>
+                              <span className="font-semibold">Net profit</span>
+                              <span className={`text-right font-semibold tabular-nums ${isNegative ? "text-red-500" : "text-emerald-600"}`}>
+                                {formatCurrency(data.profitCents)}
+                              </span>
+                            </div>
                           </div>
                         </TooltipContent>
                       </Tooltip>
@@ -714,6 +732,47 @@ export default function Financials() {
                   );
                 })}
               </TooltipProvider>
+            </div>
+          )}
+          {selectedMonthlyData && (
+            <div
+              className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4"
+              aria-live="polite"
+              data-testid="monthly-profit-breakdown"
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h4 className="font-semibold text-slate-900">{selectedMonthlyData.fullMonth} breakdown</h4>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProfitMonth(null)}
+                  className="text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800"
+                  aria-label="Close monthly profit breakdown"
+                >
+                  Close
+                </button>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                <div>
+                  <dt className="text-slate-500">Sale-cycle profit</dt>
+                  <dd className="font-medium tabular-nums">{formatCurrency(selectedMonthlyData.saleCycleProfitCents)}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Return adjustments</dt>
+                  <dd className="font-medium tabular-nums">{formatCurrency(selectedMonthlyData.returnAdjustmentsCents)}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Expenses</dt>
+                  <dd className="font-medium tabular-nums">
+                    {selectedMonthlyData.expensesCents > 0 ? "-" : ""}{formatCurrency(selectedMonthlyData.expensesCents)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Net profit</dt>
+                  <dd className={`font-semibold tabular-nums ${selectedMonthlyData.profitCents < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                    {formatCurrency(selectedMonthlyData.profitCents)}
+                  </dd>
+                </div>
+              </dl>
             </div>
           )}
         </CardContent>
@@ -732,6 +791,28 @@ export default function Financials() {
               monthly expenses are reflected in the chart total, not these row amounts.
             </DialogDescription>
           </DialogHeader>
+          {selectedTrendPoint && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-4">
+              <div>
+                <dt className="text-slate-500">Sale-cycle profit</dt>
+                <dd className="font-medium tabular-nums">{formatCurrency(selectedTrendPoint.saleCycleProfitCents)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Return adjustments</dt>
+                <dd className="font-medium tabular-nums">{formatCurrency(selectedTrendPoint.returnAdjustmentsCents)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Expenses</dt>
+                <dd className="font-medium tabular-nums">
+                  {selectedTrendPoint.expensesCents > 0 ? "-" : ""}{formatCurrency(selectedTrendPoint.expensesCents)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Net profit</dt>
+                <dd className="font-semibold tabular-nums">{formatCurrency(selectedTrendPoint.profitCents)}</dd>
+              </div>
+            </dl>
+          )}
           {selectedTrendSales.length === 0 ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
               No sale cycles were recorded for this month.
