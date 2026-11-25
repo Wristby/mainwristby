@@ -85,9 +85,11 @@ import { aggregateVat } from "@/lib/vat-calculations";
 import {
   buildMonthlyProfitTrend,
   buildMonthlySaleCyclesCsv,
+  filterMonthlySaleCycles,
   getCurrentReportingYear,
   getSaleCycleHistoryLabel,
   getSalesForMonth,
+  type SaleCycleHistoryFilter,
 } from "@/lib/monthly-profit-trend";
 import { useAmsterdamClock } from "@/hooks/use-amsterdam-clock";
 import { SaleAvailabilityCard } from "@/components/financials/sale-availability-card";
@@ -130,6 +132,8 @@ export default function Financials() {
   const [monthFilter, setMonthFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>(() => String(getCurrentReportingYear()));
   const [selectedTrendMonth, setSelectedTrendMonth] = useState<string | null>(null);
+  const [trendSaleSearch, setTrendSaleSearch] = useState("");
+  const [trendSaleKindFilter, setTrendSaleKindFilter] = useState<SaleCycleHistoryFilter>("all");
   const [selectedProfitMonth, setSelectedProfitMonth] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -263,11 +267,15 @@ export default function Financials() {
     () => getSalesForMonth(sales ?? [], selectedTrendMonth),
     [sales, selectedTrendMonth],
   );
+  const filteredTrendSales = useMemo(
+    () => filterMonthlySaleCycles(selectedTrendSales, trendSaleSearch, trendSaleKindFilter),
+    [selectedTrendSales, trendSaleSearch, trendSaleKindFilter],
+  );
 
   const exportSelectedMonthSales = () => {
-    if (!selectedTrendMonth || selectedTrendSales.length === 0) return;
+    if (!selectedTrendMonth || filteredTrendSales.length === 0) return;
 
-    const csvContent = buildMonthlySaleCyclesCsv(selectedTrendSales);
+    const csvContent = buildMonthlySaleCyclesCsv(filteredTrendSales);
     if (!csvContent) return;
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -282,7 +290,7 @@ export default function Financials() {
 
     toast({
       title: "Success",
-      description: `Exported ${selectedTrendSales.length} sale cycles for ${selectedTrendPoint?.fullMonth ?? selectedTrendMonth}`,
+      description: `Exported ${filteredTrendSales.length} sale cycles for ${selectedTrendPoint?.fullMonth ?? selectedTrendMonth}`,
     });
   };
 
@@ -717,7 +725,13 @@ export default function Financials() {
                             type="button"
                             onClick={() => {
                               setSelectedProfitMonth(data.key);
-                              setSelectedTrendMonth(current => current === data.key ? null : data.key);
+                              if (selectedTrendMonth === data.key) {
+                                setSelectedTrendMonth(null);
+                              } else {
+                                setTrendSaleSearch("");
+                                setTrendSaleKindFilter("all");
+                                setSelectedTrendMonth(data.key);
+                              }
                             }}
                             className={`w-full h-24 flex items-end justify-center cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 ${isSelected ? "bg-slate-100" : ""}`}
                             aria-label={`View breakdown and sale records for ${data.fullMonth}, net profit ${formatCurrency(data.profitCents)}`}
@@ -814,20 +828,6 @@ export default function Financials() {
               monthly expenses are reflected in the chart total, not these row amounts.
             </DialogDescription>
           </DialogHeader>
-          {selectedTrendSales.length > 0 && (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="border-slate-200 text-slate-700"
-                onClick={exportSelectedMonthSales}
-                data-testid="button-export-month-sale-cycles"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export month CSV
-              </Button>
-            </div>
-          )}
           {selectedTrendPoint && (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-4">
               <div>
@@ -855,18 +855,88 @@ export default function Financials() {
               No sale cycles were recorded for this month.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table className="min-w-[620px]" data-testid="financials-month-sale-history">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Watch</TableHead>
-                    <TableHead>Sold</TableHead>
-                    <TableHead className="text-right">Sale-cycle profit</TableHead>
-                    <TableHead className="text-right">Details</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedTrendSales.map(sale => {
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px_auto] sm:items-end">
+                <div className="space-y-1.5">
+                  <Label htmlFor="monthly-sale-search" className="text-sm text-slate-600">Find a watch</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      id="monthly-sale-search"
+                      value={trendSaleSearch}
+                      onChange={event => setTrendSaleSearch(event.target.value)}
+                      placeholder="Brand, model, reference, serial…"
+                      className="bg-white pl-9"
+                      data-testid="input-monthly-sale-search"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="monthly-sale-kind-filter" className="text-sm text-slate-600">Sale outcome</Label>
+                  <Select
+                    value={trendSaleKindFilter}
+                    onValueChange={value => setTrendSaleKindFilter(value as SaleCycleHistoryFilter)}
+                  >
+                    <SelectTrigger id="monthly-sale-kind-filter" className="bg-white" data-testid="select-monthly-sale-kind">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="all">All sale cycles</SelectItem>
+                      <SelectItem value="original_sale">Original sales</SelectItem>
+                      <SelectItem value="resale">Resales</SelectItem>
+                      <SelectItem value="returned">Returned</SelectItem>
+                      <SelectItem value="return_in_progress">Return in progress</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+                  <span className="text-xs text-slate-500" aria-live="polite" data-testid="text-monthly-sale-filter-count">
+                    {filteredTrendSales.length} of {selectedTrendSales.length} sale cycles
+                  </span>
+                  {(trendSaleSearch.length > 0 || trendSaleKindFilter !== "all") && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-9 px-2 text-slate-600"
+                      onClick={() => {
+                        setTrendSaleSearch("");
+                        setTrendSaleKindFilter("all");
+                      }}
+                      data-testid="button-clear-monthly-sale-filters"
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-slate-200 text-slate-700"
+                    onClick={exportSelectedMonthSales}
+                    disabled={filteredTrendSales.length === 0}
+                    data-testid="button-export-month-sale-cycles"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export month CSV
+                  </Button>
+                </div>
+              </div>
+              {filteredTrendSales.length === 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  No sale cycles match these filters.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[620px]" data-testid="financials-month-sale-history">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Watch</TableHead>
+                        <TableHead>Sold</TableHead>
+                        <TableHead className="text-right">Sale-cycle profit</TableHead>
+                        <TableHead className="text-right">Details</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredTrendSales.map(sale => {
                     const cycleLabel = getSaleCycleHistoryLabel(sale);
                     const soldDate = sale.soldDate
                       ? new Date(String(sale.soldDate))
@@ -923,9 +993,11 @@ export default function Financials() {
                         </TableCell>
                       </TableRow>
                     );
-                  })}
-                </TableBody>
-              </Table>
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

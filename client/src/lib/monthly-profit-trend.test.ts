@@ -4,6 +4,7 @@ import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
 import {
   buildMonthlyProfitTrend,
   buildMonthlySaleCyclesCsv,
+  filterMonthlySaleCycles,
   getCurrentReportingYear,
   getSaleCycleHistoryLabel,
   getSalesForMonth,
@@ -179,6 +180,37 @@ describe("monthly Financials profit trend", () => {
     expect(getSaleCycleHistoryLabel(returned)).toBe("Returned");
     expect(getSaleCycleHistoryLabel(resale)).toBe("Resale · cycle 2");
     expect(getSaleCycleHistoryLabel(openReturn)).toBe("Return in progress");
+  });
+
+  it("filters month sale cycles by watch snapshot text and return/resale kind", () => {
+    const sales = [
+      sale({ id: 1, brandSnapshot: "Rolex", modelSnapshot: "Submariner", referenceNumberSnapshot: "124060" }),
+      sale({ id: 2, brandSnapshot: "Omega", modelSnapshot: "Speedmaster", cycleNumber: 2 }),
+      sale({ id: 3, brandSnapshot: "Cartier", modelSnapshot: "Santos", returns: [returnCase()] }),
+      sale({ id: 4, brandSnapshot: "Omega", modelSnapshot: "Seamaster", serialNumberSnapshot: "OMEGA-42", cycleNumber: 2 }),
+    ];
+
+    expect(filterMonthlySaleCycles(sales, "  speedMASTER ").map(item => item.id)).toEqual([2]);
+    expect(filterMonthlySaleCycles(sales, "omega", "resale").map(item => item.id)).toEqual([2, 4]);
+    expect(filterMonthlySaleCycles(sales, "", "returned").map(item => item.id)).toEqual([3]);
+    expect(filterMonthlySaleCycles(sales, "omega-42").map(item => item.id)).toEqual([4]);
+    expect(filterMonthlySaleCycles(sales, "missing")).toEqual([]);
+  });
+
+  it("restores all sale cycles when filters are cleared and exports only filtered rows", () => {
+    const sales = [
+      sale({ id: 1, brandSnapshot: "Rolex" }),
+      sale({ id: 2, brandSnapshot: "Omega", cycleNumber: 2 }),
+      sale({ id: 3, brandSnapshot: "Cartier", returns: [returnCase()] }),
+    ];
+    const narrowed = filterMonthlySaleCycles(sales, "omega", "resale");
+    const csv = buildMonthlySaleCyclesCsv(narrowed);
+
+    expect(narrowed.map(item => item.id)).toEqual([2]);
+    expect(csv).toContain("Omega,Submariner");
+    expect(csv).not.toContain("Rolex");
+    expect(csv).not.toContain("Cartier");
+    expect(filterMonthlySaleCycles(sales, "", "all")).toEqual(sales);
   });
 
   it("exports sale-cycle snapshots, prices, adjusted profit, and labels", () => {

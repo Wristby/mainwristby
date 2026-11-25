@@ -117,13 +117,54 @@ export function getSalesForMonth(
   return sales.filter(sale => getSaleMonthKey(sale.soldDate) === monthKey);
 }
 
-export function getSaleCycleHistoryLabel(sale: InventorySaleWithReturns): string {
+export type SaleCycleHistoryKind =
+  | "original_sale"
+  | "resale"
+  | "returned"
+  | "return_in_progress";
+
+export type SaleCycleHistoryFilter = "all" | SaleCycleHistoryKind;
+
+export function getSaleCycleHistoryKind(sale: InventorySaleWithReturns): SaleCycleHistoryKind {
   const activeReturns = sale.returns.filter(
     record => record.status !== "cancelled" && record.status !== "declined",
   );
-  if (activeReturns.some(record => record.receivedDate != null)) return "Returned";
-  if (activeReturns.length > 0) return "Return in progress";
-  return sale.cycleNumber > 1 ? `Resale · cycle ${sale.cycleNumber}` : "Original sale";
+  if (activeReturns.some(record => record.receivedDate != null)) return "returned";
+  if (activeReturns.length > 0) return "return_in_progress";
+  return sale.cycleNumber > 1 ? "resale" : "original_sale";
+}
+
+export function getSaleCycleHistoryLabel(sale: InventorySaleWithReturns): string {
+  switch (getSaleCycleHistoryKind(sale)) {
+    case "returned":
+      return "Returned";
+    case "return_in_progress":
+      return "Return in progress";
+    case "resale":
+      return `Resale · cycle ${sale.cycleNumber}`;
+    case "original_sale":
+      return "Original sale";
+  }
+}
+
+export function filterMonthlySaleCycles(
+  sales: readonly InventorySaleWithReturns[],
+  searchText: string,
+  historyFilter: SaleCycleHistoryFilter = "all",
+): InventorySaleWithReturns[] {
+  const query = searchText.trim().toLocaleLowerCase();
+  return sales.filter(sale => {
+    if (historyFilter !== "all" && getSaleCycleHistoryKind(sale) !== historyFilter) return false;
+    if (!query) return true;
+    const snapshotText = [
+      sale.brandSnapshot,
+      sale.modelSnapshot,
+      sale.referenceNumberSnapshot,
+      sale.serialNumberSnapshot,
+      sale.soldTo,
+    ].filter(Boolean).join(" ").toLocaleLowerCase();
+    return snapshotText.includes(query);
+  });
 }
 
 function escapeCsvCell(value: string | number): string {
