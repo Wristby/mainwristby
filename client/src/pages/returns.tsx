@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { ArrowUpRight, Box, CalendarClock, CheckCircle2, CircleDollarSign, Download, PackageCheck, RotateCcw, Search, Truck, Watch } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Box, CalendarClock, CheckCircle2, CircleDollarSign, Download, PackageCheck, RotateCcw, Search, Truck, Watch } from "lucide-react";
 import { useSales, returnNextActionLabels, returnStatusLabels } from "@/hooks/use-sales";
+import { useInventory } from "@/hooks/use-inventory";
 import type { InventoryReturn } from "@shared/schema";
 import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
 import { buildReturnReconciliationCsv, getReturnAdjustmentCents, getSaleCycleNetProfitCents } from "@shared/sales-lifecycle";
@@ -228,6 +229,19 @@ function ReturnEditor({ item, sale }: { item: InventoryReturn; sale: InventorySa
 
 export default function ReturnsPage() {
   const { data: sales = [], isLoading, isError, error } = useSales();
+  const { data: soldWatches = [] } = useInventory("sold");
+  const soldWatchIds = useMemo(() => new Set(soldWatches.map(watch => watch.id)), [soldWatches]);
+  const latestSaleCycleByWatchId = useMemo(() => {
+    const latestCycles = new Map<number, number>();
+    for (const sale of sales) {
+      if (sale.inventoryId == null) continue;
+      latestCycles.set(sale.inventoryId, Math.max(
+        latestCycles.get(sale.inventoryId) ?? 0,
+        sale.cycleNumber,
+      ));
+    }
+    return latestCycles;
+  }, [sales]);
   const [filter, setFilter] = useState<Filter>(() => {
     if (typeof window === "undefined") return "open";
     return new URLSearchParams(window.location.search).has("returnId") ? "all" : "open";
@@ -334,6 +348,12 @@ export default function ReturnsPage() {
             {filtered.map(({ sale, record }) => {
               const adjustment = getReturnAdjustmentCents(sale, [record]);
               const net = getSaleCycleNetProfitCents({ ...sale, returns: [record] });
+              const receivedWatchStillSold = Boolean(
+                record.receivedDate &&
+                sale.inventoryId != null &&
+                latestSaleCycleByWatchId.get(sale.inventoryId) === sale.cycleNumber &&
+                soldWatchIds.has(sale.inventoryId),
+              );
               return (
                 <article id={`return-${record.id}`} key={record.id} className="rounded-xl border border-slate-200 p-4 sm:p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -352,6 +372,18 @@ export default function ReturnsPage() {
                         {sale.serialNumberSnapshot && <> · Serial {sale.serialNumberSnapshot}</>}
                         {sale.soldTo && <> · Buyer {sale.soldTo}</>}
                       </p>
+                      {receivedWatchStillSold && sale.inventoryId != null && (
+                        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                          <p>
+                            This return has been received, but the watch is still marked Sold and remains in current-Sold sales metrics.{" "}
+                            <Link href={`/inventory/${sale.inventoryId}`} className="font-semibold underline underline-offset-2 hover:text-amber-950">
+                              Open Watch Details to update its status
+                            </Link>
+                            .
+                          </p>
+                        </div>
+                      )}
                       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
                         <span><CalendarClock className="mr-1 inline h-4 w-4 text-slate-400" />Requested {dateLabel(record.requestDate)}</span>
                         <span><Truck className="mr-1 inline h-4 w-4 text-slate-400" />{record.carrier || "Carrier not set"}{record.trackingNumber ? ` · ${record.trackingNumber}` : ""}</span>
