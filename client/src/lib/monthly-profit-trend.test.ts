@@ -1,84 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { InventoryReturn, InventorySale } from "@shared/schema";
-import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
 import {
   buildMonthlyProfitTrend,
-  buildMonthlySaleCyclesCsv,
-  filterMonthlySaleCycles,
+  buildMonthlySoldWatchesCsv,
+  buildMonthlyTrendSales,
+  filterMonthlySoldWatches,
   getCurrentReportingYear,
-  getSaleCycleHistoryLabel,
-  getSalesForMonth,
+  getSaleMonthKey,
   getSaleYear,
+  getSalesForMonth,
   getSalesForYear,
-  mergeMonthlyTrendSales,
   type MonthlyTrendInventorySource,
 } from "./monthly-profit-trend";
 
-const sale = (overrides: Partial<InventorySale> = {}): InventorySaleWithReturns => ({
-  id: 1,
-  inventoryId: 9,
-  cycleNumber: 1,
-  brandSnapshot: "Rolex",
-  modelSnapshot: "Submariner",
-  referenceNumberSnapshot: "126610",
-  serialNumberSnapshot: null,
-  salePrice: 1_000_000,
-  soldTo: null,
-  buyerId: null,
-  platformFees: 65_000,
-  chrono24FeeRate: null,
-  shippingFee: 0,
-  insuranceFee: 0,
-  soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date,
-  soldPlatform: "Chrono24",
-  shippingPartner: null,
-  trackingNumber: null,
-  dateShipped: null,
-  deliveredDate: null,
-  purchaseDateSnapshot: null,
-  dateListedSnapshot: null,
-  purchasePriceSnapshot: 700_000,
-  importFeeSnapshot: 0,
-  serviceFeeSnapshot: 0,
-  polishFeeSnapshot: 0,
-  watchRegisterFeeSnapshot: 0,
-  watchRegisterSnapshot: false,
-  acquisitionCostCents: 700_000,
-  profitAtSaleCents: 235_000,
-  createdAt: new Date("2026-01-15T12:00:00.000Z"),
-  updatedAt: new Date("2026-01-15T12:00:00.000Z"),
-  returns: [],
-  ...overrides,
-});
-
-const returnCase = (overrides: Partial<InventoryReturn> = {}): InventoryReturn => ({
-  id: 10,
-  saleId: 1,
-  status: "completed",
-  requestDate: "2026-02-01",
-  reason: "Changed mind",
-  returnShippedDate: null,
-  receivedDate: "2026-02-10",
-  carrier: null,
-  trackingNumber: null,
-  shippingCostCents: 5_000,
-  shippingPayer: "seller",
-  refundAmountCents: 100_000,
-  refundDate: "2026-02-11",
-  inspectionCondition: null,
-  missingItems: null,
-  inspectionNotes: null,
-  inspectionCostCents: 0,
-  nextAction: "hold",
-  cogsRestoredCents: 0,
-  platformFeeRefunded: false,
-  completedDate: "2026-02-11",
-  createdAt: new Date("2026-02-01T12:00:00.000Z"),
-  updatedAt: new Date("2026-02-11T12:00:00.000Z"),
-  ...overrides,
-});
-
-const soldWatch = (
+const watch = (
   overrides: Partial<MonthlyTrendInventorySource> = {},
 ): MonthlyTrendInventorySource => ({
   id: 9,
@@ -91,30 +25,22 @@ const soldWatch = (
   dateSold: null,
   salePrice: 1_000_000,
   soldPrice: null,
-  soldTo: null,
-  buyerId: null,
   platformFees: 65_000,
   chrono24FeeRate: null,
-  shippingFee: 0,
-  insuranceFee: 0,
-  soldPlatform: "Chrono24",
-  shippingPartner: null,
-  trackingNumber: null,
-  dateShipped: null,
-  deliveredDate: null,
-  purchaseDate: new Date("2025-12-01T12:00:00.000Z"),
-  dateListed: new Date("2025-12-02T12:00:00.000Z"),
+  shippingFee: 5_000,
+  insuranceFee: 2_000,
   purchasePrice: 700_000,
-  importFee: 0,
-  serviceFee: 0,
-  polishFee: 0,
+  importFee: 10_000,
+  serviceFee: 8_000,
+  polishFee: 5_000,
   watchRegister: false,
   watchRegisterFeeSnapshot: null,
+  soldTo: "Buyer",
   ...overrides,
 });
 
 describe("monthly Financials profit trend", () => {
-  it("returns January through December for the selected year", () => {
+  it("returns all twelve months for the selected year", () => {
     const result = buildMonthlyProfitTrend([], [], 2026);
 
     expect(result).toHaveLength(12);
@@ -122,230 +48,126 @@ describe("monthly Financials profit trend", () => {
     expect(result[11]).toMatchObject({ key: "2026-12", fullMonth: "December 2026" });
   });
 
-  it("groups sales and expenses by the sale or expense month including year", () => {
-    const result = buildMonthlyProfitTrend([
-      sale({ id: 1, soldDate: "2025-01-15T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 100_000 }),
-      sale({ id: 2, soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 300_000 }),
-      sale({ id: 3, soldDate: "2026-11-15T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 500_000 }),
-    ], [
-      { date: "2026-01-25T12:00:00.000Z", amount: 50_000 },
-      { date: "2025-01-25T12:00:00.000Z", amount: 80_000 },
+  it("uses only inventory currently marked Sold with a recorded sale date", () => {
+    const result = buildMonthlyTrendSales([
+      watch(),
+      watch({ id: 10, status: "in_stock", brand: "Omega" }),
+      watch({ id: 11, status: "received", brand: "Cartier" }),
+      watch({ id: 12, soldDate: null, dateSold: null, brand: "Tudor" }),
+    ], 600);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 9,
+      inventoryId: 9,
+      brandSnapshot: "Rolex",
+      soldDate: new Date("2026-01-15T12:00:00.000Z"),
+    });
+  });
+
+  it("uses the legacy sale date when the canonical field is empty", () => {
+    const result = buildMonthlyTrendSales([
+      watch({ soldDate: null, dateSold: new Date("2026-03-04T12:00:00.000Z") }),
+    ], 600);
+
+    expect(result).toHaveLength(1);
+    expect(getSaleMonthKey(result[0].soldDate)).toBe("2026-03");
+  });
+
+  it("calculates profit from the same current watch costs used elsewhere", () => {
+    const result = buildMonthlyTrendSales([
+      watch({ watchRegister: true, watchRegisterFeeSnapshot: null }),
+    ], 600);
+
+    expect(result[0].profitAtSaleCents).toBe(204_400);
+  });
+
+  it("groups only currently Sold watches by their sale month and year", () => {
+    const sales = buildMonthlyTrendSales([
+      watch({ id: 1, soldDate: new Date("2025-01-15T12:00:00.000Z") }),
+      watch({ id: 10, soldDate: new Date("2026-01-15T12:00:00.000Z") }),
+      watch({ id: 11, soldDate: new Date("2026-11-15T12:00:00.000Z") }),
+    ], 600);
+    const result = buildMonthlyProfitTrend(sales, [
+      { date: "2026-01-25T12:00:00.000Z", amount: 5_000 },
       { date: "2026-05-25T12:00:00.000Z", amount: 25_000 },
     ], 2026);
 
-    expect(result.find(month => month.key === "2026-01")).toMatchObject({
-      saleCycleProfitCents: 300_000,
-      returnAdjustmentsCents: 0,
-      expensesCents: 50_000,
-      profitCents: 250_000,
-    });
-    expect(result.find(month => month.key === "2026-11")?.profitCents).toBe(500_000);
+    expect(result.find(month => month.key === "2026-01")?.profitCents).toBe(200_000);
+    expect(result.find(month => month.key === "2026-11")?.profitCents).toBe(205_000);
     expect(result.find(month => month.key === "2026-05")).toMatchObject({
-      saleCycleProfitCents: 0,
-      returnAdjustmentsCents: 0,
+      saleProfitCents: 0,
       expensesCents: 0,
       profitCents: 0,
     });
-    expect(result.find(month => month.key === "2025-01")).toBeUndefined();
   });
 
-  it("includes return adjustments with the sale cycle in its original sale month", () => {
-    const result = buildMonthlyProfitTrend([
-      sale({
-        soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date,
-        profitAtSaleCents: 235_000,
-        returns: [returnCase()],
-      }),
-    ], [
-      { date: "2026-01-25T12:00:00.000Z", amount: 30_000 },
+  it("keeps months with a zero-profit Sold watch distinct from months with no sales", () => {
+    const sold = buildMonthlyTrendSales([
+      watch({ salePrice: 0, soldPrice: null, platformFees: 0, shippingFee: 0, insuranceFee: 0,
+        purchasePrice: 0, importFee: 0, serviceFee: 0, polishFee: 0 }),
+    ], 0);
+    const result = buildMonthlyProfitTrend(sold, [
+      { date: "2026-01-25T12:00:00.000Z", amount: 10_000 },
     ], 2026);
 
-    const january = result.find(month => month.key === "2026-01");
-    expect(january).toMatchObject({
-      saleCycleProfitCents: 235_000,
-      returnAdjustmentsCents: -105_000,
-      expensesCents: 30_000,
-      profitCents: 100_000,
+    expect(result.find(month => month.key === "2026-01")).toMatchObject({
+      saleProfitCents: 0,
+      expensesCents: 10_000,
+      profitCents: -10_000,
     });
-    expect(
-      january!.saleCycleProfitCents
-        + january!.returnAdjustmentsCents
-        - january!.expensesCents,
-    ).toBe(january!.profitCents);
-    expect(result.find(month => month.key === "2026-02")).toMatchObject({
-      saleCycleProfitCents: 0,
-      returnAdjustmentsCents: 0,
-      expensesCents: 0,
-      profitCents: 0,
-    });
+    expect(result.find(month => month.key === "2026-02")?.profitCents).toBe(0);
   });
 
-  it("includes an unduplicated current Sold inventory fallback when sale history is missing", () => {
-    const merged = mergeMonthlyTrendSales([], [
-      soldWatch(),
-      soldWatch({ id: 10, status: "in_stock", brand: "Omega" }),
-      soldWatch({ id: 11, soldDate: null, dateSold: null }),
+  it("excludes inventory outside the Sold status regardless of saved sale history", () => {
+    const currentInventory = [
+      watch({ status: "received" }),
+      watch({ id: 10, status: "in_stock" }),
+    ];
+    const result = buildMonthlyTrendSales(currentInventory, 600);
+    expect(result).toEqual([]);
+  });
+
+  it("filters current Sold watch rows by month, year, and search text", () => {
+    const sales = buildMonthlyTrendSales([
+      watch({ id: 1, soldDate: "2026-01-31T23:30:00.000Z" as unknown as Date }),
+      watch({ id: 2, brand: "Omega", model: "Speedmaster", soldDate: new Date("2025-01-15T12:00:00.000Z") }),
     ], 600);
 
-    expect(merged).toHaveLength(1);
-    expect(merged[0]).toMatchObject({
-      id: -9,
-      inventoryId: 9,
-      cycleNumber: 1,
-      soldDate: new Date("2026-01-15T12:00:00.000Z"),
-      profitAtSaleCents: 235_000,
-      legacyInventoryFallback: true,
-    });
-    const january = buildMonthlyProfitTrend(merged, [], 2026).find(month => month.key === "2026-01");
-    expect(january?.profitCents).toBe(235_000);
-    expect(getSaleCycleHistoryLabel(merged[0])).toBe("Legacy inventory record");
+    expect(getSalesForMonth(sales, "2026-02")).toHaveLength(1);
+    expect(getSalesForYear(sales, 2025).map(item => item.id)).toEqual([2]);
+    expect(filterMonthlySoldWatches(sales, " speedmaster ").map(item => item.id)).toEqual([2]);
+    expect(filterMonthlySoldWatches(sales, "not found")).toEqual([]);
   });
 
-  it("does not duplicate a current Sold watch that already has a matching sale snapshot", () => {
-    const merged = mergeMonthlyTrendSales(
-      [sale({ soldDate: new Date("2026-01-15T12:00:00.000Z") })],
-      [soldWatch()],
-      600,
-    );
-
-    expect(merged).toHaveLength(1);
-    expect(merged[0].id).toBe(1);
-    expect(merged[0].legacyInventoryFallback).toBeUndefined();
+  it("filters sales by Amsterdam reporting year", () => {
+    expect(getSaleYear(new Date("2025-12-31T22:30:00.000Z"))).toBe(2025);
+    expect(getSaleYear(new Date("2026-12-31T23:30:00.000Z"))).toBe(2027);
   });
 
-  it("keeps historical returned sales even when the current watch is no longer Sold", () => {
-    const history = sale({ returns: [returnCase()] });
-    const merged = mergeMonthlyTrendSales(
-      [history],
-      [soldWatch({ status: "received" })],
-      600,
-    );
+  it("exports only the currently Sold watch records", () => {
+    const sales = buildMonthlyTrendSales([watch()], 600);
+    const csv = buildMonthlySoldWatchesCsv(sales);
 
-    expect(merged).toEqual([history]);
-    expect(buildMonthlyProfitTrend(merged, [], 2026).find(month => month.key === "2026-01"))
-      ?.toMatchObject({
-        saleCycleProfitCents: 235_000,
-        returnAdjustmentsCents: -105_000,
-        profitCents: 130_000,
-      });
+    expect(csv).toContain("Sale Date,Brand,Model,Reference Number,Sale Price (EUR),Profit (EUR)");
+    expect(csv).toContain("2026-01-15,Rolex,Submariner,126610,10000.00,2050.00");
+    expect(csv).not.toContain("Return");
+    expect(buildMonthlySoldWatchesCsv([])).toBe("");
   });
 
-  it("keeps empty months at zero and ignores sales and expenses outside the selected year", () => {
-    const result = buildMonthlyProfitTrend([
-      sale({ soldDate: "2025-11-30T12:00:00.000Z" as unknown as Date, profitAtSaleCents: 900_000 }),
-      sale({ id: 2, soldDate: "invalid" as unknown as Date, profitAtSaleCents: 200_000 }),
-    ], [
-      { date: "2026-11-30T12:00:00.000Z", amount: 12_000 },
-      { date: "invalid", amount: 15_000 },
-    ], 2026);
-
-    expect(result).toHaveLength(12);
-    expect(result.reduce((sum, month) => sum + month.profitCents, 0)).toBe(0);
-  });
-
-  it("uses the Amsterdam year when choosing the default", () => {
+  it("uses the Amsterdam calendar year for the default", () => {
     expect(getCurrentReportingYear(new Date("2026-12-31T23:30:00.000Z"))).toBe(2027);
   });
 
-  it("returns no monthly bars for the All Years selection", () => {
-    expect(buildMonthlyProfitTrend([], [], null)).toEqual([]);
-  });
+  it("does not show sales or expenses outside the selected year", () => {
+    const sales = buildMonthlyTrendSales([
+      watch({ soldDate: new Date("2025-11-15T12:00:00.000Z") }),
+    ], 600);
+    const result = buildMonthlyProfitTrend(sales, [
+      { date: "2025-11-30T12:00:00.000Z", amount: 12_000 },
+    ], 2026);
 
-  it("filters the exact sale month and year while preserving deleted-watch history", () => {
-    const result = getSalesForMonth([
-      sale({ id: 1, soldDate: "2026-01-31T22:30:00.000Z" as unknown as Date }),
-      sale({ id: 2, soldDate: "2025-01-15T12:00:00.000Z" as unknown as Date }),
-      sale({ id: 3, inventoryId: null, soldDate: "2026-01-10T12:00:00.000Z" as unknown as Date }),
-    ], "2026-01");
-
-    expect(result.map(item => item.id)).toEqual([1, 3]);
-  });
-
-  it("filters all sale cycles by the Amsterdam reporting year", () => {
-    const sales = [
-      sale({ id: 1, soldDate: "2025-12-31T22:30:00.000Z" as unknown as Date }),
-      sale({ id: 2, soldDate: "2026-12-31T23:30:00.000Z" as unknown as Date }),
-      sale({ id: 3, inventoryId: null, soldDate: "2026-06-01T12:00:00.000Z" as unknown as Date }),
-      sale({ id: 4, soldDate: "invalid" as unknown as Date }),
-    ];
-
-    expect(getSaleYear(sales[0].soldDate)).toBe(2025);
-    expect(getSaleYear(sales[1].soldDate)).toBe(2027);
-    expect(getSalesForYear(sales, 2026).map(item => item.id)).toEqual([3]);
-    expect(getSalesForYear(sales, 2027).map(item => item.id)).toEqual([2]);
-    expect(getSalesForYear(sales, null)).toEqual([]);
-    expect(getSalesForYear(sales, 2026.5)).toEqual([]);
-  });
-
-  it("labels returned sale cycles separately from resales", () => {
-    const returned = sale({ returns: [returnCase()] });
-    const resale = sale({ cycleNumber: 2 });
-    const openReturn = sale({ returns: [returnCase({ receivedDate: null })] });
-
-    expect(getSaleCycleHistoryLabel(returned)).toBe("Returned");
-    expect(getSaleCycleHistoryLabel(resale)).toBe("Resale · cycle 2");
-    expect(getSaleCycleHistoryLabel(openReturn)).toBe("Return in progress");
-  });
-
-  it("filters month sale cycles by watch snapshot text and return/resale kind", () => {
-    const sales = [
-      sale({ id: 1, brandSnapshot: "Rolex", modelSnapshot: "Submariner", referenceNumberSnapshot: "124060" }),
-      sale({ id: 2, brandSnapshot: "Omega", modelSnapshot: "Speedmaster", cycleNumber: 2 }),
-      sale({ id: 3, brandSnapshot: "Cartier", modelSnapshot: "Santos", returns: [returnCase()] }),
-      sale({ id: 4, brandSnapshot: "Omega", modelSnapshot: "Seamaster", serialNumberSnapshot: "OMEGA-42", cycleNumber: 2 }),
-    ];
-
-    expect(filterMonthlySaleCycles(sales, "  speedMASTER ").map(item => item.id)).toEqual([2]);
-    expect(filterMonthlySaleCycles(sales, "omega", "resale").map(item => item.id)).toEqual([2, 4]);
-    expect(filterMonthlySaleCycles(sales, "", "returned").map(item => item.id)).toEqual([3]);
-    expect(filterMonthlySaleCycles(sales, "omega-42").map(item => item.id)).toEqual([4]);
-    expect(filterMonthlySaleCycles(sales, "missing")).toEqual([]);
-  });
-
-  it("restores all sale cycles when filters are cleared and exports only filtered rows", () => {
-    const sales = [
-      sale({ id: 1, brandSnapshot: "Rolex" }),
-      sale({ id: 2, brandSnapshot: "Omega", cycleNumber: 2 }),
-      sale({ id: 3, brandSnapshot: "Cartier", returns: [returnCase()] }),
-    ];
-    const narrowed = filterMonthlySaleCycles(sales, "omega", "resale");
-    const csv = buildMonthlySaleCyclesCsv(narrowed);
-
-    expect(narrowed.map(item => item.id)).toEqual([2]);
-    expect(csv).toContain("Omega,Submariner");
-    expect(csv).not.toContain("Rolex");
-    expect(csv).not.toContain("Cartier");
-    expect(filterMonthlySaleCycles(sales, "", "all")).toEqual(sales);
-  });
-
-  it("exports sale-cycle snapshots, prices, adjusted profit, and labels", () => {
-    const csv = buildMonthlySaleCyclesCsv([
-      sale({
-        soldDate: "2026-01-31T22:30:00.000Z" as unknown as Date,
-        salePrice: 1_000_000,
-        returns: [returnCase()],
-      }),
-      sale({
-        id: 2,
-        brandSnapshot: 'Rolex, "Vintage"',
-        cycleNumber: 2,
-        soldDate: "2026-01-15T12:00:00.000Z" as unknown as Date,
-        salePrice: 1_200_000,
-      }),
-    ]);
-
-    expect(csv).toContain(
-      "Sale Date,Brand,Model,Reference Number,Sale Cycle,Sale Price (EUR),Profit After Return Adjustments (EUR),Return / Resale",
-    );
-    expect(csv).toContain(
-      "2026-01-31,Rolex,Submariner,126610,1,10000.00,1300.00,Returned",
-    );
-    expect(csv).toContain(
-      '2026-01-15,"Rolex, ""Vintage""",Submariner,126610,2,12000.00,2350.00,Resale · cycle 2',
-    );
-  });
-
-  it("does not produce a misleading CSV for months without sale cycles", () => {
-    expect(buildMonthlySaleCyclesCsv([])).toBe("");
+    expect(result).toHaveLength(12);
+    expect(result.every(month => month.profitCents === 0)).toBe(true);
   });
 });

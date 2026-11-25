@@ -1,32 +1,17 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { ArrowUpRight, BarChart3 } from "lucide-react";
-import { SALES_PATTERN_MONTHS } from "@/lib/sales-patterns";
-import type { InventorySale } from "@shared/schema";
-import { toReportDate } from "@shared/reporting";
+import { SALES_PATTERN_MONTHS, type SalesPatternData } from "@/lib/sales-patterns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function SalesPatternsPreview({
-  sales,
+  patterns,
   periodLabel,
 }: {
-  sales: Array<Pick<InventorySale, "soldDate">>;
+  patterns: Pick<SalesPatternData, "monthlySalesCounts" | "totalSales">;
   periodLabel: string;
 }) {
-  const preview = useMemo(
-    () => {
-      const monthlySalesCounts = Array.from({ length: 12 }, () => 0);
-      for (const sale of sales) {
-        const date = toReportDate(sale.soldDate);
-        if (date) monthlySalesCounts[date.getMonth()] += 1;
-      }
-      return {
-        monthlySalesCounts,
-        totalSales: monthlySalesCounts.reduce((total, count) => total + count, 0),
-      };
-    },
-    [sales],
-  );
+  const preview = useMemo(() => patterns, [patterns]);
   const peak = Math.max(0, ...preview.monthlySalesCounts);
 
   return (

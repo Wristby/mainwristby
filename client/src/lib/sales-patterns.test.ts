@@ -34,6 +34,7 @@ describe("Sales Patterns data", () => {
       makeWatch({ id: 3, brand: "Omega", soldDate: "2025-02-10T12:00:00Z" }),
       makeWatch({ id: 4, status: "in_stock" }),
       makeWatch({ id: 5, soldDate: "invalid", dateSold: null }),
+      makeWatch({ id: 6, status: "received", brand: "Cartier" }),
     ], 600);
 
     expect(result.totalSales).toBe(3);
@@ -104,5 +105,19 @@ describe("Sales Patterns data", () => {
     ], 600);
     expect(result.rows[0].cells[0].medianDaysToSell).toBeNull();
     expect(result.rows[0].cells[0].salesCount).toBe(1);
+  });
+
+  it("uses Europe/Amsterdam month and year boundaries like Financials", () => {
+    const result = buildSalesPatternData([
+      makeWatch({ id: 1, soldDate: "2026-01-31T23:30:00.000Z" }),
+      makeWatch({ id: 2, soldDate: "2025-12-31T23:30:00.000Z" }),
+    ], 600);
+
+    expect(result.years).toEqual([2026]);
+    expect(result.monthlySalesCounts[0]).toBe(1);
+    expect(result.monthlySalesCounts[1]).toBe(1);
+    expect(buildSalesPatternData([
+      makeWatch({ id: 2, soldDate: "2025-12-31T23:30:00.000Z" }),
+    ], 600, 2026).totalSales).toBe(1);
   });
 });

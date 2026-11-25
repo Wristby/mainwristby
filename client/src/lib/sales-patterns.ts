@@ -1,8 +1,10 @@
 import { differenceInCalendarDays } from "date-fns";
 import type { InventoryItem } from "@shared/schema";
-import { getPositiveSaleAmount, matchesCalendarPeriod } from "@shared/reporting";
+import { getPositiveSaleAmount } from "@shared/reporting";
 import { getSoldDate } from "@/lib/sold-date";
 import { calculateWatchFinancials } from "@shared/watch-financials";
+
+const REPORTING_TIME_ZONE = "Europe/Amsterdam";
 
 export const SALES_PATTERN_MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -91,10 +93,26 @@ function median(values: number[]): number | null {
     : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function getSaleDateParts(date: Date): { year: number; month: number } | null {
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORTING_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+  const year = Number(parts.find(part => part.type === "year")?.value);
+  const month = Number(parts.find(part => part.type === "month")?.value);
+  return Number.isFinite(year) && month >= 1 && month <= 12
+    ? { year, month: month - 1 }
+    : null;
+}
+
 function toRecord(item: SalesPatternSource, watchRegisterFeeCents: number): SalesPatternRecord | null {
   if (item.status !== "sold") return null;
   const saleDate = getSoldDate(item);
   if (!saleDate) return null;
+  const saleDateParts = getSaleDateParts(saleDate);
+  if (!saleDateParts) return null;
 
   const salePriceCents = getPositiveSaleAmount(item);
   const hasMarginInputs = salePriceCents != null && item.purchasePrice > 0;
@@ -110,8 +128,8 @@ function toRecord(item: SalesPatternSource, watchRegisterFeeCents: number): Sale
     model: item.model,
     referenceNumber: item.referenceNumber,
     saleDate,
-    year: saleDate.getFullYear(),
-    month: saleDate.getMonth(),
+    year: saleDateParts.year,
+    month: saleDateParts.month,
     salePriceCents,
     profitCents: hasMarginInputs ? financials.profitCents : null,
     marginPercent: hasMarginInputs ? financials.marginPercent : null,
@@ -131,7 +149,7 @@ export function buildSalesPatternData(
   const years = Array.from(new Set(allRecords.map((record) => record.year))).sort((a, b) => b - a);
   const records = year == null
     ? allRecords
-    : allRecords.filter((record) => matchesCalendarPeriod(record.saleDate, { year }));
+    : allRecords.filter((record) => record.year === year);
   const byBrandAndMonth = new Map<string, SalesPatternRecord[]>();
   for (const record of records) {
     const key = `${record.brand}\u0000${record.month}`;

@@ -4,7 +4,6 @@ import { useSales } from "@/hooks/use-sales";
 import { calculateWatchCostBreakdown } from "@shared/watch-financials";
 import { calculateSaleAvailability } from "@shared/sale-availability";
 import { getSoldDate } from "@shared/sold-date";
-import { getSaleCycleNetProfitCents } from "@shared/sales-lifecycle";
 import {
   getSaleAmount,
   isSoldInCalendarPeriod,
@@ -84,13 +83,11 @@ import { useSettings, useUpdateSetting } from "@/hooks/use-settings";
 import { aggregateVat } from "@/lib/vat-calculations";
 import {
   buildMonthlyProfitTrend,
-  buildMonthlySaleCyclesCsv,
-  filterMonthlySaleCycles,
+  buildMonthlySoldWatchesCsv,
+  buildMonthlyTrendSales,
+  filterMonthlySoldWatches,
   getCurrentReportingYear,
-  getSaleCycleHistoryLabel,
   getSalesForMonth,
-  mergeMonthlyTrendSales,
-  type SaleCycleHistoryFilter,
   getSaleYear,
   getSalesForYear,
 } from "@/lib/monthly-profit-trend";
@@ -136,7 +133,6 @@ export default function Financials() {
   const [yearFilter, setYearFilter] = useState<string>(() => String(getCurrentReportingYear()));
   const [selectedTrendMonth, setSelectedTrendMonth] = useState<string | null>(null);
   const [trendSaleSearch, setTrendSaleSearch] = useState("");
-  const [trendSaleKindFilter, setTrendSaleKindFilter] = useState<SaleCycleHistoryFilter>("all");
   const [selectedProfitMonth, setSelectedProfitMonth] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -152,14 +148,18 @@ export default function Financials() {
   }, [settings.default_tax_rate]);
 
   const { data: expenses, isLoading: expensesLoading } = useExpenses();
-  const { data: inventory, isLoading: inventoryLoading } = useInventory(undefined, true);
+  const {
+    data: inventory,
+    isLoading: inventoryLoading,
+    isError: inventoryError,
+  } = useInventory(undefined, true);
   const { data: sales, isLoading: salesLoading, isError: salesError } = useSales();
   const amsterdamNow = useAmsterdamClock();
   const { toast } = useToast();
 
   const trendSales = useMemo(
-    () => mergeMonthlyTrendSales(sales ?? [], inventory ?? [], settings.watch_register_fee),
-    [sales, inventory, settings.watch_register_fee],
+    () => buildMonthlyTrendSales(inventory ?? [], settings.watch_register_fee),
+    [inventory, settings.watch_register_fee],
   );
 
   const saleAvailability = useMemo(
@@ -277,21 +277,21 @@ export default function Financials() {
     [trendSales, selectedTrendMonth],
   );
   const filteredTrendSales = useMemo(
-    () => filterMonthlySaleCycles(selectedTrendSales, trendSaleSearch, trendSaleKindFilter),
-    [selectedTrendSales, trendSaleSearch, trendSaleKindFilter],
+    () => filterMonthlySoldWatches(selectedTrendSales, trendSaleSearch),
+    [selectedTrendSales, trendSaleSearch],
   );
   const selectedYearSales = useMemo(
     () => getSalesForYear(trendSales, yearFilter === "all" ? null : Number(yearFilter)),
     [trendSales, yearFilter],
   );
 
-  const downloadSaleCyclesCsv = (
-    saleCycles: typeof selectedTrendSales,
+  const downloadSoldWatchesCsv = (
+    soldWatches: typeof selectedTrendSales,
     filename: string,
     periodLabel: string,
   ) => {
-    if (saleCycles.length === 0) return;
-    const csvContent = buildMonthlySaleCyclesCsv(saleCycles);
+    if (soldWatches.length === 0) return;
+    const csvContent = buildMonthlySoldWatchesCsv(soldWatches);
     if (!csvContent) return;
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -306,22 +306,22 @@ export default function Financials() {
 
     toast({
       title: "Success",
-      description: `Exported ${saleCycles.length} sale cycles for ${periodLabel}`,
+      description: `Exported ${soldWatches.length} currently sold watches for ${periodLabel}`,
     });
   };
 
   const exportSelectedMonthSales = () => {
     if (!selectedTrendMonth) return;
-    downloadSaleCyclesCsv(
+    downloadSoldWatchesCsv(
       filteredTrendSales,
-      `sale_cycles_${selectedTrendMonth}.csv`,
+      `sold_watches_${selectedTrendMonth}.csv`,
       selectedTrendPoint?.fullMonth ?? selectedTrendMonth,
     );
   };
 
   const exportSelectedYearSales = () => {
     if (yearFilter === "all") return;
-    downloadSaleCyclesCsv(selectedYearSales, `sale_cycles_${yearFilter}.csv`, yearFilter);
+    downloadSoldWatchesCsv(selectedYearSales, `sold_watches_${yearFilter}.csv`, yearFilter);
   };
 
   const getCategoryLabel = (category: string) => {
@@ -734,9 +734,9 @@ export default function Financials() {
                   variant="outline"
                   className="border-slate-200 text-slate-700"
                   onClick={exportSelectedYearSales}
-                  disabled={salesLoading || salesError || selectedYearSales.length === 0}
-                  title={selectedYearSales.length === 0 ? "No sale cycles recorded for this year" : undefined}
-                  data-testid="button-export-year-sale-cycles"
+                  disabled={inventoryLoading || inventoryError || selectedYearSales.length === 0}
+                  title={selectedYearSales.length === 0 ? "No currently sold watches recorded for this year" : undefined}
+                  data-testid="button-export-year-sold-watches"
                 >
                   <Download className="mr-2 h-4 w-4" />
                   Export year CSV
@@ -748,11 +748,11 @@ export default function Financials() {
             <div className="h-32 flex items-center justify-center text-sm text-slate-400">
               Choose a year above to view monthly profit.
             </div>
-          ) : salesLoading ? (
-            <div className="h-32 flex items-center justify-center text-sm text-slate-400">Loading sale history…</div>
-          ) : salesError ? (
+          ) : inventoryLoading ? (
+            <div className="h-32 flex items-center justify-center text-sm text-slate-400">Loading sold watches…</div>
+          ) : inventoryError ? (
             <div className="h-32 flex items-center justify-center text-sm text-slate-500">
-              Monthly profit trend is unavailable because sale history could not be loaded.
+              Monthly profit trend is unavailable because inventory could not be loaded.
             </div>
           ) : (
             <div className="h-32 flex items-end justify-between gap-1">
@@ -775,12 +775,11 @@ export default function Financials() {
                                 setSelectedTrendMonth(null);
                               } else {
                                 setTrendSaleSearch("");
-                                setTrendSaleKindFilter("all");
                                 setSelectedTrendMonth(data.key);
                               }
                             }}
                             className={`w-full h-24 flex items-end justify-center cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 ${isSelected ? "bg-slate-100" : ""}`}
-                            aria-label={`View breakdown and sale records for ${data.fullMonth}, net profit ${formatCurrency(data.profitCents)}`}
+                            aria-label={`View breakdown and currently Sold watches for ${data.fullMonth}, net profit ${formatCurrency(data.profitCents)}`}
                             aria-pressed={isSelected}
                             data-testid={`monthly-profit-bar-${data.key}`}
                           >
@@ -794,10 +793,8 @@ export default function Financials() {
                           <div className="space-y-1.5">
                             <p className="font-semibold">{data.fullMonth}</p>
                             <div className="grid grid-cols-[1fr_auto] gap-x-4 text-left">
-                              <span>Sale-cycle profit</span>
-                              <span className="text-right tabular-nums">{formatCurrency(data.saleCycleProfitCents)}</span>
-                              <span>Return adjustments</span>
-                              <span className="text-right tabular-nums">{formatCurrency(data.returnAdjustmentsCents)}</span>
+                              <span>Profit from Sold watches</span>
+                              <span className="text-right tabular-nums">{formatCurrency(data.saleProfitCents)}</span>
                               <span>Expenses</span>
                               <span className="text-right tabular-nums">
                                 {data.expensesCents > 0 ? "-" : ""}{formatCurrency(data.expensesCents)}
@@ -836,12 +833,8 @@ export default function Financials() {
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                 <div>
-                  <dt className="text-slate-500">Sale-cycle profit</dt>
-                  <dd className="font-medium tabular-nums">{formatCurrency(selectedMonthlyData.saleCycleProfitCents)}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">Return adjustments</dt>
-                  <dd className="font-medium tabular-nums">{formatCurrency(selectedMonthlyData.returnAdjustmentsCents)}</dd>
+                  <dt className="text-slate-500">Profit from Sold watches</dt>
+                  <dd className="font-medium tabular-nums">{formatCurrency(selectedMonthlyData.saleProfitCents)}</dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">Expenses</dt>
@@ -868,21 +861,17 @@ export default function Financials() {
       >
         <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto bg-white border-slate-200 text-slate-900">
           <DialogHeader>
-            <DialogTitle>{selectedTrendPoint?.fullMonth ?? "Monthly sale cycles"}</DialogTitle>
+            <DialogTitle>{selectedTrendPoint?.fullMonth ?? "Sold watches"}</DialogTitle>
             <DialogDescription>
-              Sale cycles are grouped by their recorded sale date. Return adjustments stay with the original sale cycle;
-              monthly expenses are reflected in the chart total, not these row amounts.
+              This list includes only watches currently marked Sold, grouped by their recorded sold date.
+              Changing a watch’s status removes it from this view. Monthly expenses are reflected in the chart total.
             </DialogDescription>
           </DialogHeader>
           {selectedTrendPoint && (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-4">
               <div>
-                <dt className="text-slate-500">Sale-cycle profit</dt>
-                <dd className="font-medium tabular-nums">{formatCurrency(selectedTrendPoint.saleCycleProfitCents)}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Return adjustments</dt>
-                <dd className="font-medium tabular-nums">{formatCurrency(selectedTrendPoint.returnAdjustmentsCents)}</dd>
+                <dt className="text-slate-500">Profit from Sold watches</dt>
+                <dd className="font-medium tabular-nums">{formatCurrency(selectedTrendPoint.saleProfitCents)}</dd>
               </div>
               <div>
                 <dt className="text-slate-500">Expenses</dt>
@@ -898,13 +887,13 @@ export default function Financials() {
           )}
           {selectedTrendSales.length === 0 ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-              No sale cycles were recorded for this month.
+              No watches currently marked Sold have a sale date in this month.
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px_auto] sm:items-end">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                 <div className="space-y-1.5">
-                  <Label htmlFor="monthly-sale-search" className="text-sm text-slate-600">Find a watch</Label>
+                  <Label htmlFor="monthly-sale-search" className="text-sm text-slate-600">Find a Sold watch</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <Input
@@ -917,36 +906,17 @@ export default function Financials() {
                     />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="monthly-sale-kind-filter" className="text-sm text-slate-600">Sale outcome</Label>
-                  <Select
-                    value={trendSaleKindFilter}
-                    onValueChange={value => setTrendSaleKindFilter(value as SaleCycleHistoryFilter)}
-                  >
-                    <SelectTrigger id="monthly-sale-kind-filter" className="bg-white" data-testid="select-monthly-sale-kind">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white">
-                      <SelectItem value="all">All sale cycles</SelectItem>
-                      <SelectItem value="original_sale">Original sales</SelectItem>
-                      <SelectItem value="resale">Resales</SelectItem>
-                      <SelectItem value="returned">Returned</SelectItem>
-                      <SelectItem value="return_in_progress">Return in progress</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
                   <span className="text-xs text-slate-500" aria-live="polite" data-testid="text-monthly-sale-filter-count">
-                    {filteredTrendSales.length} of {selectedTrendSales.length} sale cycles
+                    {filteredTrendSales.length} of {selectedTrendSales.length} Sold watches
                   </span>
-                  {(trendSaleSearch.length > 0 || trendSaleKindFilter !== "all") && (
+                  {trendSaleSearch.length > 0 && (
                     <Button
                       type="button"
                       variant="ghost"
                       className="h-9 px-2 text-slate-600"
                       onClick={() => {
                         setTrendSaleSearch("");
-                        setTrendSaleKindFilter("all");
                       }}
                       data-testid="button-clear-monthly-sale-filters"
                     >
@@ -959,7 +929,7 @@ export default function Financials() {
                     className="border-slate-200 text-slate-700"
                     onClick={exportSelectedMonthSales}
                     disabled={filteredTrendSales.length === 0}
-                    data-testid="button-export-month-sale-cycles"
+                    data-testid="button-export-month-sold-watches"
                   >
                     <Download className="mr-2 h-4 w-4" />
                     Export month CSV
@@ -968,7 +938,7 @@ export default function Financials() {
               </div>
               {filteredTrendSales.length === 0 ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                  No sale cycles match these filters.
+                  No Sold watches match this search.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -977,13 +947,12 @@ export default function Financials() {
                       <TableRow>
                         <TableHead>Watch</TableHead>
                         <TableHead>Sold</TableHead>
-                        <TableHead className="text-right">Sale-cycle profit</TableHead>
+                        <TableHead className="text-right">Profit</TableHead>
                         <TableHead className="text-right">Details</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredTrendSales.map(sale => {
-                    const cycleLabel = getSaleCycleHistoryLabel(sale);
                     const soldDate = sale.soldDate
                       ? new Date(String(sale.soldDate))
                       : null;
@@ -997,39 +966,25 @@ export default function Financials() {
                       : "Date not recorded";
 
                     return (
-                      <TableRow key={sale.id} data-testid={`financials-sale-cycle-${sale.id}`}>
+                      <TableRow key={sale.id} data-testid={`financials-sold-watch-${sale.id}`}>
                         <TableCell>
                           <div className="font-medium text-slate-900">
                             {sale.brandSnapshot} {sale.modelSnapshot}
                           </div>
                           <div className="text-xs text-slate-500">
-                            Ref. {sale.referenceNumberSnapshot} · Sale cycle {sale.cycleNumber}
+                            Ref. {sale.referenceNumberSnapshot}
                           </div>
-                          <Badge
-                            variant="outline"
-                            className={`mt-1 text-xs font-normal ${
-                              cycleLabel === "Returned"
-                                ? "border-amber-200 bg-amber-50 text-amber-800"
-                                : cycleLabel === "Return in progress"
-                                  ? "border-blue-200 bg-blue-50 text-blue-800"
-                                  : cycleLabel.startsWith("Resale")
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                    : "border-slate-200 bg-slate-50 text-slate-600"
-                            }`}
-                          >
-                            {cycleLabel}
-                          </Badge>
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{soldDateLabel}</TableCell>
                         <TableCell className="text-right whitespace-nowrap font-medium tabular-nums">
-                          {formatCurrency(getSaleCycleNetProfitCents(sale))}
+                          {formatCurrency(sale.profitAtSaleCents)}
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
                           {sale.inventoryId != null ? (
                             <Link
                               href={`/inventory/${sale.inventoryId}`}
                               className="font-medium text-emerald-800 underline-offset-4 hover:underline"
-                              data-testid={`link-sale-cycle-watch-${sale.id}`}
+                              data-testid={`link-sold-watch-${sale.id}`}
                             >
                               Open watch
                             </Link>

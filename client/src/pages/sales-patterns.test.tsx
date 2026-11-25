@@ -135,7 +135,10 @@ describe("Sales Patterns page", () => {
   it("shows a live month-by-month preview and a link from Analytics", () => {
     harness.index = 0;
     const preview = SalesPatternsPreview({
-      sales: [{ soldDate: new Date("2025-01-12T00:00:00.000Z") }],
+      patterns: {
+        monthlySalesCounts: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        totalSales: 1,
+      },
       periodLabel: "2025",
     });
     expect(text(preview)).toContain("1 sale · 2025");

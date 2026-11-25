@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/select";
 import { useState, useMemo } from "react";
 import { SalesPatternsPreview } from "@/components/sales-patterns-preview";
+import { buildSalesPatternData } from "@/lib/sales-patterns";
 import { differenceInDays, getMonth, getYear, getDaysInMonth, startOfYear, endOfYear, startOfMonth, endOfMonth, subMonths, startOfQuarter, endOfQuarter, format as formatDate } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InventoryItem } from "@shared/schema";
@@ -296,6 +297,10 @@ export default function Analytics() {
     if (periodPreset === "all") return inventory;
     return filterByDateRange(inventory, primaryDateRange, monthFilter, yearFilter, periodPreset);
   }, [inventory, periodPreset, primaryDateRange, monthFilter, yearFilter]);
+  const salesPatternData = useMemo(
+    () => buildSalesPatternData(filteredInventory, settings.watch_register_fee),
+    [filteredInventory, settings.watch_register_fee],
+  );
   const filteredSales = useMemo(
     () => filterSaleCyclesByDateRange(sales, primaryDateRange, monthFilter, yearFilter, periodPreset),
     [sales, primaryDateRange, monthFilter, yearFilter, periodPreset],
@@ -787,7 +792,7 @@ export default function Analytics() {
         )}
       </div>
       <SalesPatternsPreview
-        sales={filteredSales}
+        patterns={salesPatternData}
         periodLabel={primaryDateRange.label}
       />
       {/* Comparison View */}
