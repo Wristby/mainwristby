@@ -89,6 +89,7 @@ import {
   getCurrentReportingYear,
   getSaleCycleHistoryLabel,
   getSalesForMonth,
+  mergeMonthlyTrendSales,
   type SaleCycleHistoryFilter,
   getSaleYear,
   getSalesForYear,
@@ -155,6 +156,11 @@ export default function Financials() {
   const { data: sales, isLoading: salesLoading, isError: salesError } = useSales();
   const amsterdamNow = useAmsterdamClock();
   const { toast } = useToast();
+
+  const trendSales = useMemo(
+    () => mergeMonthlyTrendSales(sales ?? [], inventory ?? [], settings.watch_register_fee),
+    [sales, inventory, settings.watch_register_fee],
+  );
 
   const saleAvailability = useMemo(
     () => calculateSaleAvailability(sales ?? [], amsterdamNow),
@@ -236,13 +242,13 @@ export default function Financials() {
   const years = useMemo(() => {
     const uniqueYears = new Set<number>([getCurrentReportingYear()]);
     expenses?.forEach(expense => uniqueYears.add(getYear(new Date(expense.date))));
-    sales?.forEach(sale => {
+    trendSales.forEach(sale => {
       const soldDate = getSoldDate(sale);
       const saleYear = getSaleYear(soldDate);
       if (saleYear != null) uniqueYears.add(saleYear);
     });
     return Array.from(uniqueYears).sort((a, b) => b - a);
-  }, [expenses, sales]);
+  }, [expenses, trendSales]);
 
   const filteredExpenses = useMemo(() => {
     if (!expenses) return [];
@@ -262,21 +268,21 @@ export default function Financials() {
 
   const monthlyData = useMemo(() => {
     const selectedYear = yearFilter === "all" ? null : Number(yearFilter);
-    return buildMonthlyProfitTrend(sales ?? [], expenses ?? [], selectedYear);
-  }, [sales, expenses, yearFilter]);
+    return buildMonthlyProfitTrend(trendSales, expenses ?? [], selectedYear);
+  }, [trendSales, expenses, yearFilter]);
   const selectedMonthlyData = monthlyData.find(month => month.key === selectedProfitMonth);
   const selectedTrendPoint = monthlyData.find(month => month.key === selectedTrendMonth);
   const selectedTrendSales = useMemo(
-    () => getSalesForMonth(sales ?? [], selectedTrendMonth),
-    [sales, selectedTrendMonth],
+    () => getSalesForMonth(trendSales, selectedTrendMonth),
+    [trendSales, selectedTrendMonth],
   );
   const filteredTrendSales = useMemo(
     () => filterMonthlySaleCycles(selectedTrendSales, trendSaleSearch, trendSaleKindFilter),
     [selectedTrendSales, trendSaleSearch, trendSaleKindFilter],
   );
   const selectedYearSales = useMemo(
-    () => getSalesForYear(sales ?? [], yearFilter === "all" ? null : Number(yearFilter)),
-    [sales, yearFilter],
+    () => getSalesForYear(trendSales, yearFilter === "all" ? null : Number(yearFilter)),
+    [trendSales, yearFilter],
   );
 
   const downloadSaleCyclesCsv = (

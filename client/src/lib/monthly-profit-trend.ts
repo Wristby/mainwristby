@@ -3,8 +3,49 @@ import {
   getSaleCycleNetProfitCents,
   type InventorySaleWithReturns,
 } from "@shared/sales-lifecycle";
+import type { InventoryItem } from "@shared/schema";
+import { getSaleAmount } from "@shared/reporting";
+import { getSoldDate } from "@shared/sold-date";
+import { calculateWatchCostBreakdown, calculateWatchFinancials } from "@shared/watch-financials";
 
 const REPORTING_TIME_ZONE = "Europe/Amsterdam";
+
+export type MonthlyTrendSale = InventorySaleWithReturns & {
+  legacyInventoryFallback?: boolean;
+};
+
+export type MonthlyTrendInventorySource = Pick<
+  InventoryItem,
+  | "id"
+  | "brand"
+  | "model"
+  | "referenceNumber"
+  | "serialNumber"
+  | "status"
+  | "soldDate"
+  | "dateSold"
+  | "salePrice"
+  | "soldPrice"
+  | "soldTo"
+  | "buyerId"
+  | "platformFees"
+  | "chrono24FeeRate"
+  | "shippingFee"
+  | "insuranceFee"
+  | "soldPlatform"
+  | "shippingPartner"
+  | "trackingNumber"
+  | "dateShipped"
+  | "deliveredDate"
+  | "purchaseDate"
+  | "dateListed"
+  | "purchasePrice"
+  | "importFee"
+  | "serviceFee"
+  | "polishFee"
+  | "watchRegister"
+  | "watchRegisterFeeSnapshot"
+>;
 
 export type MonthlyProfitTrendExpense = {
   date: Date | string;
@@ -52,6 +93,98 @@ function formatMonth(key: string, options: Intl.DateTimeFormatOptions): string {
     timeZone: REPORTING_TIME_ZONE,
     ...options,
   }).format(new Date(Date.UTC(year, month - 1, 15, 12)));
+}
+
+/**
+ * Preserve saved sale-cycle history, but include currently sold legacy watches
+ * when their sale cycle has not yet been backfilled into inventory_sales.
+ */
+export function mergeMonthlyTrendSales(
+  sales: readonly InventorySaleWithReturns[],
+  inventory: readonly MonthlyTrendInventorySource[],
+  defaultWatchRegisterFeeCents: number,
+): MonthlyTrendSale[] {
+  const salesByInventoryId = new Map<number, InventorySaleWithReturns[]>();
+  for (const sale of sales) {
+    if (sale.inventoryId == null) continue;
+    const existing = salesByInventoryId.get(sale.inventoryId) ?? [];
+    existing.push(sale);
+    salesByInventoryId.set(sale.inventoryId, existing);
+  }
+
+  const fallbackSales: MonthlyTrendSale[] = [];
+  for (const watch of inventory) {
+    if (watch.status !== "sold") continue;
+    const soldDate = getSoldDate(watch);
+    if (!soldDate) continue;
+
+    const existingCycles = salesByInventoryId.get(watch.id) ?? [];
+    if (existingCycles.some(sale => {
+      if (!sale.soldDate) return false;
+      const savedDate = sale.soldDate instanceof Date ? sale.soldDate : new Date(sale.soldDate);
+      return Number.isFinite(savedDate.getTime()) && savedDate.getTime() === soldDate.getTime();
+    })) {
+      continue;
+    }
+
+    const cost = calculateWatchCostBreakdown(watch, defaultWatchRegisterFeeCents);
+    const salePrice = getSaleAmount(watch) ?? 0;
+    const profitAtSaleCents = calculateWatchFinancials(
+      watch,
+      salePrice,
+      0,
+      defaultWatchRegisterFeeCents,
+      true,
+    ).profitCents;
+    const cycleNumber = Math.max(0, ...existingCycles.map(sale => sale.cycleNumber)) + 1;
+
+    fallbackSales.push({
+      id: -watch.id,
+      inventoryId: watch.id,
+      cycleNumber,
+      brandSnapshot: watch.brand,
+      modelSnapshot: watch.model,
+      referenceNumberSnapshot: watch.referenceNumber,
+      serialNumberSnapshot: watch.serialNumber,
+      salePrice,
+      soldTo: watch.soldTo,
+      buyerId: watch.buyerId,
+      platformFees: watch.platformFees ?? 0,
+      chrono24FeeRate: watch.chrono24FeeRate,
+      shippingFee: watch.shippingFee ?? 0,
+      insuranceFee: watch.insuranceFee ?? 0,
+      soldDate,
+      soldPlatform: watch.soldPlatform,
+      shippingPartner: watch.shippingPartner,
+      trackingNumber: watch.trackingNumber,
+      dateShipped: watch.dateShipped,
+      deliveredDate: watch.deliveredDate,
+      purchaseDateSnapshot: watch.purchaseDate,
+      dateListedSnapshot: watch.dateListed,
+      purchasePriceSnapshot: watch.purchasePrice,
+      importFeeSnapshot: watch.importFee ?? 0,
+      serviceFeeSnapshot: watch.serviceFee ?? 0,
+      polishFeeSnapshot: watch.polishFee ?? 0,
+      watchRegisterFeeSnapshot: cost.watchRegisterFeeCents,
+      watchRegisterSnapshot: Boolean(watch.watchRegister),
+      acquisitionCostCents: cost.acquisitionCostsCents,
+      profitAtSaleCents,
+      createdAt: soldDate,
+      updatedAt: soldDate,
+      returns: [],
+      legacyInventoryFallback: true,
+    });
+  }
+
+  return [...sales, ...fallbackSales].sort((a, b) => {
+    const aDate = a.soldDate
+      ? (a.soldDate instanceof Date ? a.soldDate.getTime() : new Date(a.soldDate).getTime())
+      : Number.NEGATIVE_INFINITY;
+    const bDate = b.soldDate
+      ? (b.soldDate instanceof Date ? b.soldDate.getTime() : new Date(b.soldDate).getTime())
+      : Number.NEGATIVE_INFINITY;
+    return bDate - aDate || b.id - a.id;
+  });
 }
 
 export function buildMonthlyProfitTrend(
@@ -115,17 +248,17 @@ export function getSaleYear(value: Date | string | null): number | null {
 }
 
 export function getSalesForMonth(
-  sales: readonly InventorySaleWithReturns[],
+  sales: readonly MonthlyTrendSale[],
   monthKey: string | null,
-): InventorySaleWithReturns[] {
+): MonthlyTrendSale[] {
   if (!monthKey) return [];
   return sales.filter(sale => getSaleMonthKey(sale.soldDate) === monthKey);
 }
 
 export function getSalesForYear(
-  sales: readonly InventorySaleWithReturns[],
+  sales: readonly MonthlyTrendSale[],
   year: number | null,
-): InventorySaleWithReturns[] {
+): MonthlyTrendSale[] {
   if (year == null || !Number.isInteger(year)) return [];
   return sales.filter(sale => getSaleYear(sale.soldDate) === year);
 }
@@ -147,7 +280,8 @@ export function getSaleCycleHistoryKind(sale: InventorySaleWithReturns): SaleCyc
   return sale.cycleNumber > 1 ? "resale" : "original_sale";
 }
 
-export function getSaleCycleHistoryLabel(sale: InventorySaleWithReturns): string {
+export function getSaleCycleHistoryLabel(sale: MonthlyTrendSale): string {
+  if (sale.legacyInventoryFallback) return "Legacy inventory record";
   switch (getSaleCycleHistoryKind(sale)) {
     case "returned":
       return "Returned";
@@ -161,10 +295,10 @@ export function getSaleCycleHistoryLabel(sale: InventorySaleWithReturns): string
 }
 
 export function filterMonthlySaleCycles(
-  sales: readonly InventorySaleWithReturns[],
+  sales: readonly MonthlyTrendSale[],
   searchText: string,
   historyFilter: SaleCycleHistoryFilter = "all",
-): InventorySaleWithReturns[] {
+): MonthlyTrendSale[] {
   const query = searchText.trim().toLocaleLowerCase();
   return sales.filter(sale => {
     if (historyFilter !== "all" && getSaleCycleHistoryKind(sale) !== historyFilter) return false;

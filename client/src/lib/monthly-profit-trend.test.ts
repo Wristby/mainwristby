@@ -10,6 +10,8 @@ import {
   getSalesForMonth,
   getSaleYear,
   getSalesForYear,
+  mergeMonthlyTrendSales,
+  type MonthlyTrendInventorySource,
 } from "./monthly-profit-trend";
 
 const sale = (overrides: Partial<InventorySale> = {}): InventorySaleWithReturns => ({
@@ -73,6 +75,41 @@ const returnCase = (overrides: Partial<InventoryReturn> = {}): InventoryReturn =
   completedDate: "2026-02-11",
   createdAt: new Date("2026-02-01T12:00:00.000Z"),
   updatedAt: new Date("2026-02-11T12:00:00.000Z"),
+  ...overrides,
+});
+
+const soldWatch = (
+  overrides: Partial<MonthlyTrendInventorySource> = {},
+): MonthlyTrendInventorySource => ({
+  id: 9,
+  brand: "Rolex",
+  model: "Submariner",
+  referenceNumber: "126610",
+  serialNumber: "SN-9",
+  status: "sold",
+  soldDate: new Date("2026-01-15T12:00:00.000Z"),
+  dateSold: null,
+  salePrice: 1_000_000,
+  soldPrice: null,
+  soldTo: null,
+  buyerId: null,
+  platformFees: 65_000,
+  chrono24FeeRate: null,
+  shippingFee: 0,
+  insuranceFee: 0,
+  soldPlatform: "Chrono24",
+  shippingPartner: null,
+  trackingNumber: null,
+  dateShipped: null,
+  deliveredDate: null,
+  purchaseDate: new Date("2025-12-01T12:00:00.000Z"),
+  dateListed: new Date("2025-12-02T12:00:00.000Z"),
+  purchasePrice: 700_000,
+  importFee: 0,
+  serviceFee: 0,
+  polishFee: 0,
+  watchRegister: false,
+  watchRegisterFeeSnapshot: null,
   ...overrides,
 });
 
@@ -141,6 +178,56 @@ describe("monthly Financials profit trend", () => {
       expensesCents: 0,
       profitCents: 0,
     });
+  });
+
+  it("includes an unduplicated current Sold inventory fallback when sale history is missing", () => {
+    const merged = mergeMonthlyTrendSales([], [
+      soldWatch(),
+      soldWatch({ id: 10, status: "in_stock", brand: "Omega" }),
+      soldWatch({ id: 11, soldDate: null, dateSold: null }),
+    ], 600);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      id: -9,
+      inventoryId: 9,
+      cycleNumber: 1,
+      soldDate: new Date("2026-01-15T12:00:00.000Z"),
+      profitAtSaleCents: 235_000,
+      legacyInventoryFallback: true,
+    });
+    const january = buildMonthlyProfitTrend(merged, [], 2026).find(month => month.key === "2026-01");
+    expect(january?.profitCents).toBe(235_000);
+    expect(getSaleCycleHistoryLabel(merged[0])).toBe("Legacy inventory record");
+  });
+
+  it("does not duplicate a current Sold watch that already has a matching sale snapshot", () => {
+    const merged = mergeMonthlyTrendSales(
+      [sale({ soldDate: new Date("2026-01-15T12:00:00.000Z") })],
+      [soldWatch()],
+      600,
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].id).toBe(1);
+    expect(merged[0].legacyInventoryFallback).toBeUndefined();
+  });
+
+  it("keeps historical returned sales even when the current watch is no longer Sold", () => {
+    const history = sale({ returns: [returnCase()] });
+    const merged = mergeMonthlyTrendSales(
+      [history],
+      [soldWatch({ status: "received" })],
+      600,
+    );
+
+    expect(merged).toEqual([history]);
+    expect(buildMonthlyProfitTrend(merged, [], 2026).find(month => month.key === "2026-01"))
+      ?.toMatchObject({
+        saleCycleProfitCents: 235_000,
+        returnAdjustmentsCents: -105_000,
+        profitCents: 130_000,
+      });
   });
 
   it("keeps empty months at zero and ignores sales and expenses outside the selected year", () => {
