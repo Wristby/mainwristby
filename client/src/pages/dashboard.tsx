@@ -487,6 +487,7 @@ export default function Dashboard() {
         isError={salesError}
         formatCurrency={formatCurrency}
         compact
+        headerLink={{ href: "/financials", label: "View more" }}
       />
       {isSectionVisible("quick_actions") && <DashboardReferenceSearch watches={inventory || []} unavailable={inventoryError && !inventory} />}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">

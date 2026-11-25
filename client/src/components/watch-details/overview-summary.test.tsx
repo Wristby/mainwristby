@@ -58,6 +58,9 @@ describe("Watch Details overview summary", () => {
     expect(html).toContain("Net profit");
     expect(html).toContain("€1200.00");
     expect(html).toContain("€200.00");
+    expect(html).toContain("COGS");
+    expect(html).toContain("€1000.00");
+    expect(html).not.toContain("Purchased");
     expect(html).toContain("Full Set");
     expect(html).toContain("Hold time · 200 days");
     expect(html).toContain('href="https://drive.google.com/drive/folders/watch-42"');

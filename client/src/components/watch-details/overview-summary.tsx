@@ -176,7 +176,7 @@ export function OverviewSummary({
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.15em] text-emerald-900/65">At a glance</p>
             <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-5">
-              <Glance label="Purchased" value={formatRecordDate(item.purchaseDate)} />
+              <Glance label="COGS" value={formatCurrency(item.purchasePrice)} />
               <Glance label="Listed" value={formatRecordDate(item.dateListed)} />
               <Glance label="Sold" value={formatRecordDate(soldDate)} />
               <Glance label="Buyer" value={buyerName} />

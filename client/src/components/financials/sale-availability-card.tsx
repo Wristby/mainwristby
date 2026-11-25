@@ -11,6 +11,10 @@ type SaleAvailabilityCardProps = {
   isError: boolean;
   formatCurrency: (cents: number) => string;
   compact?: boolean;
+  headerLink?: {
+    href: string;
+    label: string;
+  };
 };
 
 function Metric({
@@ -121,6 +125,7 @@ export function SaleAvailabilityCard({
   isError,
   formatCurrency,
   compact = false,
+  headerLink,
 }: SaleAvailabilityCardProps) {
   return (
     <Card className="border-slate-200 bg-white shadow-sm" data-testid="sale-availability-card">
@@ -135,9 +140,18 @@ export function SaleAvailabilityCard({
               Expected money from sold watches after marketplace fees, shown as it moves toward payout.
             </p>
           </div>
-          <Badge variant="outline" className="ml-auto shrink-0 border-slate-200 bg-slate-50 text-slate-600">
-            All sales
-          </Badge>
+          {headerLink ? (
+            <Link
+              href={headerLink.href}
+              className="ml-auto shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+            >
+              {headerLink.label}
+            </Link>
+          ) : (
+            <Badge variant="outline" className="ml-auto shrink-0 border-slate-200 bg-slate-50 text-slate-600">
+              All sales
+            </Badge>
+          )}
         </div>
 
         {isLoading ? (

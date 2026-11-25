@@ -1,8 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 import type { InventorySaleWithReturns } from "@shared/sales-lifecycle";
 import { calculateSaleAvailability } from "@shared/sale-availability";
 import { SaleAvailabilityCard } from "./sale-availability-card";
+
+vi.mock("wouter", () => ({
+  Link: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
+}));
 
 const formatCurrency = (cents: number) => `€${(cents / 100).toFixed(2)}`;
 
@@ -56,6 +61,7 @@ describe("SaleAvailabilityCard", () => {
     expect(html).toContain("€9350.00");
     expect(html).toContain("Available 17 Mar 2026 · 7 days");
     expect(html).toContain("shown as it moves toward payout");
+    expect(html).toContain("All sales");
     expect(html).not.toContain("Delivery-to-release timeline");
     expect(html).toContain("Upcoming releases");
     expect(html).toContain("Available 17 Mar 2026 · 7 days");
@@ -90,8 +96,17 @@ describe("SaleAvailabilityCard", () => {
   it("renders only the quick-glance summary in compact mode", () => {
     const summary = calculateSaleAvailability([sale()], new Date("2026-03-10T12:00:00.000Z"));
     const html = renderToStaticMarkup(
-      <SaleAvailabilityCard summary={summary} isLoading={false} isError={false} formatCurrency={formatCurrency} compact />,
+      <SaleAvailabilityCard
+        summary={summary}
+        isLoading={false}
+        isError={false}
+        formatCurrency={formatCurrency}
+        compact
+        headerLink={{ href: "/financials", label: "View more" }}
+      />,
     );
+    expect(html).toContain('href="/financials"');
+    expect(html).toContain(">View more</a>");
     expect(html).toContain("Awaiting delivery");
     expect(html).toContain("Inside return window");
     expect(html).toContain("Cleared from return hold");
