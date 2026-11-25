@@ -962,46 +962,6 @@ export default function Analytics() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white border-slate-200 md:col-span-3" data-testid="card-return-rate">
-            <CardContent className="pt-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide">Overall Return Rate</p>
-                  <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">
-                    {allTimeReturnSummary.returnRatePercent.toFixed(1)}%
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {allTimeReturnSummary.returnedSaleCount} of {allTimeReturnSummary.saleCount} sale cycles · counted when the watch is received
-                  </p>
-                </div>
-                <Link href="/returns" className="inline-flex min-h-9 items-center gap-2 self-start rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  View return cases <ArrowUpRight className="h-4 w-4" />
-                </Link>
-              </div>
-              <div className="mt-5 border-t border-slate-100 pt-4">
-                <p className="text-sm font-medium text-slate-700">Returns by month received</p>
-                {monthlyReturnCounts.length ? (
-                  <div className="mt-3 grid h-28 grid-flow-col auto-cols-fr items-end gap-2 sm:gap-3" aria-label="Monthly returns received in the last 12 active months">
-                    {monthlyReturnCounts.map(({ month, count }) => {
-                      const maxCount = Math.max(...monthlyReturnCounts.map(entry => entry.count), 1);
-                      const height = count ? Math.max(8, (count / maxCount) * 100) : 3;
-                      const label = formatDate(new Date(`${month}-01T00:00:00Z`), "MMM yy");
-                      return (
-                        <div key={month} className="flex h-full min-w-0 flex-col items-center justify-end gap-1" title={`${label}: ${count} ${count === 1 ? "return" : "returns"}`}>
-                          <span className="text-[10px] font-medium text-slate-600">{count || ""}</span>
-                          <div className="w-full max-w-10 rounded-t bg-emerald-600" style={{ height: `${height}%` }} />
-                          <span className="truncate text-[10px] text-slate-500">{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-500">No watches have been received back yet.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
           <Card className="bg-white border-slate-200">
             <CardContent className="pt-5">
               <div className="flex items-start justify-between">
@@ -1268,6 +1228,46 @@ export default function Analytics() {
                 <div className="p-2 bg-orange-50 rounded-full">
                   <ShoppingCart className="h-5 w-5 text-orange-600" />
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white border-slate-200 md:col-span-3" data-testid="card-return-rate">
+            <CardContent className="pt-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Overall Return Rate</p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">
+                    {allTimeReturnSummary.returnRatePercent.toFixed(1)}%
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {allTimeReturnSummary.returnedSaleCount} of {allTimeReturnSummary.saleCount} sale cycles · counted when the watch is received
+                  </p>
+                </div>
+                <Link href="/returns" className="inline-flex min-h-9 items-center gap-2 self-start rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  View return cases <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </div>
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <p className="text-sm font-medium text-slate-700">Returns by month received</p>
+                {monthlyReturnCounts.length ? (
+                  <div className="mt-3 grid h-28 grid-flow-col auto-cols-fr items-end gap-2 sm:gap-3" aria-label="Monthly returns received in the last 12 active months">
+                    {monthlyReturnCounts.map(({ month, count }) => {
+                      const maxCount = Math.max(...monthlyReturnCounts.map(entry => entry.count), 1);
+                      const height = count ? Math.max(8, (count / maxCount) * 100) : 3;
+                      const label = formatDate(new Date(`${month}-01T00:00:00Z`), "MMM yy");
+                      return (
+                        <div key={month} className="flex h-full min-w-0 flex-col items-center justify-end gap-1" title={`${label}: ${count} ${count === 1 ? "return" : "returns"}`}>
+                          <span className="text-[10px] font-medium text-slate-600">{count || ""}</span>
+                          <div className="w-full max-w-10 rounded-t bg-emerald-600" style={{ height: `${height}%` }} />
+                          <span className="truncate text-[10px] text-slate-500">{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">No watches have been received back yet.</p>
+                )}
               </div>
             </CardContent>
           </Card>
