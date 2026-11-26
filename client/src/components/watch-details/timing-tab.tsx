@@ -59,6 +59,7 @@ type PrintableReading = {
   rateSecondsPerDay: number | null;
   amplitudeDegrees: number | null;
   beatErrorMs: number | null;
+  beatErrorSource: string | null;
   jitterMicroseconds: number | null;
   watchHeard: boolean;
 };
@@ -107,6 +108,12 @@ function formatBeatError(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? "—" : `${value.toFixed(2)} ms`;
 }
 
+function formatBeatErrorSource(source: string | null | undefined) {
+  if (source === "unlock") return "Unlock-based";
+  if (source === "drop") return "Drop-based";
+  return "Source unavailable";
+}
+
 function formatBeatRate(value: number | null | undefined) {
   return value == null ? "—" : `${value.toLocaleString()} vph`;
 }
@@ -137,6 +144,7 @@ function historyPrintRecord(row: InventoryTimingReading): PrintableReading {
     rateSecondsPerDay: row.rateSecondsPerDay,
     amplitudeDegrees: row.amplitudeDegrees,
     beatErrorMs: row.beatErrorMs,
+    beatErrorSource: row.beatErrorSource,
     jitterMicroseconds: row.jitterMicroseconds,
     watchHeard: row.watchHeard,
   };
@@ -256,6 +264,7 @@ export function TimingTab({ item }: Props) {
     rateSecondsPerDay: finiteOrNull(reading?.rate_s_per_day),
     amplitudeDegrees: finiteOrNull(reading?.amplitude_deg),
     beatErrorMs: finiteOrNull(reading?.beat_error_unlock_ms ?? reading?.beat_error_ms),
+    beatErrorSource: reading?.beat_error_source ?? null,
     jitterMicroseconds: finiteOrNull(reading?.jitter_us),
     watchHeard: reading?.watch_heard ?? false,
   } satisfies PrintableReading : null;
@@ -280,6 +289,14 @@ export function TimingTab({ item }: Props) {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              <strong>Accuracy limitation:</strong> this analyzer uses a Swiss-lever model and has no verified Co‑Axial analysis mode.
+              An Omega preset supplies beat rate and lift-angle values only; it does not change the signal model to a Co‑Axial or machine-specific one.
+              For Co‑Axial movements, treat amplitude and beat error as unverified reference values, not service readings.
+            </p>
+          </div>
           <section className="rounded-xl border border-[#dce5df] bg-white p-4 sm:p-5">
             <div className="mb-4 flex items-center gap-2">
               <Timer className="h-4 w-4 text-emerald-700" />
@@ -539,7 +556,12 @@ export function TimingTab({ item }: Props) {
                 <Metric
                   label="Beat error"
                   value={formatBeatError(reading?.beat_error_unlock_ms ?? reading?.beat_error_ms)}
-                  detail={reading?.jitter_us != null ? `${Math.round(reading.jitter_us)} μs timing scatter` : undefined}
+                  detail={[
+                    reading?.beat_error_source
+                      ? formatBeatErrorSource(reading.beat_error_source)
+                      : null,
+                    reading?.jitter_us != null ? `${Math.round(reading.jitter_us)} μs timing scatter` : null,
+                  ].filter(Boolean).join(" · ") || undefined}
                 />
                 <Metric label="Frequency" value={formatBeatRate(reading?.bph ?? reading?.bph_set)} />
               </div>
@@ -623,6 +645,8 @@ export function TimingTab({ item }: Props) {
             </dl>
             <div className="timing-print-footer">
               {printReading.sampleRateHz.toLocaleString("en-US")} Hz microphone input
+              <p>Beat error: {formatBeatErrorSource(printReading.beatErrorSource)}</p>
+              <p>Reference only: Co‑Axial escapements are not supported by this analyzer.</p>
               {!printReading.watchHeard && <p>Beat not confirmed in this capture</p>}
             </div>
           </div>
@@ -655,6 +679,7 @@ function TimingHistoryRow({ row, onPrint }: { row: InventoryTimingReading; onPri
         </div>
         <p className="mt-1 text-[11px] text-slate-400">
           Lift angle {formatAngle(row.liftAngleDegrees)} · {Math.round(row.captureDurationSeconds)} sec capture
+          {" · "}{formatBeatErrorSource(row.beatErrorSource)} beat error
           {row.clippedFraction != null && row.clippedFraction > 0.03 ? " · clipping noted" : ""}
         </p>
       </div>

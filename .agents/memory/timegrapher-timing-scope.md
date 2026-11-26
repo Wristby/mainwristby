@@ -20,3 +20,9 @@ For Omega Co-Axial presets, keep movement-specific lift-angle data separate from
 **Why:** Omega service guides describe equipment-specific Co-Axial modes, while the browser analyzer has no verified equivalent.
 
 **How to apply:** Only prefill sourced values; do not present a browser preset as an Omega service-machine mode or treat unverified amplitude as calibrated.
+
+The Weishi comparison that showed lower amplitude and higher beat error was performed on a non-Co-Axial movement. Do not attribute that discrepancy to Co-Axial support.
+
+**Why:** The user explicitly corrected the movement type after an initial Co-Axial explanation.
+
+**How to apply:** Investigate general timing, settings, and audio-pipeline causes for that comparison; ask for the exact movement, both devices' settings, and paired values before assigning a cause.
